@@ -1,0 +1,11 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- QML 资源清单。
+         注意：xmake 没有 qt_add_qml_module 的等价物，所以这里是手工维护的
+         （ARCHITECTURE.md §9.5）。新增 QML 文件必须在这里登记，否则运行时
+         表现为 "qrc:/qml/xxx.qml: No such file"，而不是编译错误。
+         相对路径以本文件所在目录（仓库根）为基准。 -->
+    <qresource prefix="/">
+        <file alias="qml/main.qml">presentation/qml/main.qml</file>
+    </qresource>
+</RCC>
