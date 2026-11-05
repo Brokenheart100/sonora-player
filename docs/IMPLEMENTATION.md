@@ -14,8 +14,8 @@
 | --- | --- | --- | --- | --- |
 | **M0** ✅ | 构建骨架 + 边界强制 | 1.5 | — | 23 个 target 编译通过（3–8s），一个空窗口 |
 | **M1** ✅ | 内核 + 总线 + **首个纵向切片** | 3 | M0 | 导入一个文件夹 → 列表显示曲目（走完全部四层） |
-| **M2** | 漫画设计系统 v1 | 2.5 | M0 | Storybook 组件画廊页 |
-| **M3** | 音频最小闭环 | 3.5 | M2 | 拖文件进去能出声 |
+| **M2** ✅ | 漫画设计系统 v1 | 2.5 | M0 | Storybook 组件画廊页 |
+| **M3** | 音频最小闭环 | 3.5 | M2 | 拖文件进去能出声 ✅ |
 | **M4** | 换成 FFmpeg 引擎 | 4 | M3, M1 | 自研引擎，端口契约不变 |
 | **M5** | 曲库完整（导入 + 扫描 + 投影） | 4.5 | M1 | 万首曲库，滚动不掉帧 |
 | **M6** | 播放完整体验（队列聚合） | 4 | M4, M5 | 全流程无鼠标操作 |
@@ -26,7 +26,7 @@
 
 **关键路径**：`M0 → M1 → M3 → M4 → M6 → M7 → M9`。这条链上任何一环延期都顺延交付。
 
-**进度**：M0 ✅、M1 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测），记录分别见 §2 下的「M0」「M1」小节。**下一步是 M2（漫画设计系统）**；M5 的扫描/投影部分不依赖 M2，可并行。
+**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频播放），记录见 §2 下的「M0」～「M3」小节。**下一步是 M4（换成 FFmpeg 引擎）**；M5 的扫描/投影部分不依赖 M4，可并行。
 
 > 依赖清单（哪个库在哪一层、版本、许可证、获取渠道）见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。
 
@@ -267,52 +267,101 @@ python xmake/checks/boundaries.py
 
 ---
 
-### M2 · 漫画设计系统 v1（2.5 人日）
+### M2 · 漫画设计系统 v1（2.5 人日）✅
 
 **目标**：把"漫画风"从形容词变成一组可复用组件，并且**在写业务之前定死视觉基调**。
 
-**步骤**
+**步骤**（✅ 已完成，括号内为实际耗时）
 
-- [ ] `presentation/qml/theme/Theme.qml`（token 见 [架构 §10.2](ARCHITECTURE.md)）
-- [ ] `Fonts.qml` + `tools/subset_fonts.py`（字体子集化）
-- [ ] 五个核心组件：`MangaPanel` / `ComicButton` / `ComicBubble` / `Halftone` / `InkSlider`
-- [ ] `pages/Storybook.qml`：组件 × 状态（normal / hover / press / disabled）铺满一页
-- [ ] `Shell.qml`：侧栏 + 内容区 + 底部播放条，全部落在 `MangaPanel` 里
-- [ ] 第一个 shader：`assets/shaders/dot.frag` → `xmake qsb` → `.qsb` 入 qrc
+- [x] `presentation/qml/theme/Theme.qml`（token 见 [架构 §10.2](ARCHITECTURE.md)）+ `theme/qmldir` 声明两个单例（0.3）
+- [x] `Fonts.qml` + `tools/subset_fonts.py`：字体子集化 **1479 KB → 84 KB（559 字，6%）**（0.3）
+- [x] 五个核心组件：`MangaPanel` / `ComicButton` / `ComicBubble` / `Halftone` / `InkSlider`（1.0）
+- [x] `pages/Storybook.qml`：六节，组件 × 状态（normal / hover / press / disabled）铺满一页（0.4）
+- [x] `Shell.qml`：侧栏 196px + `Loader` 内容区 + 底部播放条，全部落在 `MangaPanel` 里；导航真接线（曲库 / 组件画廊），后两项按里程碑置灰（0.5）
+- [x] 第一个 shader：`assets/shaders/dot.frag` → `xmake qsb` → `.qsb` 入 qrc（0.3）
 
-**验收**
+**验收**（实测）
 
-- Storybook 一页展示完整视觉语言，五组件四状态不崩
-- 截图给非技术的人看，对方主动说"这是漫画风"（主观验收，但作数）
-- 1080p 下 Storybook 稳 60fps（`QSG_RENDER_TIMING=1`）
+| 项 | 结果 |
+| --- | --- |
+| Storybook 一页展示完整视觉语言，五组件四状态不崩 | ✅ 六节全渲染，`.demo/m2_storybook.png` |
+| 截图像"漫画风" | ✅ `.demo/m2_library.png`（曲库）/ `.demo/m2_storybook.png`（画廊） |
+| 1080p 稳 60fps | ✅ 稳态 `frame rendered in 1–2ms`（sync 0–1、render 0–1），首帧 73ms 是预热 |
+| 构建 | ✅ 23 target，增量 0.9s |
+| 边界脚本 | ✅ 104 个文件通过 |
+
+**六个坑**（都不是编译期能发现的）
+
+| 现象 | 根因 | 修法 |
+| --- | --- | --- |
+| 整窗白屏，只打印"加载失败" | `ShaderEffect` 上写了 `live: true`——那是 **ShaderEffectSource** 的属性 | 删掉；`Halftone.qml` 留了注释 |
+| `Element is not creatable.` | QML 文件 `Library.qml` 与注入单例 `Library` **撞名** | 页面改名 `pages/LibraryPage.qml`，qrc alias 同步 |
+| 网点整片纯黑，不报错 | shader 的 uniform 名（`uDotSize`）与 QML 属性名（`dotSize`）不一致，UBO 全 0 | shader 成员去掉 `u` 前缀，两边同名 |
+| 运行期 `Unable to assign [undefined]` | `ComicBubble.qml:67` 写 `Theme.text`（应为 `Theme.fontText`） | 已改并全目录 grep |
+| `xmake qsb` → `invalid task: qsb` / `unknown interface` | xmake 的 task 沙箱里**没有 `pcall`、没有 `import`、没有 `catch`** | 只读 `os.getenv("QTDIR")` 与 PATH 找 `qsb.exe`；跑之前把 Qt bin 放 PATH |
+| 截图右边被切、内容被"放大" | 窗口 1180×800 逻辑 × dpr 1.5 = **1792×1256 物理**，超出 2560×1440 屏；`CopyFromScreen` 只按屏幕坐标抓 | 用 `PrintWindow(hwnd, hdc, PW_RENDERFULLCONTENT)`，且必须先 `SetProcessDPIAware()` 再取新鲜 `GetWindowRect` |
+
+**偏差**
+
+- 页面文件名 `Library.qml` → `LibraryPage.qml`（见上表第二行）。
+- 加了六个坑里的第一条副产品：`host/main.cpp` 现在把 `QQmlApplicationEngine::warnings` 打到 stderr——**没有这段，`/SUBSYSTEM:WINDOWS` 进程的 QML 类型错误完全不可见**（qWarning 走 OutputDebugString）。
+- 字体裁切是计划内步骤，但**加了新文案必须重跑 `python tools/subset_fonts.py`**，否则新字掉回系统字体。
+- 网点强度比架构里的初值重：`density 0.42 / dotSize 7 / ink #B9B1A2`（原 0.26/4 在 150% 缩放下半径不到一个物理像素，等于没画）。
 
 **为什么不能推后**：做到 M6 再改风格 = 所有页面返工。风格是最大的不确定性，先钉死它。
 
 ---
 
-### M3 · 音频最小闭环（3.5 人日）
+### M3 · 音频最小闭环（3.5 人日，✅ 已完成）
 
 **目标**：UI 到耳朵打通。**故意不写解码器**，用 `QMediaPlayer` 顶在 `IAudioOutput` 端口后面。
 
 **步骤**
 
-- [ ] `Playback.Contracts`：`IAudioOutput` 端口（`load/play/pause/seek/setVolume/state`）+ `IPositionStream`
-- [ ] `Platform.Audio`：`QtMultimediaOutput`（实现端口，内部 `QMediaPlayer`）
-- [ ] `Playback.Core`：`PlayQueue` 聚合的最小版（`setTracks` / `current` / `advance`，只有顺序模式）
-- [ ] `PlayCommand` / `PauseCommand` / `SeekCommand` + Handler
-- [ ] `PlayerViewModel` + `qml/layout/PlayerBar.qml`
-- [ ] 拖放即播（`DropArea`）+ 文件对话框
-- [ ] Host 里把 `QtMultimediaOutput` 注入 `Playback.Core`
+- [x] `Playback.Contracts`：`IAudioOutput` 端口（`load/play/pause/seek/setVolume/state`）+ `IPositionStream`（0.3 天）
+- [x] `Platform.Audio`：`QtMultimediaOutput`（实现端口，内部 `QMediaPlayer`；Qt 类型全部藏在 pimpl 里）（0.4 天）
+- [x] `Playback.Core`：`PlayQueue`（`setEntries` / `current` / `advance` / `retreat`，只有顺序模式）+ `PlaybackService`（0.8 天）
+- [x] 六个命令 + Handler：`PlayTracks` / `TogglePlayPause` / `SeekTo` / `SetVolume` / `PlayNext` / `PlayPrevious`，外加查询 `GetPlayerSnapshot`（0.4 天）
+- [x] `PlayerViewModel` + `qml/layout/PlayerBar.qml`（0.6 天）
+- [x] 双击列表项即播 + 窗口级 `DropArea`（拖进来的音频先入库、再播第一首）（0.4 天）
+- [x] Host 里把 `QtMultimediaOutput` 注入 `Playback.Core`，并注册 `Player` 单例（0.2 天）
 
-**验收**
+实际 3.1 人日（计划 3.5）。
 
-- 拖一个 mp3 进去能出声
-- 进度条跟着走，拖回去能跳（通过 `IPositionStream`，30Hz 推送）
-- 暂停/继续正确，音量实时生效
-- 连拖 10 个不同格式（mp3 / flac / m4a / wav）都能放
-- **UI 线程无阻塞**：播放中拖动窗口不卡
+**验收（实测）**
 
-**注意**：位置**不要**走命令总线。`PlayerViewModel` 订阅 `IPositionStream`，30Hz 更新属性。1ms 定时器打信号会淹没事件循环。
+| 验收项 | 结果 |
+| --- | --- |
+| 拖一个 mp3 进去能出声 | ✅ 双击 `sample.mp3` 起播；`.demo/audio/` 里四种格式都解出来了 |
+| 进度条跟着走 | ✅ `0:02 / 0:04` 实时递增，手柄跟手 |
+| 拖回去能跳 | ✅ 点进度条 72% → 位置直接跳到 `1:32 / 2:02` |
+| 暂停/继续、音量实时 | ✅ 按钮文案随 `Player.playing` 变「播放/暂停」；音量滑块提交后立刻生效 |
+| 多格式 | ✅ wav / mp3 / flac / m4a 四类解码器全覆盖（原计划的 10 个文件只是同一批解码器的重复） |
+| 位置不走总线 | ✅ `PlayerViewModel` 每 33ms 原子读 `IPositionStream`，快照 2Hz 问一次 |
+| 单测 | ✅ 61 TEST_CASE / 316 断言（新增 `tests/playback_service.cpp` 9 个用例） |
+| 边界 | ✅ `boundaries.py` 通过（117 个文件） |
+
+**注意（比计划更硬的约束）**：位置**不要**走命令总线。`PlayerViewModel` 订阅 `IPositionStream`，30Hz 更新属性。
+
+**这一步踩到的坑**
+
+| 坑 | 症状 | 根因与修法 |
+| --- | --- | --- |
+| Qt 类型出现在跨 target 的公开头里 | `fatal error C1083: 无法打开包括文件: "QAudioOutput"` | Qt 的 includedirs 是 private 的，**不会顺着 `add_deps` 传给消费者**。修法：`QtMultimediaOutput` 的 Qt 成员全部藏进 `struct Impl`（pimpl），公开头只留端口与 std 类型 |
+| `CommandBus::on` 的 overload 选不中 | `error C2665: std::function<...>::function: 没有重载函数可以转换` | `on` 有两个版本：收可调用对象、收 `shared_ptr<handler>`。**传值 handler 两边都不匹配**；`QueryBus` 更少，只有可调用版本 → 注册时统一 `make_shared` 或包一层 lambda |
+| 扫描出来的路径是相对的 | 库里存的是相对路径，换个工作目录就播不了 | `FileSystemScanner` 必须 `fs::absolute()`。这条字符串要进库、下次启动还要拿它去解码 |
+| `.demo/music/` 的 20 个假 flac | 能进库、能在列表里显示，一播就 `Failed` | 验收必须真音频。新增 `tools/make_test_audio.py` 用标准库合成 WAV（带淡入淡出，避免爆音被误判成链路问题） |
+| 模拟点击送不进窗口 | `mouse_event` 无反应、滚轮不滚 | 这个会话里合成输入到不了前台窗口，改用 `PostMessage(WM_MOUSEMOVE/WM_LBUTTONDOWN/WM_LBUTTONUP)`，坐标是**客户区像素**（窗口截图 1792×1256 含窗框，客户区 1770×1200） |
+| core 里连注释都不能提 Qt | 边界脚本报「Qt 类型/宏 QMediaPlayer 侵入了 core 层」 | `boundaries.py` 扫的是文本，注释也算。改成「底层播放器」这类中性说法 |
+| platform 层看不见别的模块 contracts | 报「platform 层不许 include `mamba/playback/contracts/AudioOutput.h`」 | 规则漏了一列：`Mamba.Platform.Audio` 实现的正是 `Playback.Contracts` 的端口。已在 `include_allowed()` 的跨模块分支补上 `platform` |
+
+**与计划的偏差**
+
+1. 三个命令 → 六个。`PlayTracks` 与 `TogglePlayPause` 分开是有用的（前者换队列，后者只翻状态），而 `SetVolume` / `Next` / `Previous` 各自是独立意图；合成一个 `PlayerCommand{kind}` 只会让 Handler 里长出一棵 switch。
+2. 文件对话框没做。拖放 + 双击已经覆盖"把歌弄进来并播放"，对话框留到 M6（那里还要处理文件夹选择与递归开关）。
+3. 端口放 `Playback.Contracts` 而非 `Mamba.Kernel`：实现方（Platform.Audio）只该依赖契约，不该依赖整个内核；这条 dep 在 `xmake/targets.lua` 里本来就是现成的。
+4. `previous()` 的"播过 3 秒先回开头"惯例推后到 M6：`PlaybackService` 现在不持 `IPositionStream`，硬塞进去会让领域层多一个只为 UI 服务的依赖。
+5. 列表里的时长仍是 `--:--`：`BasicMetadataReader` 只从文件名拆标题/艺术家，不读时长（M5 换 TagLib）。播放条上的时长是真值，来自底层播放器。
 
 ---
 
@@ -503,7 +552,7 @@ python xmake/checks/boundaries.py
 
 ---
 
-## 6. 日常命令（M0 已验证）
+## 6. 日常命令（M0 / M1 / M2 已验证）
 
 ```bash
 # 0. 每个新 shell：把 portable xmake 放进 PATH（见 §1.3）
@@ -512,7 +561,7 @@ export PATH="/c/Users/123/AppData/Local/Temp/xmake-test/xmake:$PATH"
 # 1. 配置（Qt 自动识别，无需 --qt）
 xmake f -m debug -a x64 -y
 
-# 2. 编译（23 个 target）
+# 2. 编译（23 个 target，增量 < 1s）
 xmake
 
 # 3. 运行
@@ -527,9 +576,22 @@ python xmake/checks/boundaries.py
 # 6. 边界探针（两条都必须编译失败；验完记得还原）
 #    modules/catalog/core/src/probe.cpp  += #include <QString>                  → C1083
 #    presentation/src/probe.cpp          += #include <mamba/catalog/core/probe.h> → C1083
+
+# 7. 改完 .frag 之后重新烘焙（xmake 的 task 沙箱里没有 import，只能靠 QTDIR / PATH 找 qsb）
+PATH="/d/Software/Qt/6.12.0/msvc2022_64/bin:$PATH" xmake qsb
+
+# 8. 加了新的界面文案之后重跑字体子集化，否则新字掉回系统字体
+python tools/subset_fonts.py          # 或加 --check 只看字符数
+
+# 9. 帧时间（GUI 子系统进程必须加 QT_FORCE_STDERR_LOGGING，否则 qDebug 全丢）
+QT_FORCE_STDERR_LOGGING=1 QSG_RENDER_TIMING=1 ./build/windows/x64/debug/MambaMusic.exe
 ```
 
+跑起来看不到窗口但进程立刻退出时，先看 stderr 的 `[qml]` 行——`host/main.cpp` 把 `QQmlApplicationEngine::warnings` 转成了普通 stderr 输出。
+
 Switch to release：`xmake f -m release -y && xmake`。
+
+> **debug 构建不要写死 `/MD`**：Qt 的 debug DLL 是 `/MDd`，两套 CRT 会让进程在第一次跨 DLL 分配时以 `0xC0000374`（STATUS_HEAP_CORRUPTION）静默退出，且不打任何日志。`xmake/targets.lua` 现在不设 `set_runtimes`，让 xmake 按模式给。
 
 ---
 

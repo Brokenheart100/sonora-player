@@ -120,9 +120,11 @@ def include_allowed(module: str, layer: str, include_path: str) -> bool:
             return sub in ("contracts", "core")   # 领域层不许看见自己的适配器
         return True
 
-    # 跨模块：只许看见对方的 contracts
+    # 跨模块：只许看见对方的 contracts。
+    # platform 也在这一列：Mamba.Platform.Audio 实现的就是 Playback.Contracts 里的端口，
+    # 实现方看得见抽象、看不见对方的领域模型，这正是依赖倒置要的方向。
     if sub == "contracts":
-        return layer in ("core", "adapters", "presentation")
+        return layer in ("core", "adapters", "platform", "presentation")
     return False
 
 
@@ -187,7 +189,21 @@ def main() -> int:
                             f"（只能看见 kernel/contracts/自身，跨模块只能看见 *.contracts）"
                         )
 
-            # 4. 跨 target 相对 include
+                # 4. 依赖倒置：高层不许知道实现层的存在
+                if layer in ("core", "contracts", "kernel"):
+                    lowered = include_path.replace("\\", "/").lower()
+                    if (
+                        "/adapters/" in lowered
+                        or lowered.startswith("adapters/")
+                        or "/platform/" in lowered
+                        or lowered.startswith("platform/")
+                    ):
+                        violations.append(
+                            f"{where}: {layer} 层 include 了 `{include_path}` —— 依赖倒置反了"
+                            f"（接口应在 core 里声明，由 adapters/platform 去实现）"
+                        )
+
+            # 5. 跨 target 相对 include
             if RELATIVE_ESCAPE_RE.match(line):
                 violations.append(f'{where}: 用 "../" 跨目录 include 绕开了 target 图')
 

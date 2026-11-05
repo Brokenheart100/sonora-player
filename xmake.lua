@@ -32,3 +32,7 @@ add_requires("doctest 2.5.3", {configs = {cmake = false}})
 
 -- 22 个库 target + 1 个可执行 + 1 个测试二进制
 includes("xmake/targets.lua")
+
+-- 自定义 task：`xmake qsb` 把 assets/shaders/*.frag 编成 .qsb
+-- （Qt 的 qt_add_shaders() 在 xmake 里没有等价物，见 docs/ARCHITECTURE.md §9.5）
+includes("xmake/rules/qsb.lua")

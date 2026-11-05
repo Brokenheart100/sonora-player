@@ -141,6 +141,39 @@ C++ 有一个别人没有的礼物：**头文件路径是构建系统给的**。
 
 > 代价：首次搭骨架要配 ~20 个 target，约 1.5 人日。收益：后面 30 天不需要任何人（包括三个月后的你自己）去检查边界有没有破。
 
+### 2.5 依赖倒置：唯一一条"破了还能编译通过"的规矩
+
+上面那些边界都能被 target 图拦下，只有一条拦不住：**把接口放错边**。
+
+依赖倒置的准确含义不是"依赖抽象"，而是**抽象归高层所有**：
+
+- 接口声明在**调用方**那一侧（`modules/<m>/core/include/.../ports/` 或 `Kernel`）；
+- 实现方（`adapters/`、`platform/`）include 这个接口并实现它，依赖箭头指向高层；
+- 只有**组合根**（`host/main.cpp`）同时认识抽象与实现，并由它决定注入哪一个。
+
+**为什么它拦不住**：`adapters` 本来就依赖 `core`。如果有人在 `adapters/` 里定义 `ITrackRepository`、让 `core` 反过来 include 它，编译器不会说一个字——头文件路径恰好可见，链接也通。这是本架构里唯一一种"能过编译、能过边界脚本、但依赖方向已经反了"的破坏。半年后的症状：换一种存储实现要改领域层。
+
+**可执行的判据**（比任何 review 都准）：
+
+> 把 `modules/<m>/adapters/` 和 `platform/` 整个删掉，`X.Core` 还能不能编译通过？
+> **能 → 方向是对的；不能 → 有实现细节住进了高层。**
+
+**我们要的样子**（M1 已落地）：
+
+```
+modules/catalog/core/include/mamba/catalog/core/ports/Ports.h   ← 接口住在这里（高层定义）
+modules/catalog/adapters/src/SqliteTrackRepository.cpp          ← 实现它（低层依赖高层）
+host/main.cpp                                                   ← 唯一 new 实现的地方
+```
+
+**三条禁令**：
+
+1. `adapters/` 里不许定义被 `core/` 依赖的接口——包括"为了方便"而转发的纯虚基类。
+2. `core/`、`contracts/`、`kernel/` 的 `#include` 里不许出现 `adapters/` 或 `platform/`（`boundaries.py` 已拦这一条）。
+3. **生产代码**里只有 `host/` 能 `new` 一个具体适配器。测试里允许——那只是测试在扮演自己的组合根。
+
+> 为什么单列一节：另外几条规矩违反了会立刻报错，违背这一条却一切正常。**只有它会安静地烂掉。**
+
 ---
 
 ## 3. 分层的职责与禁令
@@ -511,6 +544,13 @@ public:
 
 `PlayerViewModel` 订阅它，30Hz 更新 `positionMs` 属性。领域层完全不知道位置在流动；只有 `TrackFinished`、`SeekCommand`、`PauseCommand` 这类**离散事件**才进聚合。
 
+**M3 落地情况（与上面的草图有出入，已实测）**：
+
+- 接口缩到一行——`virtual std::int64_t positionMs() const noexcept = 0;`，**没有 `subscribe()`**。`QtMultimediaOutput` 同时实现 `IAudioOutput` 与 `IPositionStream`，位置存 `std::atomic<int64_t>`；`PlayerViewModel` 用 33ms 定时器**拉**，不是被推。
+- 这样做的理由：`QMediaPlayer` 的位置本来就得靠回调写进一个变量，再包一层 pub/sub 只是把同一个值多复制一次；**拉取让"谁持有订阅"这个生命周期问题彻底消失**（关停时不用先退订）。
+- 等 M4 换成 `AudioRing` + 采样计数，位置是解码线程的副产品，那时推送才是免费的，`subscribe()` 再回来。
+- 曲目快照（标题/队列位置/状态）仍走查询总线，**2Hz** 拉一次（`GetPlayerSnapshot`），与 30Hz 的位置流分开——这两者混在一起会让每条位置更新都带一次 DTO 分配。
+
 音频线程内部仍是 QueMusic 那套正确骨架：
 
 ```
@@ -847,9 +887,10 @@ import QtQuick
 QtObject {
     // 颜色：黑白 + 两个强调色
     readonly property color ink:        "#12100E"   // 线稿 / 文字
-    readonly property color inkSoft:    "#3A3630"
+    readonly property color inkSoft:    "#3A3630"   // 次要文字
     readonly property color paper:      "#F4EFE4"   // 纸底
-    readonly property color paperAlt:   "#E7DFCE"
+    readonly property color paperAlt:   "#E7DFCE"   // 次级纸底
+    readonly property color paperHigh:  "#FFFCF4"   // 面板底（比纸再亮一点）
     readonly property color screentone: "#C9C2B4"   // 网点灰
     readonly property color accent:     "#D93A3A"   // 朱红：只用于"当前播放"
     readonly property color accentAlt:  "#2E5F8A"   // 靛蓝：只用于"可交互焦点"
@@ -868,10 +909,11 @@ QtObject {
     readonly property string fontDisplay: "ZCOOL KuaiLe"
     readonly property string fontText:    "Microsoft YaHei UI"
     readonly property int    textBody:    14
+    readonly property int    textSmall:   12
     readonly property int    textTitle:   22
     readonly property int    textSfx:     40
 
-    // 网点默认参数（shader uniform）
+    // 网点默认参数（dot.frag 的 uniform，**名字必须与 shader 成员同名**）
     readonly property real dotSize:    3.0
     readonly property real dotAngle:   45
     readonly property real dotDensity: 0.55
@@ -881,6 +923,8 @@ QtObject {
     readonly property int animSpring: 380
 }
 ```
+
+**实现注记（M2 实测）**：`Theme.qml` 由 `theme/qmldir` 声明为 `singleton Theme 1.0 Theme.qml`，QML 里 `import "theme"` 后直接用。两条踩过的红线：① `Fonts.qml` 的 `FontLoader` 在 `pragma Singleton` 的 `QtObject` 里作为 `readonly property` 持有是可行的，但字体文件必须是子集版（`tools/subset_fonts.py`），且 `name_IDs=["*"]` 要保留，否则 `FontLoader.name` 为空、静默回落系统字体；② shader 的 uniform 与 QML 属性**必须同名**（见 §10.4 第一行）。
 
 ### 10.3 组件契约（`presentation/qml/comic/`）
 
@@ -897,6 +941,11 @@ QtObject {
 | `CoverFrame` | `source, spinAngle` | 直角 + 粗描边 + 唱片旋转 |
 | `TrackRow` | `title, artist, duration, isPlaying, index` | 高度固定（虚拟化前提）；`isPlaying` 时左缘出 `accent` 墨迹 |
 
+**M2 落地情况**：已实现 `MangaPanel` / `ComicButton` / `ComicBubble` / `Halftone` / `InkSlider` 五个，其余留给 M6（`TrackRow`、`CoverFrame`）与 M8（`SpeedLines`、`SfxText`、`PageTurner`）。两处实现偏差记在这里，免得后来人对不上：
+
+- `MangaPanel` **没有用 BorderImage 九宫格**：M2 阶段没有手绘边框贴图，用 `Rectangle` 描边 + 偏移实心矩形当阴影（`dashed` 时改用 `Shape` + `ShapePath.DashLine`，`dashPattern [7,5]`）。将来换成贴图时，组件对外的属性集不用变。
+- `ComicBubble` 的尾巴用 `Shape` 实心三角，顶部压进气泡 6px 藏接缝——比路径布尔运算便宜，且在任意缩放下都不出缝。
+
 ### 10.4 特效实现阶梯（先便宜后昂贵）
 
 1. **贴图**（零成本）：手绘边框、墨线轨道、网点 PNG。
@@ -907,11 +956,17 @@ QtObject {
 
 > 反面案例（QueMusic 自己踩过并修复）：`ShaderEffectSource` + `MultiEffect` + 圆角遮罩三层叠加，最终合并成一个 shader。我们要**一开始就合并**。
 
+**ShaderEffect 的三条硬规矩**（M2 每个都踩了一次）：
+
+1. uniform 成员名与 QML 属性名**必须逐字相同**（`dotSize` ↔ `dotSize`）。不一致时**不报错**，而是整个 UBO 为 0——表现为"整片纯黑"，最容易误判成 shader 编译失败。
+2. `ShaderEffect` 没有 `live` 属性（那是 `ShaderEffectSource` 的）。写上去会让整个 QML 组件加载失败，而宿主只报"加载失败"，看不出是哪一行。
+3. `.qsb` 用 `qsb --qt6 <in>.frag -o <out>.qsb` 烘焙，产物入库（`assets/shaders/`）。`xmake qsb` 找 `qsb.exe` 只认 `QTDIR` 环境变量与 PATH——task 沙箱里没有 `import()`，拿不到 Qt 探测结果。
+
 ### 10.5 字体
 
 - 标题/拟声词：站酷快乐体（免费商用）或马善政楷书。
 - 正文：`Microsoft YaHei UI`（Windows 自带，零体积）。**正文绝不用手绘字体**。
-- 打包字体必须子集化（`pyftsubset`，只留 GB2312 常用字 + 用到的符号），否则安装包翻倍。
+- 打包字体必须子集化，否则安装包翻倍。做法见 `tools/subset_fonts.py`：扫所有 `.qml` 收集实际用到的字符（ASCII 可打印 + 中文标点兜底），`layout_features=["*"]`、`name_IDs=["*"]`。**M2 实测 1479 KB → 84 KB（559 字，6%）**。代价是加新文案要重跑一次，忘了就掉回系统字体。
 
 ### 10.6 可读性五条红线
 

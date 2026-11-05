@@ -162,8 +162,9 @@ lib({
     dir = P .. "audio",
     -- 只依赖播放模块的**契约**：音频输出是实现 IAudioOutput 端口的适配器，
     -- 它不该知道 PlayQueue 的存在。
+    -- M3：加 QtMultimedia（QMediaPlayer 过渡引擎，见 docs/IMPLEMENTATION.md §M3）。
     deps = {"Mamba.Kernel", "Mamba.Playback.Contracts"},
-    qt = {"QtCore"},
+    qt = {"QtCore", "QtMultimedia"},
 })
 lib({
     name = "Mamba.Platform.Win",
@@ -196,6 +197,7 @@ add_files(rel("resources.qrc"))
 add_deps({
     "Mamba.Presentation",
     "Mamba.Catalog.Adapters",
+    "Mamba.Playback.Core",
     "Mamba.Playback.Adapters",
     "Mamba.Playlists.Adapters",
     "Mamba.Lyrics.Adapters",

@@ -14,6 +14,7 @@
 #include <QModelIndex>
 #include <QString>
 #include <QVariant>
+#include <QVariantList>
 #include <vector>
 
 #include "mamba/catalog/contracts/Queries.h"
@@ -53,12 +54,26 @@ public:
     // 导入一个文件夹。path 来自 QML（UTF-8），交给命令总线时也保持 UTF-8。
     Q_INVOKABLE void importFolder(const QString &path);
 
+    // 双击第 row 行：把整个列表当成队列，从这一行开始播。
+    // 「整个列表」而不是「这一首」——否则"下一首"无处可去。
+    Q_INVOKABLE void activate(int row);
+
+    // 拖进来的东西（M3 验收：拖一个 mp3 就出声）。
+    // 规则：文件 → 导入它所在目录 → 找到它 → 从它开始播；文件夹 → 只导入。
+    Q_INVOKABLE void dropUrls(const QVariantList &urls);
+
 signals:
     void countChanged();
     void statusChanged();
 
+    // 已经开始播放（或尝试播放）。组合根据此刷新 PlayerViewModel。
+    void playbackStarted();
+
 private:
     void setStatus(QString text);
+    void playFrom(int row);
+    // 在已加载的行里按路径找下标；找不到返回 -1。路径比较忽略大小写（Windows）。
+    [[nodiscard]] int rowOfPath(const QString &filePath) const;
 
     kernel::ICommandBus &commands_;
     kernel::IQueryBus &queries_;

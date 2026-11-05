@@ -6,6 +6,31 @@
          表现为 "qrc:/qml/xxx.qml: No such file"，而不是编译错误。
          相对路径以本文件所在目录（仓库根）为基准。 -->
     <qresource prefix="/">
+        <!-- 入口与外壳 -->
         <file alias="qml/main.qml">presentation/qml/main.qml</file>
+        <file alias="qml/Shell.qml">presentation/qml/Shell.qml</file>
+
+        <!-- 设计令牌（qmldir 让 Theme/Fonts 成为单例） -->
+        <file alias="qml/theme/qmldir">presentation/qml/theme/qmldir</file>
+        <file alias="qml/theme/Theme.qml">presentation/qml/theme/Theme.qml</file>
+        <file alias="qml/theme/Fonts.qml">presentation/qml/theme/Fonts.qml</file>
+
+        <!-- 漫画组件 -->
+        <file alias="qml/comic/MangaPanel.qml">presentation/qml/comic/MangaPanel.qml</file>
+        <file alias="qml/comic/ComicButton.qml">presentation/qml/comic/ComicButton.qml</file>
+        <file alias="qml/comic/ComicBubble.qml">presentation/qml/comic/ComicBubble.qml</file>
+        <file alias="qml/comic/Halftone.qml">presentation/qml/comic/Halftone.qml</file>
+        <file alias="qml/comic/InkSlider.qml">presentation/qml/comic/InkSlider.qml</file>
+
+        <!-- 页面 -->
+        <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>
+        <file alias="qml/pages/Storybook.qml">presentation/qml/pages/Storybook.qml</file>
+
+        <!-- 布局部件 -->
+        <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>
+
+        <!-- 字体与 shader -->
+        <file alias="fonts/ZCOOLKuaiLe-Subset.ttf">assets/fonts/ZCOOLKuaiLe-Subset.ttf</file>
+        <file alias="shaders/dot.frag.qsb">assets/shaders/dot.frag.qsb</file>
     </qresource>
 </RCC>

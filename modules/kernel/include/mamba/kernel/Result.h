@@ -43,6 +43,10 @@ public:
         return hasValue() ? std::get<0>(storage_) : std::move(fallback);
     }
 
+    // 隐式构造：让 `return Error{...};` 直接表示失败。
+    // 只对 Error 隐式；成功值仍然必须走 ok(...)，避免 int 之类被悄悄当成 T。
+    Result(Error error) : storage_(std::in_place_index<1>, std::move(error)) {}
+
     // 成功时变换值，失败时把错误原样往后传。
     template <class F>
     [[nodiscard]] auto map(F &&f) const & -> Result<std::invoke_result_t<F, const T &>>
@@ -65,7 +69,6 @@ public:
 
 private:
     explicit Result(T value) : storage_(std::in_place_index<0>, std::move(value)) {}
-    explicit Result(Error error) : storage_(std::in_place_index<1>, std::move(error)) {}
 
     std::variant<T, Error> storage_;
 };
@@ -79,6 +82,11 @@ public:
 
     static Result ok() { return Result{}; }
     static Result fail(Error error) { return Result{std::move(error)}; }
+
+    // 同 Result<T>：`return Error{...};` 表示失败，`return {};` 表示成功。
+    // 后者对无返回值的命令是最高频的一句，值得为它开一个公有默认构造。
+    Result() = default;
+    Result(Error error) : error_(std::move(error)) {}
 
     [[nodiscard]] bool hasValue() const noexcept { return !error_.has_value(); }
     explicit operator bool() const noexcept { return hasValue(); }
@@ -96,9 +104,6 @@ public:
     }
 
 private:
-    Result() = default;
-    explicit Result(Error error) : error_(std::move(error)) {}
-
     std::optional<Error> error_;
 };
 

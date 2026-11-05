@@ -87,7 +87,11 @@ kernel::Result<std::vector<std::string>> FileSystemScanner::scan(std::string_vie
         if (std::find(extensions_.begin(), extensions_.end(), ext) == extensions_.end()) {
             continue;
         }
-        files.push_back(toUtf8(it->path()));
+        // 一律存绝对路径。用户传进来的可能是 "."、"music" 这类相对路径，
+        // 而这条字符串要进库、下次启动还要拿它去解码——那时工作目录早就变了。
+        std::error_code absEc;
+        const auto absolutePath = fs::absolute(it->path(), absEc);
+        files.push_back(toUtf8(absEc ? it->path() : absolutePath));
     }
 
     // 排序不是洁癖：导入顺序决定了 added_at 相同的行在列表里的相对位置，
