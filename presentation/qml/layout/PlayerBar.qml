@@ -14,6 +14,9 @@ import MambaMusic 1.0
 Item {
     id: bar
 
+    // 队列抽屉由 Shell 负责显示（它是整窗的浮层，不属于这条栏）。
+    signal queueRequested
+
     // ── 封面位（M6 接真实封面，先放"空唱片"）──────────────────────────
     MangaPanel {
         id: cover
@@ -37,7 +40,7 @@ Item {
     // ── 曲目信息 ────────────────────────────────────────────────────────
     Column {
         id: meta
-        width: 190
+        width: 150
         anchors.left: cover.right
         anchors.leftMargin: 14
         anchors.verticalCenter: parent.verticalCenter
@@ -56,12 +59,14 @@ Item {
             width: parent.width
             text: {
                 if (!Player.hasTrack) {
-                    return Player.stateText
+                    return Player.stateText;
                 }
-                const parts = []
-                if (Player.artist.length > 0) parts.push(Player.artist)
-                if (Player.queueText.length > 0) parts.push(Player.queueText)
-                return parts.join("  ·  ")
+                const parts = [];
+                if (Player.artist.length > 0)
+                    parts.push(Player.artist);
+                if (Player.queueText.length > 0)
+                    parts.push(Player.queueText);
+                return parts.join("  ·  ");
             }
             color: Theme.inkSoft
             font.family: Theme.fontText
@@ -73,7 +78,7 @@ Item {
     // ── 进度 ────────────────────────────────────────────────────────────
     Column {
         id: seekColumn
-        width: 340
+        width: 230
         anchors.left: meta.right
         anchors.leftMargin: 18
         anchors.verticalCenter: parent.verticalCenter
@@ -86,7 +91,7 @@ Item {
             to: 1
             value: 0
             interactive: Player.hasTrack
-            onCommitted: (v) => Player.seekFraction(v)
+            onCommitted: v => Player.seekFraction(v)
         }
 
         Row {
@@ -119,7 +124,7 @@ Item {
         target: Player
         function onPositionChanged() {
             if (!seek.pressed) {
-                seek.value = Player.progress
+                seek.value = Player.progress;
             }
         }
     }
@@ -132,21 +137,14 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 8
 
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: qsTr("音量")
-            color: Theme.inkSoft
-            font.family: Theme.fontText
-            font.pixelSize: Theme.textSmall
-        }
         InkSlider {
             id: volumeSlider
-            width: 84
+            width: 70
             anchors.verticalCenter: parent.verticalCenter
             from: 0
             to: 100
             value: 100
-            onCommitted: (v) => Player.setVolume(Math.round(v))
+            onCommitted: v => Player.setVolume(Math.round(v))
         }
     }
 
@@ -154,15 +152,15 @@ Item {
         target: Player
         function onVolumeChanged() {
             if (!volumeSlider.pressed) {
-                volumeSlider.value = Player.volume
+                volumeSlider.value = Player.volume;
             }
         }
     }
 
     Component.onCompleted: {
-        volumeSlider.value = Player.volume
+        volumeSlider.value = Player.volume;
         if (!seek.pressed) {
-            seek.value = Player.progress
+            seek.value = Player.progress;
         }
     }
 
@@ -173,6 +171,12 @@ Item {
         anchors.verticalCenter: parent.verticalCenter
         spacing: 10
 
+        ComicButton {
+            // 模式按钮的文字就是当前模式：点一下换下一个，不用开菜单。
+            text: Player.modeLabel
+            tone: "paper"
+            onClicked: Player.cycleMode()
+        }
         ComicButton {
             text: qsTr("上一首")
             tone: "paper"
@@ -191,6 +195,11 @@ Item {
             tone: "paper"
             enabled: Player.hasTrack
             onClicked: Player.next()
+        }
+        ComicButton {
+            text: qsTr("队列")
+            tone: "paper"
+            onClicked: bar.queueRequested()
         }
     }
 }

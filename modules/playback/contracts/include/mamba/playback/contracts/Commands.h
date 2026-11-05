@@ -10,6 +10,7 @@
 
 #include <mamba/kernel/TypedId.h>
 #include <mamba/playback/contracts/AudioOutput.h>
+#include <mamba/playback/contracts/PlaybackMode.h>
 
 namespace mamba::playback::contracts {
 
@@ -39,6 +40,18 @@ struct SetVolume {
 struct PlayNext {};
 struct PlayPrevious {};
 
+/// 换播放模式。没给 mode 的字段不要——界面只发"换成哪个"，
+/// "下一个是什么"这种顺序规则属于领域（contracts::nextMode）。
+struct SetPlaybackMode {
+    PlaybackMode mode = PlaybackMode::Sequential;
+};
+
+/// 在队列面板里点某一项（用 trackId 而不是下标：下标是播放顺序里的位置，
+/// 随机模式下和用户在面板里看到的行号不是一回事）。
+struct JumpToTrack {
+    std::uint64_t trackId = 0;
+};
+
 /// 只读快照。ViewModel 拿它画界面，拿不到聚合。
 struct PlayerSnapshot {
     bool hasTrack = false;
@@ -48,8 +61,12 @@ struct PlayerSnapshot {
     std::int64_t durationMs = 0;
     std::int32_t volume = 100;
     PlaybackState state = PlaybackState::Idle;
+    PlaybackMode mode = PlaybackMode::Sequential;
     std::int32_t queueIndex = -1;
     std::int32_t queueSize = 0;
+    // 当前曲目在磁盘上的位置。歌词要靠它找同名 .lrc —— 歌词模块不认识曲库，
+    // 表现层也不能为了一个路径去加载曲目聚合，所以让快照把它带出来。
+    std::string filePath;
 };
 
 }  // namespace mamba::playback::contracts

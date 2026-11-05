@@ -9,113 +9,22 @@
 #include <string>
 #include <vector>
 
+#include "mamba/contracts/PlaybackEvents.h"
 #include "mamba/kernel/Error.h"
+#include "mamba/kernel/EventBus.h"
 #include "mamba/playback/contracts/AudioOutput.h"
 #include "mamba/playback/contracts/Commands.h"
 #include "mamba/playback/core/app/PlaybackService.h"
 
+#include "fake_audio_output.h"
+
 namespace {
 
 using mamba::kernel::ErrorCode;
-using mamba::playback::contracts::ErrorListener;
-using mamba::playback::contracts::FinishedListener;
-using mamba::playback::contracts::IAudioOutput;
-using mamba::playback::contracts::IPositionStream;
 using mamba::playback::contracts::PlaybackState;
 using mamba::playback::contracts::PlayTracks;
 using mamba::playback::contracts::QueueEntry;
-using mamba::playback::contracts::StateListener;
-
-class FakeAudioOutput final : public IAudioOutput, public IPositionStream {
-public:
-    // ── IAudioOutput ────────────────────────────────────────────────────────
-    mamba::kernel::Result<void> load(std::string_view filePathUtf8) override {
-        if (failLoad) {
-            currentState = PlaybackState::Failed;
-            return mamba::kernel::Error{ErrorCode::Unavailable, "假装解不开"};
-        }
-        loadedPath = std::string{filePathUtf8};
-        posMs = 0;
-        currentState = PlaybackState::Stopped;
-        if (stateListener) {
-            stateListener(currentState);
-        }
-        return {};
-    }
-
-    mamba::kernel::Result<void> play() override {
-        ++playCount;
-        currentState = PlaybackState::Playing;
-        if (stateListener) {
-            stateListener(currentState);
-        }
-        return {};
-    }
-
-    mamba::kernel::Result<void> pause() override {
-        currentState = PlaybackState::Paused;
-        if (stateListener) {
-            stateListener(currentState);
-        }
-        return {};
-    }
-
-    mamba::kernel::Result<void> stop() override {
-        ++stopCount;
-        posMs = 0;
-        currentState = PlaybackState::Stopped;
-        if (stateListener) {
-            stateListener(currentState);
-        }
-        return {};
-    }
-
-    mamba::kernel::Result<void> seekMs(std::int64_t target) override {
-        ++seekCount;
-        posMs = target < 0 ? 0 : (target > duration ? duration : target);
-        return {};
-    }
-
-    mamba::kernel::Result<void> setVolume(std::int32_t target) override {
-        volume_ = target < 0 ? 0 : (target > 100 ? 100 : target);
-        return {};
-    }
-
-    [[nodiscard]] std::int32_t volume() const noexcept override { return volume_; }
-    [[nodiscard]] std::int64_t durationMs() const noexcept override { return duration; }
-    [[nodiscard]] PlaybackState state() const noexcept override { return currentState; }
-
-    void setStateListener(StateListener listener) override { stateListener = std::move(listener); }
-    void setFinishedListener(FinishedListener listener) override {
-        finishedListener = std::move(listener);
-    }
-    void setErrorListener(ErrorListener listener) override { errorListener = std::move(listener); }
-
-    // ── IPositionStream ─────────────────────────────────────────────────────
-    [[nodiscard]] std::int64_t positionMs() const noexcept override { return posMs; }
-
-    // ── 测试用的旋钮 ────────────────────────────────────────────────────────
-    void finishCurrent() {
-        if (finishedListener) {
-            finishedListener();
-        }
-    }
-
-    std::string loadedPath;
-    std::int64_t posMs = 0;
-    std::int64_t duration = 180000;
-    bool failLoad = false;
-    int playCount = 0;
-    int stopCount = 0;
-    int seekCount = 0;
-
-private:
-    PlaybackState currentState = PlaybackState::Idle;
-    std::int32_t volume_ = 100;
-    StateListener stateListener;
-    FinishedListener finishedListener;
-    ErrorListener errorListener;
-};
+using mambatest::FakeAudioOutput;
 
 QueueEntry entry(std::uint64_t id, std::string path, std::string title) {
     QueueEntry e;
@@ -255,4 +164,82 @@ TEST_CASE("装载失败会冒泡成错误，而不是假装在播") {
     REQUIRE(!result.hasValue());
     CHECK(result.error().code() == ErrorCode::Unavailable);
     CHECK(output.playCount == 0);
+}
+
+TEST_CASE("播完发出 TrackFinished：trackId 是被放完的那一首")
+{
+    mambatest::FakeAudioOutput output;
+    mamba::kernel::EventBus events;
+
+    std::vector<std::uint64_t> finishedTracks;
+    events.subscribe<mamba::contracts::TrackFinished>(
+        [&finishedTracks](const mamba::contracts::TrackFinished &event)
+        { finishedTracks.push_back(event.trackId); });
+
+    // 事件指针放最后一位；queue_ 之外什么都不用改。
+    mamba::playback::core::PlaybackService service{output, nullptr, nullptr, &events};
+
+    mamba::playback::contracts::PlayTracks command;
+    command.entries = {
+        {1, "C:/m/a.flac", "A", "X"},
+        {2, "C:/m/b.flac", "B", "X"},
+    };
+    REQUIRE(service.playTracks(command));
+
+    output.finishCurrent();
+    // 事件在推进队列之前发，所以记的是"刚放完的这首"，不是下一首。
+    REQUIRE(finishedTracks.size() == 1);
+    CHECK(finishedTracks.front() == 1);
+
+    output.finishCurrent();
+    REQUIRE(finishedTracks.size() == 2);
+    CHECK(finishedTracks.back() == 2);
+
+    // 队列播完（最后一首放完）也要发事件：它确实被听完了。
+    output.finishCurrent();
+    CHECK(finishedTracks.size() == 3);
+    CHECK(finishedTracks.back() == 2);
+}
+
+TEST_CASE("文件被删：自动推进跳过装不上的那首，不崩也不卡住")
+{
+    mambatest::FakeAudioOutput output;
+    mamba::playback::core::PlaybackService service{output};
+
+    mamba::playback::contracts::PlayTracks command;
+    command.entries = {
+        {1, "C:/m/a.flac", "A", "X"},
+        {2, "C:/m/gone.flac", "B", "X"},   // 播到它之前被删了
+        {3, "C:/m/c.flac", "C", "X"},
+    };
+    REQUIRE(service.playTracks(command));
+
+    output.unloadable.insert("C:/m/gone.flac");
+    output.finishCurrent();   // a.flac 放完 → 下一首 gone.flac 装不上 → 应该落到 c.flac
+
+    CHECK(output.loadedPath == "C:/m/c.flac");
+    CHECK(service.snapshot().queueIndex == 2);
+    CHECK(service.snapshot().state == mamba::playback::contracts::PlaybackState::Playing);
+}
+
+TEST_CASE("整个队列都坏掉：停下来，而不是无限重试")
+{
+    mambatest::FakeAudioOutput output;
+    mamba::playback::core::PlaybackService service{output};
+
+    mamba::playback::contracts::PlayTracks command;
+    command.entries = {
+        {1, "C:/m/a.flac", "A", "X"},
+        {2, "C:/m/b.flac", "B", "X"},
+    };
+    REQUIRE(service.playTracks(command));
+
+    output.unloadable.insert("C:/m/b.flac");
+    output.unloadable.insert("C:/m/a.flac");
+    output.finishCurrent();
+
+    // 两首都装不上：停掉输出，state 不该停在 Playing。
+    CHECK(output.loadedPath == "C:/m/a.flac");   // 第一首是开始播放前就装好的
+    CHECK(service.snapshot().state != mamba::playback::contracts::PlaybackState::Playing);
+    CHECK(output.stopCount > 0);
 }

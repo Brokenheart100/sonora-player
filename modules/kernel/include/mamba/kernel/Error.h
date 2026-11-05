@@ -10,45 +10,55 @@
 #include <string>
 #include <utility>
 
-namespace mamba::kernel {
-
-enum class ErrorCode {
-    None = 0,
-    InvalidArgument,   // 参数不合法（空标题、负时长、非法路径）
-    NotFound,          // 要找的东西不存在（没有这个 handler、没有这一行）
-    Conflict,          // 状态冲突（重复导入、版本不匹配）
-    Unavailable,       // 外部依赖暂时不可用（数据库被锁、设备没了）
-    Internal,          // 不该发生的内部错误（bug）
-};
-
-// 名字故意不叫 toString()：doctest 的 DOCTEST_STRINGIFY 会用无限定调用 toString(v)，
-// 而 ADL 会把本函数拉进候选集——非模板的精确匹配会赢过 doctest 的模板，
-// 结果是断言失败时两个操作数都变成 const char*，MSVC 报 C2110（加两个指针）。
-[[nodiscard]] constexpr const char *toName(ErrorCode code) noexcept
+namespace mamba::kernel
 {
-    switch (code) {
-    case ErrorCode::None:            return "None";
-    case ErrorCode::InvalidArgument: return "InvalidArgument";
-    case ErrorCode::NotFound:        return "NotFound";
-    case ErrorCode::Conflict:        return "Conflict";
-    case ErrorCode::Unavailable:     return "Unavailable";
-    case ErrorCode::Internal:        return "Internal";
+
+    enum class ErrorCode
+    {
+        None = 0,
+        InvalidArgument, // 参数不合法（空标题、负时长、非法路径）
+        NotFound,        // 要找的东西不存在（没有这个 handler、没有这一行）
+        Conflict,        // 状态冲突（重复导入、版本不匹配）
+        Unavailable,     // 外部依赖暂时不可用（数据库被锁、设备没了）
+        Internal,        // 不该发生的内部错误（bug）
+    };
+
+    // 名字故意不叫 toString()：doctest 的 DOCTEST_STRINGIFY 会用无限定调用 toString(v)，
+    // 而 ADL 会把本函数拉进候选集——非模板的精确匹配会赢过 doctest 的模板，
+    // 结果是断言失败时两个操作数都变成 const char*，MSVC 报 C2110（加两个指针）。
+    [[nodiscard]] constexpr const char *toName(ErrorCode code) noexcept
+    {
+        switch (code)
+        {
+        case ErrorCode::None:
+            return "None";
+        case ErrorCode::InvalidArgument:
+            return "InvalidArgument";
+        case ErrorCode::NotFound:
+            return "NotFound";
+        case ErrorCode::Conflict:
+            return "Conflict";
+        case ErrorCode::Unavailable:
+            return "Unavailable";
+        case ErrorCode::Internal:
+            return "Internal";
+        }
+        return "Unknown";
     }
-    return "Unknown";
-}
 
-class Error {
-public:
-    Error() = default;
-    Error(ErrorCode code, std::string message) : code_(code), message_(std::move(message)) {}
+    class Error
+    {
+    public:
+        Error() = default;
+        Error(ErrorCode code, std::string message) : code_(code), message_(std::move(message)) {}
 
-    [[nodiscard]] ErrorCode code() const noexcept { return code_; }
-    [[nodiscard]] const std::string &message() const noexcept { return message_; }
-    [[nodiscard]] bool isEmpty() const noexcept { return code_ == ErrorCode::None; }
+        [[nodiscard]] ErrorCode code() const noexcept { return code_; }
+        [[nodiscard]] const std::string &message() const noexcept { return message_; }
+        [[nodiscard]] bool isEmpty() const noexcept { return code_ == ErrorCode::None; }
 
-private:
-    ErrorCode code_ = ErrorCode::None;
-    std::string message_;
-};
+    private:
+        ErrorCode code_ = ErrorCode::None;
+        std::string message_;
+    };
 
-}  // namespace mamba::kernel
+} // namespace mamba::kernel

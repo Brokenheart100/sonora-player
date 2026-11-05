@@ -36,6 +36,16 @@ struct TrackDetails {
     std::string filePath;        // UTF-8，绝对路径
     std::int64_t fileSizeBytes = 0;
     std::int64_t addedAtUnix = 0;
+
+    // 文件的时间戳。增量重扫的第一判定："mtime 与 size 都没变"就不必重读标签。
+    // 它属于书签性质的数据，不是业务字段——但没有它，二次扫描一万首就要重读
+    // 一万次标签（实测比"什么都不做"慢两个数量级）。
+    std::int64_t fileMtimeUnix = 0;
+
+    // 内嵌封面的缓存键（内容哈希），空表示这首没有封面。
+    // 存键而不是存字节：一个专辑十首歌用的是同一张图，按内容哈希去重之后
+    // 磁盘上只有一份。
+    std::string coverKey;
 };
 
 class Track {
@@ -61,6 +71,8 @@ public:
     [[nodiscard]] const std::string &filePath() const noexcept { return details_.filePath; }
     [[nodiscard]] std::int64_t fileSizeBytes() const noexcept { return details_.fileSizeBytes; }
     [[nodiscard]] std::int64_t addedAtUnix() const noexcept { return details_.addedAtUnix; }
+    [[nodiscard]] std::int64_t fileMtimeUnix() const noexcept { return details_.fileMtimeUnix; }
+    [[nodiscard]] const std::string &coverKey() const noexcept { return details_.coverKey; }
 
     [[nodiscard]] const TrackDetails &details() const noexcept { return details_; }
 

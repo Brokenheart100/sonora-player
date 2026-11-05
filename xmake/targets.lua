@@ -200,6 +200,19 @@ add_links("avformat", "avcodec", "swresample", "avutil")
 -- 堆损坏，只不过这次炸在 FFmpeg 的 av_malloc 里，症状更难认。
 add_linkdirs(path.join(VCPKG_INSTALLED, is_mode("debug") and "debug/lib" or "lib"))
 
+-- TagLib 只挂在 Catalog.Adapters 上：全项目只有它读标签（M5）。
+-- 走 xmake-repo 源码构建（taglib 2.3.2），与项目同一个 /MD、同一个 C++20；
+-- 用 vcpkg 装它会引进第二套 CRT，debug 构建的症状是进程静默退出。
+-- 这里同样要重新 target() 一次，理由同上面的 FFmpeg 段。
+target("Mamba.Catalog.Adapters")
+add_packages("taglib")
+
+-- 内嵌歌词也要读标签（M7 的第二来源），所以 Lyrics.Adapters 同样挂 taglib。
+-- 只读不写：我们从不 setProperties，MPL-1.1 那条"改动过的 TagLib 源文件继续开源"
+-- 对我们不适用（引用许可证的理由见 docs/DEPENDENCIES.md §3）。
+target("Mamba.Lyrics.Adapters")
+add_packages("taglib")
+
 -- ── 表现层（MVVM）───────────────────────────────────────────────────────────
 -- 只依赖各模块的 Contracts。**这一行下面不许出现任何 *.Core。**
 local presentation_deps = {"Mamba.Kernel", "Mamba.Contracts"}
@@ -282,4 +295,7 @@ add_deps({
     "Mamba.Catalog.Adapters",
     -- 环形缓冲同样是纯 C++：M4 的两线程压测（100 万样本，不丢不重不越界）跑在这里。
     "Mamba.Platform.AudioRing",
+    -- 歌词的两个来源（同名 .lrc、内嵌标签）也不链 Qt，所以真适配器可以在这里测：
+    -- M7 的"5 个真实 LRC 跑快照测试"就是靠它，而不是靠假端口。
+    "Mamba.Lyrics.Adapters",
 })

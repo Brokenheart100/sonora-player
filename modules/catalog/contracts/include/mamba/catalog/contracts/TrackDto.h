@@ -21,6 +21,11 @@ struct TrackDto {
     std::string albumTitle;
     std::int64_t durationMs = 0;
     std::string filePath;
+
+    // 封面图片的绝对路径（可能为空）。这里给**路径**而不是字节：
+    // 字节走一遍总线的代价是每行几十 KB 穿过类型擦除的返回值，
+    // 而界面真正需要的是"去哪读"。去重、落盘、编码都是导入时的事。
+    std::string coverPath;
 };
 
 }  // namespace mamba::catalog::contracts

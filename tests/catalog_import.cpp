@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -17,6 +18,7 @@
 #include "mamba/catalog/contracts/Queries.h"
 #include "mamba/catalog/core/app/ImportFolderHandler.h"
 #include "mamba/catalog/core/app/ListTracksHandler.h"
+#include "mamba/catalog/core/domain/Track.h"
 #include "mamba/catalog/core/ports/Ports.h"
 #include "mamba/kernel/CommandBus.h"
 #include "mamba/kernel/QueryBus.h"
@@ -31,18 +33,18 @@ namespace
     class FakeScanner final : public ILibraryScanner
     {
     public:
-        std::vector<std::string> files;
+        std::vector<ScannedFile> files;
         mutable int calls = 0;
 
-        kernel::Result<std::vector<std::string>> scan(std::string_view folderPath) const override
+        kernel::Result<std::vector<ScannedFile>> scan(std::string_view folderPath) const override
         {
             ++calls;
             if (folderPath == "/missing")
             {
-                return kernel::Result<std::vector<std::string>>::fail(
+                return kernel::Result<std::vector<ScannedFile>>::fail(
                     kernel::Error{kernel::ErrorCode::NotFound, "目录不存在"});
             }
-            return kernel::Result<std::vector<std::string>>::ok(files);
+            return kernel::Result<std::vector<ScannedFile>>::ok(files);
         }
     };
 
@@ -91,32 +93,82 @@ namespace
     class FakeTrackRepository final : public ITrackRepository
     {
     public:
-        std::vector<std::pair<std::uint64_t, std::string>> rows; // (id, filePath)
+        // 一张内存表，够了：这些测试要验的是"应用层怎么用仓储"，
+        // 真正 SQL 相关的断言在 tests/catalog_sqlite.cpp。
+        struct Row
+        {
+            std::uint64_t id = 0;
+            std::string filePath;
+            TrackDetails details;
+        };
+        std::vector<Row> rows;
 
         kernel::Result<TrackId> add(const Track &track) override
         {
             const auto it = std::find_if(rows.begin(), rows.end(), [&](const auto &row)
-                                         { return row.second == track.filePath(); });
+                                         { return row.filePath == track.filePath(); });
             if (it != rows.end())
             {
                 return kernel::Result<TrackId>::fail(
                     kernel::Error{kernel::ErrorCode::Conflict, "file_path 已存在"});
             }
-            rows.emplace_back(rows.size() + 1, track.filePath());
-            return kernel::Result<TrackId>::ok(TrackId::fromValue(rows.size()));
+            Row row;
+            row.id = rows.size() + 1;
+            row.filePath = track.filePath();
+            row.details = track.details();
+            rows.push_back(std::move(row));
+            return kernel::Result<TrackId>::ok(TrackId::fromValue(rows.back().id));
         }
 
-        kernel::Result<Track> findById(TrackId /*id*/) const override
+        kernel::Result<void> save(const Track &track) override
         {
-            return kernel::Result<Track>::fail(
-                kernel::Error{kernel::ErrorCode::NotFound, "不是这次测试关心的路径"});
+            const auto id = track.id().value();
+            const auto it = std::find_if(rows.begin(), rows.end(),
+                                         [&](const auto &row) { return row.id == id; });
+            if (it == rows.end())
+            {
+                return kernel::Result<void>::fail(
+                    kernel::Error{kernel::ErrorCode::NotFound, "曲目不存在"});
+            }
+            it->filePath = track.filePath();
+            it->details = track.details();
+            return kernel::Result<void>::ok();
+        }
+
+        kernel::Result<Track> findById(TrackId id) const override
+        {
+            const auto it = std::find_if(rows.begin(), rows.end(), [&](const auto &row)
+                                         { return row.id == id.value(); });
+            if (it == rows.end())
+            {
+                return kernel::Result<Track>::fail(
+                    kernel::Error{kernel::ErrorCode::NotFound, "曲目不存在"});
+            }
+            return Track::rehydrate(TrackId::fromValue(it->id), it->details);
         }
 
         kernel::Result<bool> existsByPath(std::string_view filePath) const override
         {
             const auto it = std::find_if(rows.begin(), rows.end(), [&](const auto &row)
-                                         { return row.second == filePath; });
+                                         { return row.filePath == filePath; });
             return kernel::Result<bool>::ok(it != rows.end());
+        }
+
+        kernel::Result<std::optional<TrackFileState>> findFileState(
+            std::string_view filePath) const override
+        {
+            const auto it = std::find_if(rows.begin(), rows.end(), [&](const auto &row)
+                                         { return row.filePath == filePath; });
+            if (it == rows.end())
+            {
+                return kernel::Result<std::optional<TrackFileState>>::ok(std::nullopt);
+            }
+            TrackFileState state;
+            state.id = TrackId::fromValue(it->id);
+            state.fileMtimeUnix = it->details.fileMtimeUnix;
+            state.fileSizeBytes = it->details.fileSizeBytes;
+            state.addedAtUnix = it->details.addedAtUnix;
+            return kernel::Result<std::optional<TrackFileState>>::ok(state);
         }
 
         kernel::Result<std::int64_t> count() const override
@@ -209,7 +261,12 @@ namespace
             for (int i = 1; i <= count; ++i)
             {
                 const auto path = folder + "/track" + std::to_string(i) + ".flac";
-                scanner.files.push_back(path);
+                ScannedFile file;
+                file.path = path;
+                file.sizeBytes = 1024 * i;
+                file.mtimeUnix = 1700000000 + i;
+                scanner.files.push_back(file);
+
                 TrackMetadata meta;
                 meta.title = "曲目 " + std::to_string(i);
                 meta.artist = (i % 2 == 0) ? "夜航西飞" : "陈升";
@@ -242,7 +299,7 @@ TEST_CASE("导入 20 个文件：全部入库，一个事务")
     CHECK(f.unit.rollbacks == 0);
 }
 
-TEST_CASE("重复导入同一个文件夹：全部记为跳过，不重复落库")
+TEST_CASE("重复导入同一个文件夹：全部记为未变，不重复落库也不重读标签")
 {
     Fixture f;
     f.seed("/music", 20);
@@ -253,8 +310,35 @@ TEST_CASE("重复导入同一个文件夹：全部记为跳过，不重复落库
     REQUIRE(second.hasValue());
 
     CHECK(second.value().imported == 0);
-    CHECK(second.value().duplicates == 20);
+    CHECK(second.value().updated == 0);
+    // 关键差异：以前这里算 duplicates（撞 UNIQUE），现在在查指纹那一步就返回了，
+    // 连 mtime 都没变 —— 这正是"二次扫描一万首 < 5s"的来源。
+    CHECK(second.value().unchanged == 20);
+    CHECK(second.value().duplicates == 0);
     CHECK(f.tracks.rows.size() == 20);
+}
+
+TEST_CASE("文件 mtime 变了：只重读这一个，记为更新且 id 不变")
+{
+    Fixture f;
+    f.seed("/music", 20);
+    auto handler = f.makeHandler();
+    REQUIRE(handler.import(contracts::ImportFolder{"/music"}).hasValue() == true);
+
+    const auto originalId = f.tracks.rows.front().id;
+
+    // 第 5 个文件被重新下载 / 重新编码：大小和 mtime 都变了。
+    f.scanner.files[4].mtimeUnix += 60;
+    f.scanner.files[4].sizeBytes += 256;
+
+    const auto second = handler.import(contracts::ImportFolder{"/music"});
+    REQUIRE(second.hasValue());
+    CHECK(second.value().updated == 1);
+    CHECK(second.value().unchanged == 19);
+    CHECK(second.value().imported == 0);
+    CHECK(f.tracks.rows.size() == 20); // 更新不是插入
+    CHECK(f.tracks.rows[4].details.fileMtimeUnix == f.scanner.files[4].mtimeUnix);
+    CHECK(f.tracks.rows.front().id == originalId); // 别的行一个都没动
 }
 
 TEST_CASE("坏文件只计数，不中断整批")
@@ -276,7 +360,7 @@ TEST_CASE("坏文件只计数，不中断整批")
 TEST_CASE("标题缺失时用文件名兜底")
 {
     Fixture f;
-    f.scanner.files.push_back("/music/夜航西飞 - 01.flac");
+    f.scanner.files.push_back(ScannedFile{"/music/夜航西飞 - 01.flac", 4096, 1700000123});
     TrackMetadata meta;
     meta.title = ""; // 标签里没写标题
     meta.artist = "夜航西飞";
@@ -292,7 +376,7 @@ TEST_CASE("标题缺失时用文件名兜底")
 TEST_CASE("艺术家缺失时落到「未知艺术家」，不是空串")
 {
     Fixture f;
-    f.scanner.files.push_back("/music/a.flac");
+    f.scanner.files.push_back(ScannedFile{"/music/a.flac", 4096, 1700000124});
     TrackMetadata meta;
     meta.title = "无艺术家的歌";
     f.reader.table.emplace("/music/a.flac", meta);

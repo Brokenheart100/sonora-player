@@ -12,11 +12,17 @@
 #include <QByteArray>
 #include <QHash>
 #include <QModelIndex>
+#include <QPointer>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <QVariantList>
+
+#include <atomic>
+#include <thread>
 #include <vector>
 
+#include "mamba/catalog/contracts/Commands.h"
 #include "mamba/catalog/contracts/Queries.h"
 #include "mamba/kernel/ICommandBus.h"
 #include "mamba/kernel/IQueryBus.h"
@@ -38,6 +44,7 @@ namespace mamba::presentation
             AlbumRole,
             DurationRole,
             FilePathRole,
+            CoverRole,
         };
         Q_ENUM(Role)
 
@@ -48,7 +55,15 @@ namespace mamba::presentation
         [[nodiscard]] QVariant data(const QModelIndex &index, int role) const override;
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
-        [[nodiscard]] int count() const { return static_cast<int>(rows_.size()); }
+        // 分页：ListView 滚近末尾时自动调 fetchMore()，一次 200 行。
+        [[nodiscard]] bool canFetchMore(const QModelIndex &parent) const override;
+        void fetchMore(const QModelIndex &parent) override;
+
+        // 库里一共多少首——不是已加载多少行。侧栏上那个数字是"我的曲库有多大"，
+        // 不是"列表这会儿装了多少"；后者在 status 文本里（"共 N 首（已加载 M）"）。
+        [[nodiscard]] int count() const { return static_cast<int>(total_count_); }
+        // 已加载的行数。给需要区分的人用（状态栏、调试）。
+        [[nodiscard]] int loadedCount() const { return static_cast<int>(rows_.size()); }
         [[nodiscard]] QString status() const { return status_; }
 
         // 重新跑一次列表查询。M1 是全量刷新；分页与增量留给 M5 的投影表。
@@ -56,6 +71,10 @@ namespace mamba::presentation
 
         // 导入一个文件夹。path 来自 QML（UTF-8），交给命令总线时也保持 UTF-8。
         Q_INVOKABLE void importFolder(const QString &path);
+
+        // 过滤：传空串即取消过滤。命中判定在 SQL 侧（FTS5），模型只负责重新取第一页。
+        Q_INVOKABLE void setSearchText(const QString &text);
+        [[nodiscard]] QString searchText() const { return search_text_; }
 
         // 双击第 row 行：把整个列表当成队列，从这一行开始播。
         // 「整个列表」而不是「这一首」——否则"下一首"无处可去。
@@ -78,10 +97,23 @@ namespace mamba::presentation
         // 在已加载的行里按路径找下标；找不到返回 -1。路径比较忽略大小写（Windows）。
         [[nodiscard]] int rowOfPath(const QString &filePath) const;
 
+        // 起一个后台线程把 folders 逐个导入；跑完回到 GUI 线程刷新列表。
+        // firstFile 非空表示"用户拖的是文件"，导入完直接播它。
+        void startImport(const QStringList &folders, const QString &firstFile);
+
+        // 追加下一页。refresh() 与 fetchMore() 都走它。
+        void fetchMoreRows();
+
         kernel::ICommandBus &commands_;
         kernel::IQueryBus &queries_;
         std::vector<catalog::contracts::TrackDto> rows_;
         QString status_;
+        QString search_text_;
+        // 库里总共有多少首（来自 TrackListResult::totalCount），不是已加载多少。
+        std::int64_t total_count_ = 0;
+        static constexpr std::int32_t kPageSize = 200;
+        // 导入是后台线程跑的；同一时刻只允许一批，否则两个线程会抢同一个写事务。
+        std::atomic<bool> busy_{false};
     };
 
 } // namespace mamba::presentation

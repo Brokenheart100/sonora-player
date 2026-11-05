@@ -47,6 +47,9 @@ Result<void> validate(const TrackDetails &details)
     if (details.fileSizeBytes < 0) {
         return Result<void>::fail(Error{ErrorCode::InvalidArgument, "文件大小不能为负"});
     }
+    if (details.fileMtimeUnix < 0) {
+        return Result<void>::fail(Error{ErrorCode::InvalidArgument, "文件时间戳不能为负"});
+    }
     return Result<void>::ok();
 }
 

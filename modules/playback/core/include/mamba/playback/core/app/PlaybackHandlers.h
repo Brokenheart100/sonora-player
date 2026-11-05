@@ -76,6 +76,39 @@ private:
     PlaybackService& service_;
 };
 
+class SetPlaybackModeHandler {
+public:
+    explicit SetPlaybackModeHandler(PlaybackService& service) : service_(service) {}
+    kernel::Result<void> handle(const contracts::SetPlaybackMode& command) {
+        return service_.setMode(command.mode);
+    }
+
+private:
+    PlaybackService& service_;
+};
+
+class JumpToTrackHandler {
+public:
+    explicit JumpToTrackHandler(PlaybackService& service) : service_(service) {}
+    kernel::Result<void> handle(const contracts::JumpToTrack& command) {
+        return service_.jumpTo(command.trackId);
+    }
+
+private:
+    PlaybackService& service_;
+};
+
+class GetPlayQueueHandler {
+public:
+    explicit GetPlayQueueHandler(const PlaybackService& service) : service_(service) {}
+    kernel::Result<contracts::QueueView> handle(const contracts::GetPlayQueue&) const {
+        return kernel::Result<contracts::QueueView>::ok(service_.queueView());
+    }
+
+private:
+    const PlaybackService& service_;
+};
+
 class GetPlayerSnapshotHandler {
 public:
     explicit GetPlayerSnapshotHandler(const PlaybackService& service) : service_(service) {}
@@ -101,7 +134,10 @@ inline void registerPlayback(kernel::CommandBus& commands, kernel::QueryBus& que
     auto volume = std::make_shared<SetVolumeHandler>(service);
     auto next = std::make_shared<PlayNextHandler>(service);
     auto previous = std::make_shared<PlayPreviousHandler>(service);
+    auto mode = std::make_shared<SetPlaybackModeHandler>(service);
+    auto jump = std::make_shared<JumpToTrackHandler>(service);
     auto snapshot = std::make_shared<GetPlayerSnapshotHandler>(service);
+    auto queue = std::make_shared<GetPlayQueueHandler>(service);
 
     commands.on<contracts::PlayTracks>(tracks);
     commands.on<contracts::TogglePlayPause>(toggle);
@@ -109,10 +145,14 @@ inline void registerPlayback(kernel::CommandBus& commands, kernel::QueryBus& que
     commands.on<contracts::SetVolume>(volume);
     commands.on<contracts::PlayNext>(next);
     commands.on<contracts::PlayPrevious>(previous);
+    commands.on<contracts::SetPlaybackMode>(mode);
+    commands.on<contracts::JumpToTrack>(jump);
 
     // QueryBus 只收可调用对象（没有 shared_ptr 的 handler overload），所以这里包一层 lambda。
     queries.on<contracts::GetPlayerSnapshot, contracts::PlayerSnapshot>(
         [snapshot](const contracts::GetPlayerSnapshot& query) { return snapshot->handle(query); });
+    queries.on<contracts::GetPlayQueue, contracts::QueueView>(
+        [queue](const contracts::GetPlayQueue& query) { return queue->handle(query); });
 }
 
 }  // namespace mamba::playback::core

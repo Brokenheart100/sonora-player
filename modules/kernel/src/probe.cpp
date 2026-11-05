@@ -1,7 +1,8 @@
 #include <mamba/kernel/probe.h>
 
-namespace mamba::kernel {
+namespace mamba::kernel
+{
 
-int probe() noexcept { return 1; }
+    int probe() noexcept { return 1; }
 
-}  // namespace mamba::kernel
+} // namespace mamba::kernel

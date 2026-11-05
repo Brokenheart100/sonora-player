@@ -4,7 +4,10 @@
 #include <functional>
 #include <utility>
 
+#include <QVariantMap>
+
 #include "mamba/playback/contracts/Queries.h"
+#include "mamba/presentation/LyricsModel.h"
 
 namespace mamba::presentation {
 namespace {
@@ -47,6 +50,10 @@ void PlayerViewModel::onTick() {
         progress_ = durationMs_ > 0
                         ? static_cast<double>(current) / static_cast<double>(durationMs_)
                         : 0.0;
+        // 歌词跟着同一个位置走：33ms 一次整数比较，跨行了才 emit。
+        if (lyrics_ != nullptr) {
+            lyrics_->setPositionMs(current);
+        }
         emit positionChanged();
     }
 
@@ -85,6 +92,12 @@ void PlayerViewModel::refresh() {
     durationMs_ = value.durationMs;
     durationText_ = formatClock(durationMs_);
 
+    // 换歌就换歌词。loadFor() 自己会对同一路径早退，所以放在 2Hz 的 refresh 里
+    // 不会重复查库——它只在 filePath 真的变了才动一次。
+    if (lyrics_ != nullptr) {
+        lyrics_->loadFor(QString::fromStdString(value.filePath));
+    }
+
     const auto nowPlaying = value.state == playback::contracts::PlaybackState::Playing;
     const auto newStateText = QString::fromUtf8(toName(value.state).data(),
                                                 static_cast<int>(toName(value.state).size()));
@@ -98,6 +111,44 @@ void PlayerViewModel::refresh() {
         volume_ = value.volume;
         emit volumeChanged();
     }
+
+    if (value.mode != mode_) {
+        mode_ = value.mode;
+        modeLabel_ = QString::fromUtf8(playback::contracts::modeLabel(mode_).data(),
+                                       static_cast<int>(playback::contracts::modeLabel(mode_).size()));
+        emit modeChanged();
+    }
+
+    // 队列只在"换了队列 / 换了当前曲"时重建。2Hz 无条件重建会白扔一堆 QVariant。
+    const auto queueView = queries_.ask<playback::contracts::QueueView>(
+        playback::contracts::GetPlayQueue{});
+    if (queueView) {
+        const auto &view = queueView.value();
+        if (queue_.size() != static_cast<int>(view.items.size()) ||
+            currentTrackId_ != (view.currentIndex >= 0 &&
+                                        view.currentIndex < static_cast<std::int32_t>(view.items.size())
+                                    ? view.items[static_cast<std::size_t>(view.currentIndex)].trackId
+                                    : 0)) {
+            QVariantList rebuilt;
+            rebuilt.reserve(static_cast<int>(view.items.size()));
+            for (const auto &item : view.items) {
+                QVariantMap row;
+                row.insert(QStringLiteral("trackId"), QVariant::fromValue<qulonglong>(item.trackId));
+                row.insert(QStringLiteral("title"), QString::fromStdString(item.title));
+                row.insert(QStringLiteral("artist"), QString::fromStdString(item.artistName));
+                row.insert(QStringLiteral("current"), item.current);
+                rebuilt.append(row);
+            }
+            currentTrackId_ =
+                view.currentIndex >= 0 &&
+                        view.currentIndex < static_cast<std::int32_t>(view.items.size())
+                    ? view.items[static_cast<std::size_t>(view.currentIndex)].trackId
+                    : 0;
+            queue_ = std::move(rebuilt);
+            emit queueChanged();
+        }
+    }
+
     emit positionChanged();
 }
 
@@ -136,6 +187,22 @@ void PlayerViewModel::setVolume(int value) {
         volume_ = clamped;
         emit volumeChanged();
     }
+}
+
+void PlayerViewModel::cycleMode() {
+    playback::contracts::SetPlaybackMode command;
+    command.mode = playback::contracts::nextMode(mode_);
+    dispatchQuietly("mode",
+                    [this, command] { return commands_.dispatch(command); });
+    refresh();
+}
+
+void PlayerViewModel::jumpTo(qulonglong trackId) {
+    playback::contracts::JumpToTrack command;
+    command.trackId = static_cast<std::uint64_t>(trackId);
+    dispatchQuietly("jump",
+                    [this, command] { return commands_.dispatch(command); });
+    refresh();
 }
 
 void PlayerViewModel::dispatchQuietly(const char *what,

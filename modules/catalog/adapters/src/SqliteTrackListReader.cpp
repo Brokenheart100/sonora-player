@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
+
+#include "mamba/catalog/adapters/SearchText.h"
 
 namespace mamba::catalog::adapters {
 
@@ -10,51 +13,36 @@ using platform::storage::SqliteStatement;
 
 namespace {
 
-bool hasSearch(const contracts::ListTracks &query)
-{
-    return !query.searchText.empty();
-}
-
-// LIKE 的通配符里 % 和 _ 是元字符。用户搜 "100%" 时把 % 当通配符会让结果多出
-// 一大截，而且没人会想到是这里。这里用 ESCAPE 把它们降级成普通字符。
-std::string likePattern(const std::string &text)
-{
-    std::string pattern;
-    pattern.reserve(text.size() + 2);
-    pattern.push_back('%');
-    for (const char c : text) {
-        if (c == '%' || c == '_' || c == '\\') {
-            pattern.push_back('\\');
-        }
-        pattern.push_back(c);
-    }
-    pattern.push_back('%');
-    return pattern;
-}
+// 筛选条件只有一个来源：全文索引。
+//
+// 为什么不用 LIKE：LIKE '%…%' 走不了索引，一万首就是一万次全表扫描，
+// 而且中文子串在 LIKE 下命中不了"逐字拆分"的语义（'夜航' 能命中 '夜航西飞'
+// 纯属巧合——对 '夜 航西飞' 这种带空格的标题就不成立）。
+// FTS5 那边存的是逐字拆开的 body，查询侧写短语，正好等价于子串匹配。
+constexpr std::string_view kSearchWhere =
+    " WHERE id IN (SELECT rowid FROM track_fts WHERE track_fts MATCH ?)";
 
 }  // namespace
 
 Result<contracts::TrackListResult> SqliteTrackListReader::list(
     const contracts::ListTracks &query) const
 {
-    const bool filtered = hasSearch(query);
-    const std::string where = filtered
-                                  ? " WHERE (title LIKE ? ESCAPE '\\' OR artist_name LIKE ? ESCAPE '\\'"
-                                    " OR album_title LIKE ? ESCAPE '\\')"
-                                  : "";
+    // matchQuery 对空串、全空白都返回空串：那种"筛选"等于没筛，直接走无 WHERE 的分支，
+    // 免得给 FTS5 一个语法为空的 MATCH 让它报错。
+    const std::string match = matchQuery(query.searchText);
+    const bool filtered = !match.empty();
+    const std::string where{kSearchWhere};
 
     // 总数先查：它是界面上"共 N 首"的唯一来源，而且和行数据是两条独立查询，
     // 不会因为分页而变。
-    auto countStatement = connection_.prepare("SELECT COUNT(*) FROM v_track_list" + where);
+    auto countStatement = connection_.prepare(
+        std::string{"SELECT COUNT(*) FROM v_track_list"} + (filtered ? where : std::string{}));
     if (!countStatement) {
         return Result<contracts::TrackListResult>::fail(countStatement.error());
     }
     if (filtered) {
-        const auto pattern = likePattern(query.searchText);
-        for (int index = 1; index <= 3; ++index) {
-            if (auto bound = countStatement.value().bind(index, std::string_view{pattern}); !bound) {
-                return Result<contracts::TrackListResult>::fail(bound.error());
-            }
+        if (auto bound = countStatement.value().bind(1, std::string_view{match}); !bound) {
+            return Result<contracts::TrackListResult>::fail(bound.error());
         }
     }
     auto countRow = countStatement.value().step();
@@ -69,20 +57,18 @@ Result<contracts::TrackListResult> SqliteTrackListReader::list(
     contracts::TrackListResult result;
     result.totalCount = countStatement.value().columnInt(0);
 
-    auto statement = connection_.prepare("SELECT id, title, artist_name, album_title, duration_ms,"
-                                         " file_path FROM v_track_list" + where +
-                                         " ORDER BY id LIMIT ? OFFSET ?");
+    auto statement = connection_.prepare(
+        std::string{"SELECT id, title, artist_name, album_title, duration_ms, file_path, cover_key"
+                    " FROM v_track_list"} +
+        (filtered ? where : std::string{}) + " ORDER BY id LIMIT ? OFFSET ?");
     if (!statement) {
         return Result<contracts::TrackListResult>::fail(statement.error());
     }
     SqliteStatement &s = statement.value();
     int slot = 1;
     if (filtered) {
-        const auto pattern = likePattern(query.searchText);
-        for (; slot <= 3; ++slot) {
-            if (auto bound = s.bind(slot, std::string_view{pattern}); !bound) {
-                return Result<contracts::TrackListResult>::fail(bound.error());
-            }
+        if (auto bound = s.bind(slot++, std::string_view{match}); !bound) {
+            return Result<contracts::TrackListResult>::fail(bound.error());
         }
     }
     if (auto bound = s.bind(slot++, static_cast<std::int64_t>(query.limit)); !bound) {
@@ -108,6 +94,11 @@ Result<contracts::TrackListResult> SqliteTrackListReader::list(
         dto.albumTitle = s.columnString(3);
         dto.durationMs = s.columnInt(4);
         dto.filePath = s.columnString(5);
+        // 库里只存键，绝对路径在这里拼。键为空 → 空路径 → 界面走占位图分支。
+        const std::string coverKey = s.columnString(6);
+        if (!coverKey.empty() && !coverRoot_.empty()) {
+            dto.coverPath = coverRoot_ + "/" + coverKey;
+        }
         result.rows.push_back(std::move(dto));
     }
 

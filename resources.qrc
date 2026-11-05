@@ -21,9 +21,11 @@
         <file alias="qml/comic/ComicBubble.qml">presentation/qml/comic/ComicBubble.qml</file>
         <file alias="qml/comic/Halftone.qml">presentation/qml/comic/Halftone.qml</file>
         <file alias="qml/comic/InkSlider.qml">presentation/qml/comic/InkSlider.qml</file>
+        <file alias="qml/comic/TrackRow.qml">presentation/qml/comic/TrackRow.qml</file>
 
         <!-- 页面 -->
         <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>
+        <file alias="qml/pages/NowPlaying.qml">presentation/qml/pages/NowPlaying.qml</file>
         <file alias="qml/pages/Storybook.qml">presentation/qml/pages/Storybook.qml</file>
 
         <!-- 布局部件 -->

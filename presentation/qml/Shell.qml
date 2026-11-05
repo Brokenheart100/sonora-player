@@ -10,7 +10,8 @@ import MambaMusic 1.0
 Item {
     id: shell
 
-    property int currentPage: 0        // 0 = 曲库，1 = 组件画廊
+    property int currentPage: 1        // 0 = 曲库，1 = 正在播放，2 = 组件画廊
+    property bool queueOpen: false     // 右下角抽屉：当前播放队列
 
 
     // ── 背景：整页唯一的一个 shader ─────────────────────────────────────
@@ -80,10 +81,17 @@ Item {
             }
             NavItem {
                 width: sidebar.width
-                label: qsTr("组件画廊")
-                hint: qsTr("M2")
+                label: qsTr("正在播放")
+                hint: Player.hasTrack ? Player.queueText : "—"
                 active: shell.currentPage === 1
                 onClicked: shell.currentPage = 1
+            }
+            NavItem {
+                width: sidebar.width
+                label: qsTr("组件画廊")
+                hint: qsTr("M2")
+                active: shell.currentPage === 2
+                onClicked: shell.currentPage = 2
             }
             NavItem {
                 width: sidebar.width
@@ -121,11 +129,14 @@ Item {
         anchors.bottom: playerBar.top
         anchors.bottomMargin: 14
 
-        sourceComponent: shell.currentPage === 0 ? libraryPage : storybookPage
+        sourceComponent: shell.currentPage === 0
+                         ? libraryPage
+                         : (shell.currentPage === 1 ? nowPlayingPage : storybookPage)
 
         // 页面叫 LibraryPage 而不是 Library：Library 是注入的单例名字，
         // 同名组件会被单例遮住，加载时报 "Element is not creatable"。
         Component { id: libraryPage; LibraryPage { } }
+        Component { id: nowPlayingPage; NowPlaying { } }
         Component { id: storybookPage; Storybook { } }
     }
 
@@ -141,8 +152,124 @@ Item {
 
         PlayerBar {
             anchors.fill: parent
+            onQueueRequested: shell.queueOpen = !shell.queueOpen
         }
     }
+
+    // ── 队列抽屉 ────────────────────────────────────────────────────────
+    // 浮在内容区右侧，不做"第二个页面"：听歌时打开队列不该把正在看的东西换掉。
+    MangaPanel {
+        id: queueDrawer
+        visible: shell.queueOpen
+        width: 320
+        anchors.right: parent.right
+        anchors.rightMargin: 18
+        anchors.top: content.top
+        anchors.bottom: playerBar.top
+        anchors.bottomMargin: 14
+        shadowOffset: 6
+        padding: 12
+
+        Column {
+            anchors.fill: parent
+            spacing: 8
+
+            Item {
+                width: parent.width
+                height: 30
+                Text {
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("播放队列")
+                    color: Theme.ink
+                    font.family: Fonts.display
+                    font.pixelSize: 20
+                }
+                ComicButton {
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 26
+                    text: qsTr("关闭")
+                    tone: "paper"
+                    onClicked: shell.queueOpen = false
+                }
+            }
+
+            Text {
+                width: parent.width
+                text: Player.queue.length > 0
+                      ? qsTr("%1 首 · %2").arg(Player.queue.length).arg(Player.modeLabel)
+                      : qsTr("队列是空的")
+                color: Theme.inkSoft
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textSmall
+            }
+
+            ListView {
+                id: queueList
+                width: parent.width
+                height: parent.height - 70
+                clip: true
+                model: Player.queue
+                spacing: 2
+
+                delegate: Item {
+                    required property var modelData
+                    width: queueList.width
+                    height: 34
+
+                    Rectangle {
+                        anchors.fill: parent
+                        color: modelData.current ? Theme.paperHigh : "transparent"
+                        border.width: modelData.current ? 1 : 0
+                        border.color: Theme.ink
+                    }
+                    Rectangle {
+                        // 当前曲的左侧朱红墨条
+                        visible: modelData.current
+                        width: 3
+                        height: parent.height - 8
+                        x: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: Theme.accent
+                    }
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 14
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        Text {
+                            width: parent.width
+                            text: modelData.title
+                            color: Theme.ink
+                            font.family: Theme.fontText
+                            font.pixelSize: Theme.textSmall
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            width: parent.width
+                            text: modelData.artist
+                            color: Theme.inkSoft
+                            font.family: Theme.fontText
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
+                    TapHandler {
+                        onTapped: Player.jumpTo(modelData.trackId)
+                    }
+                }
+            }
+        }
+    }
+
+    // ── 键盘 ────────────────────────────────────────────────────────────
+    // 空格 / ←→ 是"听完整张专辑不用摸鼠标"的全部条件；Esc 用来收浮层。
+    Shortcut { sequence: "Space"; onActivated: Player.toggle() }
+    Shortcut { sequence: "Left"; onActivated: Player.previous() }
+    Shortcut { sequence: "Right"; onActivated: Player.next() }
+    Shortcut { sequence: "Escape"; onActivated: shell.queueOpen = false }
 
     // ── 拖放：拖进来的音频直接进曲库并开播 ──────────────────────────────
     DropArea {

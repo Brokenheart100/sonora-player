@@ -17,16 +17,16 @@
 | **M2** ✅ | 漫画设计系统 v1 | 2.5 | M0 | Storybook 组件画廊页 |
 | **M3** | 音频最小闭环 | 3.5 | M2 | 拖文件进去能出声 ✅ |
 | **M4** | 换成 FFmpeg 引擎 | 4 | M3, M1 | ✅ 自研引擎，端口契约不变 |
-| **M5** | 曲库完整（导入 + 扫描 + 投影） | 4.5 | M1 | 万首曲库，滚动不掉帧 |
+| **M5** | 曲库完整（导入 + 扫描 + 投影） | 4.5 | M1 | 万首曲库，滚动不掉帧 · **✅ 已完成**（含封面/分组，一万首首扫 9.4s） |
 | **M6** | 播放完整体验（队列聚合） | 4 | M4, M5 | 全流程无鼠标操作 |
-| **M7** | 歌词 | 3.5 | M5, M6 | 歌词同步误差 < 50ms |
+| **M7** | 歌词 | 3.5 | M5, M6 | 歌词同步误差 < 50ms | **✅ 已完成**（滞后上限 33ms） |
 | **M8** | 漫画表现力 | 5 | M2 | 网点/集中线/拟声词/翻页就位，60fps |
 | **M9** | 打包发布 | 1.5 | 全部 | 干净 Windows 机器双击能跑 |
 | | **合计** | **≈ 33** | | 全职 ≈ 6.6 周；业余（每天 2h）≈ 4 个月 |
 
 **关键路径**：`M0 → M1 → M3 → M4 → M6 → M7 → M9`。这条链上任何一环延期都顺延交付。
 
-**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**下一步是 M5（曲库完整）**；M5 不依赖剩下的任何里程碑，可以立刻开始。
+**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**M5 ✅ 已完成**：搜索 / 增量扫描 / 真标签 / 分批与后台导入 / 分页 / 封面缓存 / 分组 / `TrackRow` 全部落地并实测（一万首首扫 9.4s、二扫 403ms、滚动帧 2–5ms）。**M6 ✅ 已完成**：四种播放模式与随机排列、随机模式精确回溯、`TrackFinished` 集成事件 → `play_count`、队列抽屉、`NowPlaying` 页、快捷键、文件被删的优雅降级（实测：连放自动推进、`play_count` 0→1→2、边界 143 文件、单测 94 用例 / 4686 断言）。**M7 ✅ 已完成**：LRC 解析（offset / 多标签 / 翻译 / 逐字）、两个来源与优先级、`LyricsModel` + `NowPlaying` 歌词列（实测：`D:\Music` 6 首真曲 24 行歌词滚动、同步滞后上限 33ms、边界 166 文件、单测 115 用例 / 4795 断言）。**下一步是 M8（漫画表现力）**。
 
 > 依赖清单（哪个库在哪一层、版本、许可证、获取渠道）见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。
 
@@ -274,7 +274,7 @@ python xmake/checks/boundaries.py
 | 2 | 放弃 SQLiteCpp，自写 `SqliteConnection` / `SqliteStatement` / `SqliteTransaction` / `SqliteUnitOfWork` | xmake-repo 的 sqlite3 包没有 FTS5 开关，而 sqlitecpp 的 `sqlite3_external` 只会去拉那个包 → 两条路都拿不到 FTS5。自写换来运行时依赖 5 → 4，且 `LNK2038` 风险归零 |
 | 3 | 暂无 `TrackPath` / `Duration` / `NormalizedTitle` 值对象 | 现在只有一个聚合，先不拆；第二个聚合（`Playlist`，M6）出现时再提炼 |
 | 4 | TagLib 推后到 M5，先用文件名兜底 | 先把四层跑通；时长 `--:--` 是诚实的空值，不是 bug |
-| 5 | 投影用视图不用物化表 | 万级以内视图足够快；M5 数据量上来再改物化表 + `TrackImported` 订阅 |
+| 5 | 投影用视图不用物化表 | 万级以内视图足够快；M5 实测一万首直接 JOIN 仍是零点几毫秒，**结论是暂不需要物化表**（见 §M5 偏差 7），真有十万首再按真实查询计划决定 |
 | 6 | `LibraryViewModel` 合并进 `TrackListModel` | 只有一个列表时两个类是纯包装 |
 
 > **M1 是这个计划里唯一一次"赌很大但成本很低"的验证**。如果要在 3 人日里重新决定架构，比在第 20 天要好 8 倍。切片跑完之前，**不要开始 M2**。
@@ -431,72 +431,180 @@ python xmake/checks/boundaries.py
 
 ---
 
-### M5 · 曲库完整（4.5 人日）
+### M5 · 曲库完整（4.5 人日）✅ 已完成 · 实际 4.4 人日
+
+**已完成**：全文搜索（FTS5）、增量扫描、真标签（TagLib）、分批导入、后台导入、分页、**内嵌封面缓存**、**按专辑分组**、**`TrackRow` delegate**、**一万首真机实测**。按建议砍掉两项（见「偏差」）：`mv_track_*` 投影表、`Album.assignDiscOrder`。
 
 **目标**：从"能导入一个文件夹"到"能管理一万首"。
 
-**步骤**
+**步骤**（实际耗时 4.4 人日）
 
-- [ ] `Catalog` 聚合补全：`Album`（`assignDiscOrder` 处理碟/轨冲突）、`Artist`
-- [ ] 增量扫描：`file_mtime` 变了才重读标签
-- [ ] 批量导入：500 条一个事务，每批之后 publish `TrackImported`
-- [ ] `mv_track_row` / `mv_track_stat` 投影 + 事件订阅者
-- [ ] 搜索：英文/数字走 `title_norm` 前缀索引 + 拼音首字母列；**中文子串走 FTS5**（`unicode61` + bigram 分词）——`SQLITE_ENABLE_FTS5` 在 M1 步 2 已编进 amalgamation
-- [ ] `LibraryViewModel`：分组查询（专辑 / 艺人 / 文件夹）、分页、窗口缓存
-- [ ] `CoverCache`：内嵌封面抽离 + `cover_key` 去重
-- [ ] `pages/LibraryPage.qml` 换成 `TrackRow` delegate
+- [x] 搜索的第一半：`SearchText`（`searchBody` 入库逐字切分 + `matchQuery` 查询转 FTS5 短语）0.4 天
+- [x] `track_fts` 迁移（迁移 2）+ 启动时索引对齐 + `SqliteTrackListReader` 改走 MATCH 0.3 天
+- [x] 增量扫描：`ScannedFile` 带回 size/mtime，`findFileState` 判"没变就一个字节都不读" 0.4 天
+- [x] 批量导入：500 条一个事务，`ImportProgress` 原子进度 0.2 天
+- [x] `TagLibMetadataReader`：真时长 + 内嵌封面字节（`complexProperties("PICTURE")`）0.5 天
+- [x] 导入挪出 GUI 线程（`TrackListModel::startImport` + 后台线程 + `busy_` 批锁）0.3 天
+- [x] 分页：`canFetchMore`/`fetchMore`，一次 200 行，`count` 是库里总数而非已加载数 0.2 天
+- [x] 搜索框（`LibraryPage.qml` 的 `TextInput` → `Library.setSearchText`）0.1 天
+- [x] 封面：`ICoverStore` 端口 + `FileCoverStore`（FNV-1a 内容寻址，键=哈希+扩展名）+ 迁移 3 给视图补 `cover_key` + `TrackDto.coverPath` 1.0 天
+- [x] `TrackRow` 抽成 `presentation/qml/comic/TrackRow.qml`，弹性列改锚点链 0.3 天
+- [x] 分组：`ListView` 的 `section.property`（按 `album`）+ 分组开关按钮 0.5 天
+- [x] 一万首真机实测：首扫 9.4s / 二扫 0.4s 0.2 天
+- [–] （按建议砍掉）`Catalog` 聚合补全 `Album.assignDiscOrder`——列表按 `id` 排，碟/轨号至今没被用到
+- [–] （按建议砍掉）`mv_track_row` / `mv_track_stat` 投影 + 事件订阅者——直接 JOIN 在万级是零点几毫秒
+- [x] `LibraryViewModel` 的分组：改成 QML 侧分组（见偏差 6），没有单独的 ViewModel
 
-**验收**
+**验收**（实测）
 
-- 10000 首首扫 < 60s；二次扫描（无变更）< 5s
-- **扫描期间 UI 不卡、能继续播放、能滚动列表**
-- 列表滚动稳 60fps（`data()` 是 O(1)，不触发查询）
-- 中文搜索 3 个字以上才有结果、输入即筛，延迟 < 30ms
-- 封面加载不闪（异步 + 占位图）
-- 关掉重开，库和播放次数都在
-- 投影表与聚合表在异常中断后仍一致（每批一个事务，不存在半批）
+| 计划里的验收 | 实测 |
+| --- | --- |
+| 10000 首首扫 < 60s | **一万个文件 9.4s**（`.demo/bulk10k`，无标签的 wav；真 MP3 走 TagLib 会比这个慢，按 2000 首真标签 ~5.4ms/首推算仍远低于 60s） |
+| 二次扫描 < 5s | **一万首 403ms**（`未变 10000`，连标签都不读） |
+| 扫描期间 UI 不卡 | 通过：导入在后台线程，`CommandBus` 的 5ms 告警在后台线程上不再触发；导入中可滚动列表 |
+| 列表 60fps（`data()` O(1)） | 通过：`data()` 只读 `rows_[i]`，分页 200 行/页；滚动帧时间 2–5ms（`QSG_RENDER_TIMING`），首两帧 59/51ms 是创建委托与异步解码启动 |
+| 中文搜索 3 字以上才有结果 | **修正为"一个字也能搜"**：`track_fts` 存的是逐字空格分隔的 body，`"夜 航"` 短语匹配等价于子串 |
+| 搜索延迟 < 30ms | 2000 首库上"输入即筛"，肉眼无延迟（未做毫秒级计时） |
+| 封面异步不闪 | 通过：`Image { asynchronous: true; cache: true; sourceSize 56 }`，`D:\Music` 6 首落 6 个文件、两首同图去重成一个 |
+| 关掉重开都在 | 通过：迁移到 v3 后重开，一万首与索引都在 |
+| 异常中断后一致 | 通过单测：`Migrator` 整事务回滚、每批一个事务 |
+
+**坑**
+
+| 现象 | 根因 | 修法 |
+| --- | --- | --- |
+| 中文搜不到 | FTS5 的 `unicode61` 把连续汉字当一个词，`MATCH '夜航'` 匹配不到 `夜航西飞` | 入库时逐字空格分隔、查询时用短语 `"夜 航"`；不写自定义分词器 |
+| 搜 `%` 直接 SQL 报错 | FTS5 把标点当分隔符，`"%"*` 切不出 token，喂给 MATCH 是语法错误 | `matchQuery` 只保留有 token 的段，纯标点返回空串（= 不筛选） |
+| 导入命令 29ms → 一万首几十秒白屏 | 命令在 GUI 线程上同步读标签 | 整个导入搬到后台线程；`CommandBus::dispatch` 只在本线程超 5ms 才告警 |
+| `ImportSummary` 拿不到 | 它定义在 `Catalog.Core`，而 Presentation 只依赖 `*.Contracts`；且 `dispatch` 类型擦除只回 `Result<void>` | 界面只要"成功/失败 + 刷新后的总数"，逐文件计数留在 Handler 日志里 |
+| `TagLib::FileName` 传 `string_view` 崩 | 它是 `const char*`，`string_view` 不保证 0 结尾 | 先落 `std::string` 再 `.c_str()` |
+| 中文名文件"读不出标签、时长 0" | Windows 上 `TagLib::FileName` 的 `char*` 构造按**本地编码（GBK）**打开文件，喂 UTF-8 就打不开 | 传 `std::filesystem::path::c_str()`（Windows 上是 `wchar_t*`）——真实音乐库 `D:\Music` 的 7 首里 5 首正是这么挂的 |
+| 重链 `LNK1168` | 上一次跑起来的 exe 还占着文件 | 构建前 `taskkill /F /IM MambaMusic.exe` |
+| 「输入没反应」 | 本 harness 里 `PostMessage` 发的 `WM_CHAR`/滚轮到不了 Qt（窗口没被激活） | 用"预设初值 + `Component.onCompleted`"临时代替键盘输入验证，验完撤掉 |
+| 专辑列只剩两个字、标题被压扁 | 列宽按**截图里的物理像素**手算，而委托实际只有 **927 逻辑像素**（1180 逻辑宽减侧栏，截图是 1.5 倍 dpr 的 1792）；`0.85 * 927` 再加固定 90px 时长列，专辑列被挤到 37px | 列宽改百分比 + **弹性列用锚点链**（`anchors.left/right` 相互引用），时长列 `x: width - 58`；诊断靠临时把 `Math.round(row.width)` 打到某一列读出来 |
+| 封面全不显示 | `data()` 返回裸路径，`Image.source` 会当相对地址解析 | 返回 `QUrl::fromLocalFile(path).toString()` |
+| 老库升级后没有封面 | 封面只在**导入时**写入；`cover_key` 为空的行在增量判断里仍算"未变" | 已知取舍：要补封面得重导或改 mtime（文档记着，不假装没有） |
+
+**偏差**
+
+1. 计划用 bigram 分词器，实际用「逐字空格 body + 短语查询」——同样的效果，不需要写 FTS5 分词器扩展。
+2. 计划"3 个字以上才有结果"，实际一个字也能搜（逐字切分的必然结果，且更好用）。
+3. 没有 `mv_track_row` 投影表，直接查 `tracks` JOIN `artists`/`albums`（2000 首的查询是零点几毫秒，等真到十万首再说）。
+4. `LibraryViewModel` 没单独建，分页做在 `TrackListModel` 里——M1 当初合并两者的决定继续生效。
+5. `TrackListResult.totalCount` 每页都会重算一次 `COUNT(*)`，为的是导入期间翻页不出错；代价是每页多一条查询。
+6. **分组在 QML 侧做**（`ListView` 的 `section.property: "album"`），不是查询层分组——分页只装 200 行，跨页的分组需要独立查询，等真有"按艺人/文件夹分组 + 跨页"的需求再补。
+7. **砍掉 `mv_track_*` 投影表与事件订阅者**：实测一万首直接 JOIN 查询是零点几毫秒，物化表换不到东西；代价是当初设想的 `TrackImported` 事件至今没有发布者，域事件仍然只有 `TrackAdded` 一个并且也没人订阅——这条记录在案，M6 做队列/歌单时再决定要不要真的引入事件。
+8. **砍掉 `Album.assignDiscOrder`**：列表按 `id` 排，碟号/轨号只存不读；等 M6 的歌单排序或 M8 的专辑页真要用时再写。
+9. **封面用内容寻址**：键是 FNV-1a 64 的 16 位 hex + 由魔数判定的扩展名，同一张图只落一份（`D:\Music` 里两首同图确实去重成一个文件）。
+10. **老库升级不补封面**：`cover_key` 为空的行在增量扫描里仍算"未变"，不会自动补；要补得重导或改 mtime。这是"增量扫描只信 size+mtime"这条设计的直接后果。
 
 ---
 
-### M6 · 播放完整体验（4 人日）
+### M6 · 播放完整体验（4 人日）✅ 已完成 · 实际 3.6 人日
+
+**已完成**：三种播放模式 + 随机排列、随机模式下的精确回溯、**第一条跨模块集成事件**（`TrackFinished` → `play_count`）、队列抽屉、模式切换、`pages/NowPlaying.qml`、快捷键、文件被删的优雅降级。**未做**：队列持久化、`Ctrl+O` 文件对话框（见「偏差」）。
+
+**目标**：从"能播一首"到"能一路听完、且听过的痕迹留得下来"。
+
+**步骤**（实际耗时 3.6 人日）
+
+- [x] `PlayQueue` 补全四种模式（`Sequential` / `RepeatAll` / `RepeatOne` / `Shuffle`）：`order_` + `cursor_` 两层下标，`index()` 仍返回**条目下标** 0.6 天
+- [x] `AdvanceReason{Manual, AutoFinished}`：单曲循环只拦"自动播完"，用户点下一首照常前进 0.2 天
+- [x] `ShufflePlanner`：Fisher–Yates 预生成完整排列 + 种子，`plan(size, first, seed)` 保证**第一首固定是用户点的那首** 0.5 天
+- [x] 随机模式的精确回溯：排列是持久的一串，`retreat()` 只是游标 -1，所以"上一首"是真的上一首 0.1 天
+- [x] `previous()` 的"播过 3 秒先回本曲开头"惯例（M3 记下的遗留项），`kRewindThresholdMs = 3000` 0.2 天
+- [x] `IEventBus` + `EventBus`（同步分发、按 `typeid` 路由、遍历前拷贝订阅表）0.4 天
+- [x] `contracts::TrackFinished`（**模块之间第一条真正的集成事件**）+ Catalog 侧迁移 4（`play_count` / `last_played_at`）+ `SqlitePlaybackRecorder` 0.5 天
+- [x] 播放条：模式按钮（文字就是当前模式）、队列按钮 0.2 天
+- [x] 队列抽屉（右下浮层，当前曲朱红墨条，点行 `jumpTo`）0.3 天
+- [x] `pages/NowPlaying.qml`：黑胶 + 唱针 + 中心标签，播放时转、暂停时停 0.4 天
+- [x] 快捷键：空格 / ←→ / Esc（`Shortcut` 挂在 `Shell` 上）0.1 天
+- [x] 优雅降级：自动推进时装载失败就跳过这首、最多绕一圈，全坏则停下并打日志 0.3 天
+- [–] **没做**队列持久化（`play_queue` 三张表）：重启后队列不恢复，先记在偏差里
+- [–] **没做** `Ctrl+O` 文件对话框：拖放已经覆盖"把歌弄进来"，对话框等做"选文件夹 + 递归开关"时一起
+
+**验收**（实测）
+
+| 计划里的验收 | 实测 |
+| --- | --- |
+| 连续听完一张专辑全流程无需鼠标 | 通过：双击起播之后，空格暂停/继续、←→ 切歌、站在 `NowPlaying` 看进度都可用；播完自动下一首（运行时日志连续出现 `[ffmpeg] 打开 … sample.mp3` → `… sample1.flac`） |
+| 随机模式连续 200 首无重复 | 通过单测：`plan(200, 37, 12345)` 是完整置换、不含重复，且 `front() == 37` |
+| 上一首能精确回溯 | 通过单测：随机 + 循环连放 200 首后连退 199 次，逐首等于正向序列的逆序 |
+| 删掉正在播放的文件 → 优雅降级 | 通过单测两条：中间一首装不上时落到再下一首（`queueIndex == 2`）；两首全坏时停下且 `state != Playing` |
+| 播放次数在重启后正确 | 通过：实机放完 `sample.mp3` 后 `tracks.play_count` 由 0 → 1 → 2（两次），`last_played_at` 有值；单测另外覆盖"事件 → 记录器 → 库里 `play_count == 2`"与"曲目不存在的记不上但不崩" |
+
+**坑**（都是这一轮真踩到的）
+
+| # | 坑 | 现象 | 修法 |
+| --- | --- | --- | --- |
+| 1 | `ShufflePlanner` 的 Fisher–Yates 写成 `i > 0` + `dist{0, i}` | "第一首固定"不成立，测试断言 `front() == 2` 实际拿到 1 | 改成 `i > 1` + `dist{1, i}`：最后一个待换位置必须是下标 1，否则下标 0 会被卷进去 |
+| 2 | `mamba::playback::core` 里裸写 `contracts::TrackFinished` | `C2039: "TrackFinished": 不是 "mamba::playback::contracts" 的成员` | 模块内的 `contracts` 一定盖住外层的；跨模块类型必须写全 `mamba::contracts::…` |
+| 3 | `TrackFinished` 用聚合初始化 `{id, now}` | `C2440: 无法从 initializer list 转换`——它继承了 `IDomainEvent`，不再是聚合 | 给它加一个两参数构造函数 |
+| 4 | `Result<SqliteStatement>` 想直接 `return` 成 `Result<void>` | `C2440` ×2 | 逐层 `Result<void>::fail(x.error())`，和仓储里的写法保持一致 |
+| 5 | `presentation` 里想用 `ImportSummary` 之外的领域类型 | `C3878`/`C2059`，根因是 Presentation 只依赖 `*.Contracts` | 界面拿不到逐文件计数（M5 已记过一次），这次换成"事件让别人去记账，界面只刷新" |
+| 6 | 注释里写了 `QMetaObject` | `boundaries.py` 报"Qt 类型侵入了 core 层"——它扫的是文本，注释也算 | 把注释改写成"队列化调用"，不写具体类名 |
+| 7 | 播放条的 `value: Player.progress` 绑定 | 一拖动就被 33ms 的写入打断，手柄回不去 | 只监听 `positionChanged` 且 `!pressed` 时回写（M3 已踩，这次队列抽屉复用同一套路） |
+
+**与计划的偏差**
+
+1. **队列持久化没做**：重启后队列丢失（曲库、播放次数、封面都在）。做它需要 `play_queue` / `play_queue_item` / `play_queue_shuffle` 三张表和"启动时恢复但不自动播"的策略，估 0.5 天，留到 M7 之后按需。
+2. **`Ctrl+O` / `Ctrl+←→` 没做**：没有 `QFileDialog`（Qt Quick Dialogs 未引入），且 `PlaybackService` 没有"按秒 seek"的命令——`SeekTo` 是绝对毫秒，界面可以通过 `progress + Δ/duration` 模拟，但更干净的做法是加 `SkipByMs` 命令，等真有需求再加。
+3. **`NowPlaying` 不显示封面**：播放队列里只有 `QueueEntry{trackId, path, title, artist}`，把它扩成带 `coverPath` 等于"播放器持有曲库字段"。这一页改画唱片本身——视觉上不输，架构上不多一条依赖。
+4. **随机模式的 `shuffle` 种子没有落库**：种子只活在内存里，`PlayQueue::seed()` 已经暴露出来，持久化那次一起写。
+5. **`play_count` 只累计"自然播完"**：手动切歌、暂停后关程序都不算。这是刻意的——`TrackFinished` 的语义就是"听完了"，不是"听过"。
+6. **事件总线没有退订/异步/优先级**：现在只有一条事件一个订阅者；真需要时再换，不在进程里手搓消息中间件。
+
+### M7 · 歌词（3.5 人日）✅ 已完成 · 实际 2.9 人日
+
+**已完成**
+
+解析器（标准 LRC、`[offset:]`、一行多时间标签、翻译行合并、增强 LRC 逐字）、`Lyrics` 聚合、`LyricTimeline` 二分、两个来源（同名 `.lrc` → 内嵌标签）与优先级、`GetLyrics` 查询、`LyricsModel` + `NowPlaying` 歌词列（当前行居中滚动）。
+
+**未做**：手动对齐/校正 `[offset:]` 的界面、歌词编辑、双语分行开关。
 
 **步骤**
 
-- [ ] `PlayQueue` 聚合补全：`RepeatOne` / `RepeatAll` / `Shuffle`
-- [ ] `ShufflePlanner` 领域服务：Fisher–Yates 排列 + 游标，可序列化以支持恢复
-- [ ] `goBack()` 在随机模式下精确回到真实上一首
-- [ ] 队列持久化（`play_queue` / `play_queue_item` / `play_queue_shuffle`）
-- [ ] `TrackFinished` 集成事件 → `Catalog` 累计 `play_count`（**跨模块只能用事件，不许直接调**）
-- [ ] 播放条补全：队列面板、模式切换、音量弹层
-- [ ] `pages/NowPlaying.qml`：大封面 + 唱针旋转 + 标题
-- [ ] 快捷键：空格 / ←→ / Ctrl+←→ / Ctrl+O / Esc
-- [ ] 空状态 / 加载状态 / 错误状态（文件被删、解码失败）
+- [x] `LrcParser`（0.7 天）：`parse()` + `parseTimeTag()`，返回 `ParsedLyrics{entries, offsetMs, linesSeen, linesDropped, tagsSeen}`；标签行与 JSON 头计入 `linesDropped` 静默丢弃
+- [x] 单测（0.4 天）：`tests/lyrics_lrc.cpp` 11 条 + `tests/lyrics_sources.cpp` 9 条。计划里的"5 个真实 LRC 快照"没做——真实文件反而简单（没有 offset、多标签、逐字），改成手工构造用例覆盖每种语法
+- [x] `Lyrics` 聚合（0.2 天）：`create()` 不返回 `Result`（丢负时间行、`stable_sort`、空行保留当停顿，不会失败）
+- [x] `LyricTimeline`（0.1 天）：`upper_bound` 减一；同一时间戳多行落到后一行
+- [x] `LyricsModel` + `NowPlaying` 歌词列（0.9 天）：`QAbstractListModel`，角色 `text/translation/active`，`contentY` 用 220ms 缓动居中，不用 `Behavior on contentY`（会和用户拖动抢属性）
+- [x] 来源优先级（0.6 天）：`SidecarLyricsSource` → `TagLibLyricsSource`，`LyricsSourceChain` 按序试、第一个有文本的赢；零行则 `Instrumental` + 占位「纯音乐，请欣赏」
 
-**验收**
+合计 **2.9 人日**（计划 3.5，省下的 0.6 是"真实 LRC 比预想简单"与"没有做快照测试基建"）。
 
-- 连续听完一张专辑全流程无需鼠标
-- 随机模式连续 200 首无重复；上一首能精确回溯
-- 删掉正在播放的文件 → 优雅降级到下一首，不崩
-- 播放次数在重启后正确
+**验收（实测）**
 
----
+| 验收项 | 目标 | 实测 |
+| --- | --- | --- |
+| 同步误差 | < 50ms | 当前行由 33ms tick 驱动，滞后上限 33ms；播放到 `3:04` 时高亮第 16 行（LRC 时间戳 179.24s，下一行 189.38s），与 `title` 里打出的 `L15/24` 一致 |
+| 滚动无跳帧 | — | 225 行 × 16px 间距的列表，切行只 `dataChanged` 两行 + 一段 `contentY` 补间，没有整表 reset |
+| 切歌无残影 | — | `loadFor()` 按文件路径变化触发 `beginResetModel`，`currentIndex` 归 -1 后由下一个 tick 重新定位 |
+| 无歌词不显示空盒子 | — | `Lyrics.visible` 为假时列表 `visible: false`，只留一句居中提示（纯音乐显示「纯音乐」，编码错误显示原因） |
+| 真实素材 | — | `D:\Music` 6 首 mp3 + 6 个同名 `.lrc`（含网易云 JSON 头）全部解析成功，`matched` 24 行 |
+| 单测 | — | `mamba_tests` **115 用例 / 4795 断言** |
+| 边界 | — | `boundaries.py` **166 文件通过** |
+| 字体 | 不回落系统字体 | `tools/subset_fonts.py` 重跑：742 字符、1479 KB → 116 KB（8%） |
 
-### M7 · 歌词（3.5 人日）
+**坑**
 
-**步骤**
+| 坑 | 现象 | 根因与修法 |
+| --- | --- | --- |
+| 增强 LRC 文本重复 | 断言 `entry.text == "逐字"` 失败，实际是 `<00:10.00>逐<00:10.35>字逐字` | `std::string plain{content}` 把原文当初始值，`splitWords()` 又往里拼；初值必须为空串 |
+| `TagLib::FileName` 在 Windows 上是宽字符 | 中文文件名读不出内嵌歌词 | 同 M5：必须传 `path.c_str()` 的 `wchar_t*`，传 `char*` 会按 GBK 解释 |
+| 注释里的 "QML" 被边界脚本判成 Qt 宏 | `[FAIL] GetLyricsHandler.cpp:18: Qt 类型/宏 QML 侵入了 core 层` | `boundaries.py` 的正则是 `Q[A-Z]\w*`，注释也算；改成「表现层」 |
+| `[[nodiscard]]` 返回值被丢 | 5 处 `warning C4834` | `Workspace::write()` 返回 `fs::path`，测试里不关心返回值 → 加 `(void)` |
+| 合成输入点不动侧栏导航 | 单次 `PostMessage` 点击不生效（双击列表行却可以） | 改用临时改 `Shell.currentPage` + 临时 `Timer` 自动播来截图，收尾已还原 |
 
-- [ ] `LrcParser`：标准 LRC、`[offset:]`、一行多时间标签、翻译行合并、增强 LRC 逐字（`<mm:ss.xx>`）
-- [ ] 单测：5 个真实 LRC（中文 / 翻译 / 逐字）跑快照测试
-- [ ] `Lyrics` 聚合：时间戳单调不减校验，非法行丢弃而非抛错
-- [ ] `LyricTimeline`：二分查找当前行
-- [ ] `LyricModel` + `NowPlaying` 歌词滚动（弹簧动画、居中高亮）
-- [ ] 来源优先级：同名 `.lrc` → 内嵌标签 → "纯音乐，请欣赏"占位
+**偏差**
 
-**验收**
-
-- 同步误差 < 50ms（用节拍明显的曲子人工核对）
-- 滚动无跳帧；切歌无残影
-- 无歌词时不显示空盒子
+1. **真实 LRC 一种高级语法都没用到**（无 `[offset:]`、无多标签、无逐字、无重复时间戳），但解析器全部实现了——别家音乐库会用到，成本只有 0.1 天。
+2. **二分逻辑在两处各有一份**：`LyricTimeline::indexAt` 与 `LyricsModel` 的 `indexAt`。Presentation 只能依赖 `*.Contracts`，看不到 `Lyrics.Core`。
+3. **GBK 歌词直接拒绝**并提示「另存为 UTF-8」，而不是猜编码。宁可少显示，不要糊一屏乱码。
+4. **`[by:]` / `[ti:]` 一律丢弃**，不解析成元数据（界面没有位置显示它们）。
+5. **歌词整份加载**，没有分页——一份 LRC 顶多几十 KB。
+6. **内嵌标签只认三个键**：`LYRICS` / `UNSYNCEDLYRICS` / `SYNCEDLYRICS`。
+7. **播放器快照多了一个 `filePath`**：歌词要靠它找同名 `.lrc`，而歌词模块不认识曲库、表现层也不该为一条路径去加载曲目聚合。
 
 ---
 

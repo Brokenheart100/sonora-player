@@ -17,7 +17,7 @@ public:
     // 传空则用 defaultExtensions()。大小写不敏感（Windows 上 ".FLAC" 也是 flac）。
     explicit FileSystemScanner(std::vector<std::string> extensions = {});
 
-    [[nodiscard]] kernel::Result<std::vector<std::string>> scan(
+    [[nodiscard]] kernel::Result<std::vector<core::ScannedFile>> scan(
         std::string_view folderPath) const override;
 
     // 支持的扩展名，全部小写、带点。

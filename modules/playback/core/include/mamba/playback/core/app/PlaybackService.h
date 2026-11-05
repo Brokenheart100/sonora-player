@@ -7,10 +7,12 @@
 #include <cstdint>
 #include <string>
 
+#include <mamba/kernel/IEventBus.h>
 #include <mamba/kernel/ILogger.h>
 #include <mamba/kernel/Result.h>
 #include <mamba/playback/contracts/AudioOutput.h>
 #include <mamba/playback/contracts/Commands.h>
+#include <mamba/playback/contracts/Queries.h>
 #include <mamba/playback/core/domain/PlayQueue.h>
 
 namespace mamba::playback::core {
@@ -19,7 +21,15 @@ class PlaybackService {
 public:
     /// output 的生命周期必须长于本对象：服务在析构前不会自动摘回调，
     /// 所以由组合根保证"先建 output，再建 service"。
-    explicit PlaybackService(contracts::IAudioOutput& output, kernel::ILogger* logger = nullptr);
+    ///
+    /// position 可以为空（测试里就没有）：它只用来实现"播过 3 秒，
+    /// 上一首先回开头"这条惯例，没有也不影响别的。
+    ///
+    /// events 也可以为空（测试里大多数用例不看事件）：它只用来在
+    /// 「一首自然播完」时发布 TrackFinished，让 Catalog 去累计播放次数。
+    explicit PlaybackService(contracts::IAudioOutput& output, kernel::ILogger* logger = nullptr,
+                             const contracts::IPositionStream* position = nullptr,
+                             kernel::IEventBus* events = nullptr);
     ~PlaybackService();
 
     PlaybackService(const PlaybackService&) = delete;
@@ -32,9 +42,12 @@ public:
     kernel::Result<void> setVolume(std::int32_t volume);
     kernel::Result<void> next();
     kernel::Result<void> previous();
+    kernel::Result<void> setMode(contracts::PlaybackMode mode);
+    kernel::Result<void> jumpTo(std::uint64_t trackId);
 
     // ── 查询 ────────────────────────────────────────────────────────────────
     [[nodiscard]] contracts::PlayerSnapshot snapshot() const;
+    [[nodiscard]] contracts::QueueView queueView() const;
     [[nodiscard]] const PlayQueue& queue() const noexcept { return queue_; }
 
 private:
@@ -43,8 +56,10 @@ private:
 
     contracts::IAudioOutput& output_;
     kernel::ILogger* logger_ = nullptr;
+    const contracts::IPositionStream* position_ = nullptr;
+    kernel::IEventBus* events_ = nullptr;
     PlayQueue queue_;
     std::int32_t volume_ = 100;
 };
 
-}  // namespace mamba::playback::core
+} // namespace mamba::playback::core

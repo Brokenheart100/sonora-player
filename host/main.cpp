@@ -27,17 +27,21 @@
 #include <string_view>
 #include <vector>
 
-#include "mamba/catalog/adapters/BasicMetadataReader.h"
 #include "mamba/catalog/adapters/CatalogSchema.h"
+#include "mamba/catalog/adapters/FileCoverStore.h"
 #include "mamba/catalog/adapters/FileSystemScanner.h"
 #include "mamba/catalog/adapters/SqliteCreditDirectory.h"
+#include "mamba/catalog/adapters/SqlitePlaybackRecorder.h"
 #include "mamba/catalog/adapters/SqliteTrackListReader.h"
 #include "mamba/catalog/adapters/SqliteTrackRepository.h"
+#include "mamba/catalog/adapters/TagLibMetadataReader.h"
 #include "mamba/catalog/contracts/Commands.h"
 #include "mamba/catalog/contracts/Queries.h"
 #include "mamba/catalog/core/app/ImportFolderHandler.h"
 #include "mamba/catalog/core/app/ListTracksHandler.h"
+#include "mamba/contracts/PlaybackEvents.h"
 #include "mamba/kernel/CommandBus.h"
+#include "mamba/kernel/EventBus.h"
 #include "mamba/kernel/IClock.h"
 #include "mamba/kernel/ILogger.h"
 #include "mamba/kernel/QueryBus.h"
@@ -47,6 +51,11 @@
 #include "mamba/platform/audio/FfmpegOutput.h"
 #include "mamba/playback/core/app/PlaybackHandlers.h"
 #include "mamba/playback/core/app/PlaybackService.h"
+#include "mamba/lyrics/adapters/LyricsSourceChain.h"
+#include "mamba/lyrics/adapters/SidecarLyricsSource.h"
+#include "mamba/lyrics/adapters/TagLibLyricsSource.h"
+#include "mamba/lyrics/core/app/GetLyricsHandler.h"
+#include "mamba/presentation/LyricsModel.h"
 #include "mamba/presentation/PlayerViewModel.h"
 #include "mamba/presentation/TrackListModel.h"
 
@@ -59,6 +68,8 @@ namespace
     namespace playback = mamba::playback;
     namespace audio = mamba::platform::audio;
     namespace presentation = mamba::presentation;
+    namespace lyrics = mamba::lyrics;
+    namespace contracts = mamba::contracts;
 
     // 临时的控制台日志。M4 之前没有真正的日志后端，但"命令慢于 5ms 要有人喊一声"
     // 这件事从第一天就得成立，否则性能预算是一句废话。
@@ -126,8 +137,7 @@ int main(int argc, char *argv[])
 {
     // 漫画风的细描边与网点在 125% / 150% 缩放下最容易糊。
     // 让 Qt 不再把缩放比取整到 1，交给系统 DPI 和 QML 的矢量绘制去处理。
-    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
-        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("MambaMusic"));
@@ -159,19 +169,54 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // ---- 封面目录 ----
+    // 与库文件同级：库在 <data>/mamba.sqlite，封面在 <data>/covers。
+    // 放一起的理由是"要搬就一起搬"——把封面挪到临时目录，清一次缓存整个封面墙就空了；
+    // 反过来把库也算进去，用户搬曲库时不会丢封面。
+    const std::string coverRoot = [&dbPath]
+    {
+        const auto slash = dbPath.find_last_of("/\\");
+        const std::string parent =
+            slash == std::string::npos ? std::string{} : dbPath.substr(0, slash);
+        return parent.empty() ? std::string{"covers"} : parent + "/covers";
+    }();
+    auto coverStore = std::make_shared<catalog::adapters::FileCoverStore>(coverRoot);
+
     // ---- 适配器（端口的具体实现）----
     auto creditDirectory = std::make_shared<catalog::adapters::SqliteCreditDirectory>(connection);
     auto trackRepository = std::make_shared<catalog::adapters::SqliteTrackRepository>(connection);
-    auto trackListReader = std::make_shared<catalog::adapters::SqliteTrackListReader>(connection);
+    auto trackListReader =
+        std::make_shared<catalog::adapters::SqliteTrackListReader>(connection, coverRoot);
     auto unitOfWork = std::make_shared<storage::SqliteUnitOfWork>(connection);
     auto scanner = std::make_shared<catalog::adapters::FileSystemScanner>();
-    auto metadataReader = std::make_shared<catalog::adapters::BasicMetadataReader>();
+    // M5 起用 TagLib：真实时长 + 内嵌封面。BasicMetadataReader 留着，
+    // 它是"端口可以被替换"的活证据（换实现，上层一行没动）。
+    auto metadataReader = std::make_shared<catalog::adapters::TagLibMetadataReader>();
+
+    // 全文索引与曲目表对齐。
+    //
+    // 迁移只建 track_fts（索引体要 C++ 算，SQL 造不出来），所以老库升级上来时
+    // 索引是空的——表现是"列表里有、搜不到"。这里比对行数补一次，
+    // 一致就直接跳过（正常启动零开销）。
+    {
+        const auto tracks = connection.queryInt("SELECT COUNT(*) FROM tracks");
+        const auto indexed = connection.queryInt("SELECT COUNT(*) FROM track_fts");
+        if (tracks && indexed && tracks.value() != indexed.value())
+        {
+            if (auto rebuilt = trackRepository->rebuildSearchIndex(); rebuilt)
+            {
+                std::fprintf(stderr, "[info] 重建全文索引：%lld 行\n",
+                             static_cast<long long>(rebuilt.value()));
+            }
+        }
+    }
 
     kernel::SystemClock clock;
 
     // ---- 应用层（用例）----
     auto importHandler = std::make_shared<catalog::core::ImportFolderHandler>(
-        *scanner, *metadataReader, *creditDirectory, *trackRepository, *unitOfWork, clock, &logger);
+        *scanner, *metadataReader, *creditDirectory, *trackRepository, *unitOfWork, clock, &logger,
+        coverStore.get());
     auto listHandler = std::make_shared<catalog::core::ListTracksHandler>(*trackListReader);
 
     // ---- 总线 ----
@@ -191,19 +236,53 @@ int main(int argc, char *argv[])
     // FfmpegOutput：解码自己来，输出走 QAudioSink + AudioRing。
     // 想退回旧引擎，把这一行换成 audio::QtMultimediaOutput 即可 —— 两个类实现的
     // 是同一组端口，其余代码一行都不用动。这正是 §2.5 依赖倒置要换到的东西。
+    // ---- 跨模块事件 ----
+    // M6 之前这里什么都没有：模块之间没有任何耦合，也就没有需要通知的事。
+    // 现在 Playback 要告诉 Catalog"这首放完了"，而 Playback 不许直接调 Catalog 的仓储，
+    // 于是有了第一条集成事件 TrackFinished 和它的唯一订阅者。
+    kernel::EventBus events;
+    catalog::adapters::SqlitePlaybackRecorder playbackRecorder{connection};
+    events.subscribe<contracts::TrackFinished>(
+        [&playbackRecorder, &logger](const contracts::TrackFinished &event)
+        {
+            if (auto recorded = playbackRecorder.record(event.trackId, event.playedAtUnix);
+                !recorded)
+            {
+                // 曲目可能刚被删掉（边放边删是允许的），记不上不该让播放停下来。
+                logger.warn("播放次数没记上（trackId={}）：{}", event.trackId,
+                            recorded.error().message());
+            }
+        });
+
+    // ---- 歌词：两个来源按顺序试，第一个有文本的赢 ----
+    // 同名 .lrc 排在前面：它跟音频是同一个文件夹里的东西，改一行就能看到结果；
+    // 内嵌标签排在后面当兜底。
+    lyrics::adapters::SidecarLyricsSource sidecarLyrics;
+    lyrics::adapters::TagLibLyricsSource embeddedLyrics;
+    lyrics::adapters::LyricsSourceChain lyricsChain;
+    lyricsChain.add(sidecarLyrics);
+    lyricsChain.add(embeddedLyrics);
+    lyrics::core::GetLyricsHandler lyricsHandler{lyricsChain};
+    queries.on<lyrics::contracts::GetLyrics, lyrics::contracts::LyricsView>(
+        [&lyricsHandler](const lyrics::contracts::GetLyrics &query)
+        { return lyricsHandler.handle(query); });
+
     audio::FfmpegOutput audioOutput;
-    playback::core::PlaybackService playbackService{audioOutput, &logger};
+    playback::core::PlaybackService playbackService{audioOutput, &logger, &audioOutput, &events};
     playback::core::registerPlayback(commands, queries, playbackService);
 
     // ---- 表现层 ----
     mamba::presentation::TrackListModel library{commands, queries};
+    mamba::presentation::LyricsModel lyricsModel{queries};
     mamba::presentation::PlayerViewModel player{commands, queries, audioOutput};
+    player.attachLyrics(&lyricsModel);
     // 双击列表项后立刻刷新一次播放器条，否则要等下一个 500ms 轮询周期。
     QObject::connect(&library, &presentation::TrackListModel::playbackStarted, &player,
                      &presentation::PlayerViewModel::refresh);
     // 组合根是唯一知道"有哪些单例"的地方，QML 侧只认这两个名字。
     qmlRegisterSingletonInstance("MambaMusic", 1, 0, "Library", &library);
     qmlRegisterSingletonInstance("MambaMusic", 1, 0, "Player", &player);
+    qmlRegisterSingletonInstance("MambaMusic", 1, 0, "Lyrics", &lyricsModel);
 
     const auto arguments = QCoreApplication::arguments();
     // 只认第一个**不以 - 开头**的参数当文件夹。

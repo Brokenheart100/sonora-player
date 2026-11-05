@@ -64,6 +64,37 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 - 跳转精度：`av_seek_frame(..., AVSEEK_FLAG_BACKWARD)` 只落到关键帧附近，能早几十秒。用 `avformat_seek_file(fmt, stream, INT64_MIN, ts, INT64_MAX, 0)`，再按首帧 `pts` 把多出来的样本丢掉。
 - 队列播完必须显式 `output_.stop()`。只打日志不停输出，界面上的按钮会永远停在「暂停」。
 
+**曲库 / 搜索**
+
+- 搜索走 FTS5，`track_fts.body` 存的是**逐字空格分隔**的文本（`夜 航 西 飞`），查询侧用短语 `"夜 航"`。原因：`unicode61` 把连续汉字当一个词，`MATCH '夜航'` 匹配不到 `夜航西飞`。改 `SearchText` 时**两侧必须一起改**——只改一边的症状是"搜不到"或"什么都搜到"。
+- FTS5 里**标点不算 token**：`"%"*` 会直接是 MATCH 语法错误。`matchQuery()` 会丢掉没有 token 的段，纯标点输入等于不筛选——这是刻意的降级，不是 bug。
+- **Windows 上 `TagLib::FileName` 不是 `const char*`**，而是一个同时收 `wchar_t*` 和 `char*` 的类；它的 `char*` 构造按**本地 8 位编码**（中文机器上是 GBK）打开文件。喂 UTF-8 字节，文件名带汉字就打不开——**不报错**，症状是"标签读不出来、时长 0、标题退回文件名"。传 `std::filesystem::path::c_str()`（Windows 上就是 `wchar_t*`）。
+- 增量扫描靠 `tracks.file_mtime` + `file_size_bytes`：没变就**连标签都不读**。改动导入逻辑时别顺手把 `findFileState` 跳过，二次扫描的 250ms 全靠它。
+- 导入在**后台线程**跑（`TrackListModel::startImport`）。`CommandBus` 的 5ms 告警只在总线所在的线程上触发，所以后台导入不会再刷警告——别以为是告警坏了。
+- 界面拿不到 `ImportSummary`：它在 `Catalog.Core`，而 Presentation 只依赖 `*.Contracts`，且 `dispatch` 类型擦除只回 `Result<void>`。界面要计数就自己再查一次，或者去读 Handler 的日志。
+- 封面走 `ICoverStore`（端口在 `Catalog.Core`，实现在 `Catalog.Adapters` 的 `FileCoverStore`）：键是 FNV-1a 64 + 由魔数判定的扩展名，**同一张图只落一份**。`TrackDto` 给的是 **`coverPath` 绝对路径**，QML 里必须再转成 `QUrl::fromLocalFile(...)`——裸路径会被 `Image.source` 当相对地址，症状是封面全不显示。
+- 列表里的封面 `Image` 必须给 **`sourceSize`**（现在 56）。不给就按原图解码，几千行滚动立刻掉帧。
+- 封面只在**导入时**写入：`cover_key` 为空的行在增量判断里仍算"未变"，所以老库升级后不会自动补封面，要补得重导或改 mtime。
+
+**播放 / 事件**
+
+- **跨模块只能用事件，不许直接调别人的仓储**。`Playback` 不知道 `Catalog` 存在；`TrackFinished` 由 `host/main.cpp` 订阅后转给 `Catalog.Adapters` 的 `SqlitePlaybackRecorder`。想加"播放次数"之外的联动，也走这条路。
+- **事件要在状态推进之前发**。`handleFinished()` 里先 `publish(TrackFinished{queue_.current()->trackId})` 再 `queue_.advance()`；反过来 `current()` 已经指向下一首，播放次数会记到别人头上。
+- 模块内裸写 `contracts::` 会解析到**本模块自己的** `*.Contracts`（`Playback` 里就是 `mamba::playback::contracts`），跨模块类型必须写全 `mamba::contracts::…`，否则 `C2039: 不是 …contracts 的成员`。
+- `EventBus` 是**同步**分发，没有退订、没有队列、没有优先级。订阅者里不要再 publish（会递归），慢活投 `ITaskQueue`。
+- `Result<A>` **不能**隐式转 `Result<void>`：逐层 `Result<void>::fail(x.error())`，和仓储里的写法保持一致。
+- 注释里写 Qt 类名会被 `boundaries.py` 判成"Qt 侵入 core 层"——它扫的是文本，注释也算。写"队列化调用"这种描述，别写 `QMetaObject::invokeMethod`。
+- 进度条/音量滑块的 `value` **不要绑定** `Player.progress`：33ms 一次的写入会打断绑定，手柄拖不动。用 `Connections { target: Player; function onPositionChanged() { if (!slider.pressed) slider.value = Player.progress } }`。
+- 单曲循环只拦**自动**推进（`AdvanceReason::AutoFinished`）；用户点"下一首"照常前进。随机排列的第一项固定是用户点的那首，所以 Fisher–Yates 的循环条件必须是 `i > 1` + `dist{1, i}`（写成 `i > 0`/`dist{0, i}` 会把首项也换走）。
+
+**歌词**
+
+- **当前行的二分规则有两份**：`modules/lyrics/core/.../domain/LyricTimeline.h` 的 `indexAt()` 和 `presentation/src/LyricsModel.cpp` 里的同名逻辑（Presentation 看不到 `Lyrics.Core`）。改规则或加"同时间戳多行"的新语义时**两处一起改**。
+- **增强 LRC 的纯文本初值必须是空串**：`std::string plain{content}` 会把原始标签拼进正文，得到 `<00:10.00>逐<00:10.35>字逐字`。
+- **GBK 歌词一律拒绝**，`ErrorCode::Unavailable` + 提示"用记事本另存为 UTF-8"。不要猜编码：猜错是整屏乱码，比不显示难受得多。
+- **来源顺序是"同名 `.lrc` → 内嵌标签"**，`LyricsSourceChain` 出错立刻停（不降级）。`Instrumental`（解析出零行）由 `GetLyricsHandler` 填占位行，界面不自己判断。
+- 内嵌歌词只认 `LYRICS` / `UNSYNCEDLYRICS` / `SYNCEDLYRICS` 三个属性键；Windows 上 `TagLib::FileName` 必须传 `path.c_str()` 的 `wchar_t*`（见上面曲库那条）。
+
 **QML / shader**
 
 - QML 要用注入的单例，文件头必须有 **`import MambaMusic 1.0`**，否则 `Library` 是 `undefined` 且**不报任何错**，绑定静静变成空串。

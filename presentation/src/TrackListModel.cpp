@@ -72,6 +72,14 @@ namespace mamba::presentation
             return formatDuration(static_cast<qint64>(row.durationMs));
         case FilePathRole:
             return QString::fromStdString(row.filePath);
+        case CoverRole:
+            // 给 QML 一个 file:// URL 而不是裸路径：Image.source 拿到裸路径会
+            // 当相对地址去解析（相对当前工作目录），表现为"封面全都不显示"。
+            if (row.coverPath.empty())
+            {
+                return QString{};
+            }
+            return QUrl::fromLocalFile(QString::fromStdString(row.coverPath)).toString();
         default:
             return {};
         }
@@ -86,6 +94,7 @@ namespace mamba::presentation
             {AlbumRole, "album"},
             {DurationRole, "duration"},
             {FilePathRole, "filePath"},
+            {CoverRole, "cover"},
         };
     }
 
@@ -101,27 +110,82 @@ namespace mamba::presentation
 
     void TrackListModel::refresh()
     {
+        beginResetModel();
+        rows_.clear();
+        total_count_ = 0;
+        endResetModel();
+        emit countChanged();
+
+        setStatus(QStringLiteral("正在读取…"));
+        fetchMoreRows();
+    }
+
+    bool TrackListModel::canFetchMore(const QModelIndex &parent) const
+    {
+        if (parent.isValid())
+        {
+            return false;
+        }
+        // total_count_ 只有第一页回来后才知道；还没拿到时按"可能还有"处理。
+        return rows_.empty() || static_cast<std::int64_t>(rows_.size()) < total_count_;
+    }
+
+    void TrackListModel::fetchMore(const QModelIndex &parent)
+    {
+        if (parent.isValid())
+        {
+            return;
+        }
+        fetchMoreRows();
+    }
+
+    void TrackListModel::fetchMoreRows()
+    {
+        // 按窗口取：滚到哪里取到哪里。
+        //
+        // 一万首一次性取回来是几十毫秒的同步查询 + 十几 MB 的 DTO，
+        // 而人一次只看得到十几行。QML 的 ListView 在滚近末尾时会自动调
+        // fetchMore()，所以"分页"对用户是透明的——他只会觉得滚动没有尽头。
         catalog::contracts::ListTracks query;
-        // M1 一次取 1000 行：这是"列表还能不能滚"的实验，不是分页设计。
-        // M5 会换成按窗口取（滚动到哪里取到哪里），接口已经是 offset/limit 了。
-        query.limit = 1000;
+        query.offset = static_cast<std::int32_t>(rows_.size());
+        query.limit = kPageSize;
+        query.searchText = search_text_.toUtf8().toStdString();
 
         const auto page = queries_.ask<catalog::contracts::TrackListResult>(query);
-
-        beginResetModel();
-        if (page)
+        if (!page)
         {
-            rows_ = page.value().rows;
-            setStatus(QStringLiteral("共 %1 首").arg(static_cast<qlonglong>(page.value().totalCount)));
-        }
-        else
-        {
-            rows_.clear();
             setStatus(fromUtf8(page.error().message()));
+            return;
         }
-        endResetModel();
 
-        emit countChanged();
+        const auto &result = page.value();
+        // totalCount 每次都要更新：列表可能在两次翻页之间被导入改过。
+        total_count_ = result.totalCount;
+
+        if (!result.rows.empty())
+        {
+            const auto first = static_cast<int>(rows_.size());
+            const auto last = first + static_cast<int>(result.rows.size()) - 1;
+            beginInsertRows(QModelIndex(), first, last);
+            rows_.insert(rows_.end(), result.rows.begin(), result.rows.end());
+            endInsertRows();
+            emit countChanged();
+        }
+
+        const auto loaded = static_cast<qlonglong>(rows_.size());
+        setStatus(loaded < static_cast<qlonglong>(total_count_)
+                      ? QStringLiteral("共 %1 首（已加载 %2）").arg(static_cast<qlonglong>(total_count_)).arg(loaded)
+                      : QStringLiteral("共 %1 首").arg(static_cast<qlonglong>(total_count_)));
+    }
+
+    void TrackListModel::setSearchText(const QString &text)
+    {
+        if (search_text_ == text)
+        {
+            return;
+        }
+        search_text_ = text;
+        refresh();
     }
 
     void TrackListModel::importFolder(const QString &path)
@@ -131,18 +195,73 @@ namespace mamba::presentation
             setStatus(QStringLiteral("没有选择文件夹"));
             return;
         }
+        startImport(QStringList{path}, QString{});
+    }
 
-        catalog::contracts::ImportFolder command;
-        command.folderPath = path.toUtf8().toStdString();
-
-        const auto result = commands_.dispatch(command);
-        if (!result)
+    void TrackListModel::startImport(const QStringList &folders, const QString &firstFile)
+    {
+        // 一次只跑一批。
+        //
+        // 为什么不是"排个队慢慢跑"：导入期间用户可能又拖进来一个文件夹，
+        // 排队意味着他得等前一批结束才看到任何反馈。直接拒绝并说明原因，
+        // 比静默积压好。
+        if (busy_.exchange(true))
         {
-            setStatus(fromUtf8(result.error().message()));
+            setStatus(QStringLiteral("上一批还在导入，等它跑完"));
             return;
         }
-        // 导入写完再刷新：读侧看到的一定是已提交的数据（事务先提交，再刷新列表）。
-        refresh();
+
+        setStatus(QStringLiteral("正在导入…（%1 个文件夹）").arg(folders.size()));
+
+        // 命令离线执行：扫描一万个文件、读一万次标签是几十秒的活，
+        // 放在 GUI 线程上就是"界面白屏"。这条线是本项目"命令同步 < 5ms"
+        // 那条规矩的落地方式——慢活在调用方挪走，而不是让 Handler 变异步。
+        std::thread([self = QPointer<TrackListModel>(this), folders = QStringList{folders},
+                     firstFile = QString{firstFile}, commands = &commands_]()
+                    {
+                        std::string failure;
+
+                        for (const auto &folder : folders)
+                        {
+                            catalog::contracts::ImportFolder command;
+                            command.folderPath = folder.toUtf8().toStdString();
+                            // 走总线只拿得到"成功/失败"：dispatch 是类型擦除的，
+                            // 返回 Result<void>，ImportSummary 出不了这条通道。
+                            // 逐文件计数留在 Handler 的日志里——那是运维信息，
+                            // 界面只需要"完事了，多少首"（刷新后的总数）。
+                            if (auto result = commands->dispatch(command); !result)
+                            {
+                                failure = result.error().message();
+                            }
+                        }
+
+                        // 回到 GUI 线程再碰模型：QAbstractListModel 不是线程安全的。
+                        QMetaObject::invokeMethod(
+                            self, [self, failure, firstFile]()
+                            {
+                                if (self.isNull())
+                                {
+                                    return;
+                                }
+                                self->busy_.store(false);
+                                // 刷新会把状态改成"共 N 首"——导入刚结束，用户要看的是这个数。
+                                self->refresh();
+                                if (!failure.empty())
+                                {
+                                    self->setStatus(fromUtf8(failure));
+                                    return;
+                                }
+                                if (!firstFile.isEmpty())
+                                {
+                                    const auto row = self->rowOfPath(firstFile);
+                                    if (row >= 0)
+                                    {
+                                        self->playFrom(row);
+                                    }
+                                }
+                            },
+                            Qt::QueuedConnection);
+                    }).detach();
     }
 
     void TrackListModel::activate(int row)
@@ -214,25 +333,10 @@ namespace mamba::presentation
         }
 
         folders.removeDuplicates();
-        for (const auto &folder : folders)
-        {
-            importFolder(folder);
-        }
 
         // 拖的是文件：导入完直接播它，不要求用户再双击一次。
         // 拖的是文件夹：只导入——用户没说想听哪首，替他挑一首是越权。
-        if (!firstFile.isEmpty())
-        {
-            const auto row = rowOfPath(firstFile);
-            if (row >= 0)
-            {
-                playFrom(row);
-            }
-            else
-            {
-                setStatus(QStringLiteral("已导入，但这个文件不在曲库里：%1").arg(firstFile));
-            }
-        }
+        startImport(folders, firstFile);
     }
 
     int TrackListModel::rowOfPath(const QString &filePath) const

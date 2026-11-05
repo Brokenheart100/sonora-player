@@ -1,9 +1,10 @@
 // Catalog 的端口（应用层看得见的技术能力，但不知道谁实现）。
 //
-// 五个端口，各自对应一类"外部世界"：
+// 六个端口，各自对应一类"外部世界"：
 //   ILibraryScanner  → 文件系统（枚举某目录下的音频文件）
 //   IMetadataReader  → 标签解析（TagLib 或别的）
 //   ICreditDirectory → 艺术家/专辑的查或建
+//   ICoverStore      → 封面字节的落盘与去重（按内容寻址，同一张图只存一份）
 //   ITrackRepository → 聚合的持久化（写侧，只有"按 id 取"没有"全取出"）
 //   ITrackListReader → 投影查询（读侧，直接给 DTO）
 //
@@ -15,6 +16,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -36,6 +38,20 @@ struct TrackMetadata {
     std::string album;
     std::int64_t durationMs = 0;
     std::int64_t fileSizeBytes = 0;
+
+    // 内嵌封面的原始字节（JPEG/PNG）。读不出来就是空——封面缺失不是错误，
+    // 界面显示占位图。之所以让它跟着元数据一起回来：解析标签时封面已经在内存
+    // 里了，为它再开一次文件（M5 首扫一万首就是一万次多余 IO）。
+    std::vector<std::uint8_t> coverData;
+};
+
+// 扫描结果的一个文件。带 size 与 mtime 是刻意的：增量重扫的第一判定就是
+// "这两个值变了没有"，而目录遍历时 directory_entry 本来就有它们，
+// 不带回来就得对每个文件再 stat 一次（一万首就是一万次系统调用）。
+struct ScannedFile {
+    std::string path;   // UTF-8 绝对路径
+    std::int64_t sizeBytes = 0;
+    std::int64_t mtimeUnix = 0;
 };
 
 class ILibraryScanner {
@@ -43,8 +59,8 @@ public:
     virtual ~ILibraryScanner() = default;
 
     // 递归枚举 path 下的音频文件（扩展名白名单由实现决定）。
-    // 返回 UTF-8 绝对路径；顺序不重要，但实现应尽量稳定（便于测试与增量扫描）。
-    [[nodiscard]] virtual kernel::Result<std::vector<std::string>> scan(
+    // 顺序不重要，但实现应尽量稳定（便于测试与增量扫描）。
+    [[nodiscard]] virtual kernel::Result<std::vector<ScannedFile>> scan(
         std::string_view folderPath) const = 0;
 };
 
@@ -67,6 +83,16 @@ public:
     [[nodiscard]] virtual kernel::Result<AlbumId> resolveAlbum(std::string_view title) = 0;
 };
 
+// 库里已有一行的"文件指纹"。增量重扫只拿它跟扫描结果比，
+// 不把整个聚合读出来（读聚合一万次才是首扫慢的真正原因）。
+struct TrackFileState {
+    TrackId id;
+    std::int64_t fileMtimeUnix = 0;
+    std::int64_t fileSizeBytes = 0;
+    // 重扫时保留原始入库时间：更新一行的元数据不该让它"变成刚加进来的"。
+    std::int64_t addedAtUnix = 0;
+};
+
 class ITrackRepository {
 public:
     virtual ~ITrackRepository() = default;
@@ -75,12 +101,36 @@ public:
     // 应用层的 load-modify-save 流程，仓储不需要猜意图。
     [[nodiscard]] virtual kernel::Result<TrackId> add(const Track &track) = 0;
 
+    // 按 id 覆盖一行的可写字段。增量重扫发现文件变了时用它（标签变了、
+    // 时长变了，id 不变——播放列表里那一行不该变成另一首歌）。
+    [[nodiscard]] virtual kernel::Result<void> save(const Track &track) = 0;
+
     [[nodiscard]] virtual kernel::Result<Track> findById(TrackId id) const = 0;
 
     // 导入去重用。用路径而不是（标题+时长）：同一个文件换个标签名还是同一个文件。
     [[nodiscard]] virtual kernel::Result<bool> existsByPath(std::string_view filePath) const = 0;
 
+    // 增量重扫的判定依据。文件不在库里返回空 optional。
+    [[nodiscard]] virtual kernel::Result<std::optional<TrackFileState>> findFileState(
+        std::string_view filePath) const = 0;
+
     [[nodiscard]] virtual kernel::Result<std::int64_t> count() const = 0;
+};
+
+// 封面的落盘与去重。按**内容**寻址：同一张专辑封面在一万首歌里出现一万次，
+// 存一万份就是几百 MB 的浪费，而内容哈希天然把它们收成一份。
+//
+// 端口放在这里而不是 adapters，理由和别的端口一样：应用层要能说"把这堆字节收好，
+// 给我一个键"，但它不该知道键是 sha 还是 fnv、文件落在哪个目录、是不是干脆塞进库。
+class ICoverStore {
+public:
+    virtual ~ICoverStore() = default;
+
+    // 收下封面字节，返回可存进 tracks.cover_key 的键。
+    // 同一个 key 的二次调用必须是幂等的（内容寻址的必然结果）。
+    // 空字节返回空串：**没有封面不是错误**。
+    [[nodiscard]] virtual kernel::Result<std::string> store(
+        std::span<const std::uint8_t> bytes) = 0;
 };
 
 // 读侧投影。名字里带 Reader 而不是 Repository，是因为它读的是**视图**，

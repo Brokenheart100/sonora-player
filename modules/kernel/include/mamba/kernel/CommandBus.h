@@ -10,6 +10,7 @@
 #include <functional>
 #include <memory>
 #include <string_view>
+#include <thread>
 #include <typeindex>
 #include <unordered_map>
 #include <utility>
@@ -24,7 +25,7 @@ public:
     // thresholdMs：同步耗时上限。超过就记一条 warn（debug 下相当于断言）。
     // 5ms 是人能察觉不到的边界，也是 docs/IMPLEMENTATION.md 里的性能预算。
     explicit CommandBus(ILogger *logger = nullptr, double slowThresholdMs = 5.0)
-        : logger_(logger), slowThresholdMs_(slowThresholdMs)
+        : logger_(logger), slowThresholdMs_(slowThresholdMs), ownerThread_(std::this_thread::get_id())
     {
     }
 
@@ -59,7 +60,14 @@ public:
                                  std::chrono::steady_clock::now() - started)
                                  .count();
 
-        if (elapsed > slowThresholdMs_ && logger_ != nullptr) {
+        // 只统计"在构造总线的那个线程上"的耗时。
+        //
+        // 这条上限守的是事件循环：命令在 GUI 线程上跑 40ms，界面就卡 40ms。
+        // 但调用方完全可以把整个命令搬到后台线程去执行（M5 的导入就是这么做的）——
+        // 那时慢不是缺陷，是设计。分不清这两者的话，警告会变成必须无视的噪音，
+        // 而"必须无视"的警告等于没有警告。
+        if (elapsed > slowThresholdMs_ && logger_ != nullptr &&
+            std::this_thread::get_id() == ownerThread_) {
             logger_->warn("命令同步耗时 {:.2f}ms（上限 {:.1f}ms）——慢活应该投 ITaskQueue",
                           elapsed, slowThresholdMs_);
         }
@@ -72,6 +80,7 @@ private:
     std::unordered_map<std::type_index, std::function<Result<void>(const void *)>> table_;
     ILogger *logger_ = nullptr;
     double slowThresholdMs_ = 5.0;
+    std::thread::id ownerThread_;
 };
 
 }  // namespace mamba::kernel
