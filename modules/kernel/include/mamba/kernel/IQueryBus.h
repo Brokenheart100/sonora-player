@@ -14,32 +14,36 @@
 #include "mamba/kernel/Error.h"
 #include "mamba/kernel/Result.h"
 
-namespace mamba::kernel {
+namespace mamba::kernel
+{
 
-class IQueryBus {
-public:
-    virtual ~IQueryBus() = default;
-
-    [[nodiscard]] virtual std::any askRaw(const void *query, const std::type_info &type) = 0;
-
-    template <class TResult, class TQuery>
-    [[nodiscard]] Result<TResult> ask(const TQuery &query)
+    class IQueryBus
     {
-        std::any boxed = askRaw(&query, typeid(TQuery));
+    public:
+        virtual ~IQueryBus() = default;
 
-        if (!boxed.has_value()) {
-            return Result<TResult>::fail(
-                Error{ErrorCode::NotFound, "没有为这个查询注册 handler"});
+        [[nodiscard]] virtual std::any askRaw(const void *query, const std::type_info &type) = 0;
+
+        template <class TResult, class TQuery>
+        [[nodiscard]] Result<TResult> ask(const TQuery &query)
+        {
+            std::any boxed = askRaw(&query, typeid(TQuery));
+
+            if (!boxed.has_value())
+            {
+                return Result<TResult>::fail(
+                    Error{ErrorCode::NotFound, "没有为这个查询注册 handler"});
+            }
+
+            auto *result = std::any_cast<Result<TResult>>(&boxed);
+            if (result == nullptr)
+            {
+                // 注册了 handler 但返回类型对不上：这是 bug，不是业务失败。
+                return Result<TResult>::fail(
+                    Error{ErrorCode::Internal, "查询 handler 的返回类型与 ask<T>() 不一致"});
+            }
+            return *result;
         }
+    };
 
-        auto *result = std::any_cast<Result<TResult>>(&boxed);
-        if (result == nullptr) {
-            // 注册了 handler 但返回类型对不上：这是 bug，不是业务失败。
-            return Result<TResult>::fail(
-                Error{ErrorCode::Internal, "查询 handler 的返回类型与 ask<T>() 不一致"});
-        }
-        return *result;
-    }
-};
-
-}  // namespace mamba::kernel
+} // namespace mamba::kernel

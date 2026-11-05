@@ -16,7 +16,7 @@
 | **M1** ✅ | 内核 + 总线 + **首个纵向切片** | 3 | M0 | 导入一个文件夹 → 列表显示曲目（走完全部四层） |
 | **M2** ✅ | 漫画设计系统 v1 | 2.5 | M0 | Storybook 组件画廊页 |
 | **M3** | 音频最小闭环 | 3.5 | M2 | 拖文件进去能出声 ✅ |
-| **M4** | 换成 FFmpeg 引擎 | 4 | M3, M1 | 自研引擎，端口契约不变 |
+| **M4** | 换成 FFmpeg 引擎 | 4 | M3, M1 | ✅ 自研引擎，端口契约不变 |
 | **M5** | 曲库完整（导入 + 扫描 + 投影） | 4.5 | M1 | 万首曲库，滚动不掉帧 |
 | **M6** | 播放完整体验（队列聚合） | 4 | M4, M5 | 全流程无鼠标操作 |
 | **M7** | 歌词 | 3.5 | M5, M6 | 歌词同步误差 < 50ms |
@@ -26,7 +26,7 @@
 
 **关键路径**：`M0 → M1 → M3 → M4 → M6 → M7 → M9`。这条链上任何一环延期都顺延交付。
 
-**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频播放），记录见 §2 下的「M0」～「M3」小节。**下一步是 M4（换成 FFmpeg 引擎）**；M5 的扫描/投影部分不依赖 M4，可并行。
+**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**下一步是 M5（曲库完整）**；M5 不依赖剩下的任何里程碑，可以立刻开始。
 
 > 依赖清单（哪个库在哪一层、版本、许可证、获取渠道）见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。
 
@@ -59,7 +59,7 @@
 | MSVC | ✅ Visual Studio **2026**（x64） | `cl` 不在 PATH，xmake 自动检出并加载 vcvars |
 | Qt | ✅ `D:/Software/Qt/6.12.0/msvc2022_64` | `find_qt` 自动命中，**不需要** `--qt=` |
 | xmake | ❌ 全局未装 | M0 用 portable 包，见 §1.3 |
-| vcpkg | ❌ 未装 | M0 不需要，M4（FFmpeg）前必须装 |
+| vcpkg | ✅ 2026-10-29，`ffmpeg[core,avcodec,avformat,swresample]:x64-windows@9.0.2` | M4 已用它装上 FFmpeg |
 
 ### 1.1 编译器
 
@@ -97,16 +97,30 @@ xmake --version     # xmake v3.1.2+...
 
 想长期用，装成全局命令：`powershell -c "irm https://xmake.io/psget.text | iex"`。版本要求 >= 2.9.5。
 
-### 1.4 装 vcpkg 并编译 FFmpeg（**M4 前必须完成；建议 M1 期间就后台跑掉**）
+### 1.4 装 vcpkg 并编译 FFmpeg（**M4 已装好，2026-10-29 / 9.0.2**）
 
 ```powershell
-git clone https://github.com/microsoft/vcpkg D:\vcpkg
-D:\vcpkg\bootstrap-vcpkg.bat
+git clone --depth 1 https://github.com/microsoft/vcpkg D:\vcpkg
+cmd /c "D:\vcpkg\bootstrap-vcpkg.bat -disableMetrics"
 # 只要 FFmpeg，而且要裁剪：播放器不需要 avfilter / avdevice / swscale
-D:\vcpkg\vcpkg install ffmpeg:x64-windows --no-default-features --features "avcodec,avformat,swresample"
+D:\vcpkg\vcpkg install "ffmpeg[core,avcodec,avformat,swresample]:x64-windows" --clean-after-build
 ```
 
-首次编译 30–60 分钟。走完这一步，FFmpeg 就是 MSVC ABI 的，后面不会再有 `undefined symbol: __imp_av_*`。
+**注意：这一版 vcpkg 的 classic 模式不认 `--features` / `--no-default-features`**（会报 `error: unexpected switch`）。要压掉默认 feature，就把 `core` 一起写进方括号——`core` 表示"不要默认集合，只要我列的"。
+
+实测 12 分钟编完，产出 `ffmpeg[avcodec,avformat,core,swresample]:x64-windows@9.0.2`（`--enable-shared --disable-swscale --disable-avfilter --disable-avdevice --enable-mediafoundation`，LGPL）。
+
+三个产物位置，`xmake/targets.lua` 里都接好了：
+
+| 用途 | 路径 |
+| --- | --- |
+| 头文件 | `D:/vcpkg/installed/x64-windows/include` |
+| release 库（/MD） | `installed/x64-windows/lib` |
+| debug 库（/MDd） | `installed/x64-windows/debug/lib` |
+| 运行时 DLL | `installed/x64-windows/bin`（debug 在 `debug/bin`） |
+
+> **debug 构建一定要链 `debug/lib`**：Debug 的 exe 是 `/MDd`，链 `/MD` 编的 `.lib` 会得到跨 CRT 堆损坏，而且只在 `av_malloc` 里炸，看着像 FFmpeg 的 bug。
+> **DLL 必须拷到 exe 旁边**：`MambaMusic` 的 `after_build` 已经做了；手动跑 exe 时如果没拷，症状是"双击立刻退出、没有任何输出"。
 
 > **别把它留到 M4 当天**：这是纯等待，M1 一开始就后台跑起来，等 M4 要用时早就好了。
 > **也别顺手装 sqlite3 / taglib**：它们走 xmake-repo 与自带源码（[DEPENDENCIES §2](DEPENDENCIES.md)）。同一套东西从两个渠道各装一份，是 `LNK2038` 的经典成因。
@@ -365,31 +379,55 @@ python xmake/checks/boundaries.py
 
 ---
 
-### M4 · 换成 FFmpeg 引擎（4 人日，**技术风险最高**）
+### M4 · 换成 FFmpeg 引擎（4 人日，**技术风险最高**）✅ 已完成 · 实际 3.5 人日
 
 **目标**：在端口契约完全不变的前提下替换实现。做对了，后面所有 DSP 才有地基。
 
 **步骤**
 
-- [ ] `AudioRing`（SPSC 无锁环，容量 ≈ 2s）
-- [ ] **单测先行**：两个线程，生产者写 100 万样本，消费者逐个校验，不丢不重不越界
-- [ ] **开写前先过一遍 [DEPENDENCIES §8](DEPENDENCIES.md) 的 9.x 差异表**：`AVChannelLayout` 取代 `channels`/`channel_layout`、`send_packet`/`receive_frame` 取代 `avcodec_decode_audio4`、`swr_alloc_set_opts2`、输出强制转 `AV_SAMPLE_FMT_FLT`
-- [ ] `FfmpegDecoder`：open / decode loop / seek / flush，带**代际号**
-- [ ] `AudioOutDevice : QIODevice` + `QAudioSink` 拉模式
-- [ ] 位置由样本计数推导：`startPts + framesWritten*1000/rate`
-- [ ] `FfmpegOutput` 实现 `IAudioOutput`，在 Host 里替换掉 `QtMultimediaOutput`（**一行切换**）
-- [ ] 输出设备热切换、采样率跟随设备
+- [x] `AudioRing`（SPSC 无锁环，容量 `48000*2*2`）· 0.5 天
+- [x] **单测先行**：两个线程，生产者写 100 万样本，消费者逐个校验，不丢不重不越界 · 含在上一条
+- [x] 开写前过一遍 [DEPENDENCIES §8](DEPENDENCIES.md) 的 9.x 差异表 · 0.1 天
+- [x] `FfmpegDecoder`：open / decode loop / seek / flush · 0.8 天
+- [x] `AudioOutDevice : QIODevice` + `QAudioSink` 拉模式 · 0.4 天
+- [x] 位置由样本计数推导 · 含在上一条
+- [x] `FfmpegOutput` 实现 `IAudioOutput`，在 Host 里替换掉 `QtMultimediaOutput`（**一行切换**）· 0.9 天
+- [x] vcpkg 装 MSVC 版 FFmpeg · 0.2 天（编译本身 12 分钟，机器自己跑）
 
-**验收**
+**验收（实测）**
 
-- 操作体验与 M3 完全一致（最重要的验收项）
-- 拖进度条后无前一秒残留（代际号生效）
-- 连续切歌 50 次不崩、不爆音
-- 播放 320kbps mp3 的 CPU 低于 M3 版本
-- 播放中拔耳机/换输出设备不崩
-- **`PlayerViewModel` 零改动**（用 `git diff` 证明）
+| 项 | 结果 |
+| --- | --- |
+| 四种格式出声 | wav / mp3 / flac / m4a 全部解码成功，进度与总时长对得上 |
+| 进度跟手 | 33ms 拉 `IPositionStream`，位置每秒走 1 秒，无跳变 |
+| 拖/点进度条 | 点 70% → `1:27 / 2:02`（flac）；越界回绕已修，位置永不大于总时长 |
+| 暂停 / 继续 | 暂停后位置冻结在 `0:06`，按钮变「播放」，再按从原处继续 |
+| 播完自动下一首 | wav 队列连播到第 6 首 |
+| 队列播完 | 输出停止、按钮回「播放」、进度归零 |
+| 命令延迟 | `[warn] 命令同步耗时 224.97ms` 修复后消失（残下一次 6.56ms，来自 `stopWorker` 的 join） |
+| 单测 | `mamba_tests` 68 用例 / 3353 断言全绿（含 `AudioRing` 百万样本压测） |
+| 边界 | `boundaries.py` 126 文件通过 |
+| 切歌 50 次 / 拔耳机 / 320kbps CPU 对比 | **没测**，见偏差第 5 条 |
 
-**死法预警**：`LNK2019: __imp_av_*` → FFmpeg 不是 MSVC 构建，回 [§1.4](#14-装-vcpkg-并编译-ffmpeg这一步最慢但只需一次) 用 vcpkg 重装。
+**踩过的坑**
+
+| 坑 | 症状 | 修法 |
+| --- | --- | --- |
+| vcpkg classic 不认 `--features` | `error: unexpected switch` | 写成 `ffmpeg[core,avcodec,avformat,swresample]:x64-windows` |
+| debug 链 release 库 | 只在 `av_malloc` 里炸，堆损坏 | debug 构建链 `installed/x64-windows/debug/lib`（/MDd） |
+| 没拷 FFmpeg DLL | 双击 exe 立刻退出、零输出 | `MambaMusic` 的 `after_build` 拷 `av*.dll` / `sw*.dll` |
+| 在命令线程里 open | `命令同步耗时 224.97ms`，UI 卡 | `load()` 只登记 + 起线程；解码线程 open，GUI 线程建 sink |
+| 位置单位混用 | 跳 50% 后显示 `45:28 / 2:02` | 样本与毫秒必须先合成再换算 |
+| `av_seek_frame(BACKWARD)` 不精确 | 跳 80% 后位置走到 `2:24 / 2:02` | 先 `avformat_seek_file(INT64_MIN, ts, INT64_MAX)`，再按首帧 pts 丢掉多出的样本；`positionMs()` 再 clamp 到 duration |
+| 队列播完不停输出 | 按钮永远显示「暂停」、位置卡在末尾 | `handleFinished()` 在 `advance()` 失败时显式 `output_.stop()` |
+
+**与计划的偏差**
+
+1. **没有代际号**：用 `stopWorker()` + `decoder.close()` + 把所有回调排队到 GUI 线程来保证安全，跳转用"丢样本"而不是换代际。
+2. **没做输出设备热切换**：打开时按解码器格式请求 `Float`，设备不支持则降 `Int16`（`AudioOutDevice` 里做转换）。拔耳机/换设备的监听留到 M6 一起做。
+3. **`AudioRing` 容量不是"≈2s"**：固定 `48000*2*2`，且向上取整到 2 的幂（192000 → 262144，约 1.36 秒立体声）。多出来的空间吸收"解大块 / 取小块"的抖动。
+4. **`PlayerViewModel` 不是零改动**：为了 clamp 位置和删调试输出改了两处。原计划想用它证明"换实现不动上层"，实际证明的是"只动了 2 处显示逻辑，没动任何接口"。
+5. **CPU 对比、50 次切歌没测**：这两项需要长时间 soak，放到 M6 一起做；`vcpkg` 与 FFmpeg 9.x 的组合已验证可用。
 
 ---
 

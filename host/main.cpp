@@ -44,7 +44,7 @@
 #include "mamba/platform/storage/Migrator.h"
 #include "mamba/platform/storage/SqliteConnection.h"
 #include "mamba/platform/storage/SqliteUnitOfWork.h"
-#include "mamba/platform/audio/QtMultimediaOutput.h"
+#include "mamba/platform/audio/FfmpegOutput.h"
 #include "mamba/playback/core/app/PlaybackHandlers.h"
 #include "mamba/playback/core/app/PlaybackService.h"
 #include "mamba/presentation/PlayerViewModel.h"
@@ -186,7 +186,12 @@ int main(int argc, char *argv[])
     // ---- 播放 ----
     // audioOutput 同时实现 IAudioOutput（给领域用）与 IPositionStream（给界面用）。
     // 它只被这一层认识；PlaybackService 拿到的是引用，看不到 Qt。
-    audio::QtMultimediaOutput audioOutput;
+    //
+    // M3 用的是 QtMultimediaOutput（QMediaPlayer，格式支持看系统）。M4 换成
+    // FfmpegOutput：解码自己来，输出走 QAudioSink + AudioRing。
+    // 想退回旧引擎，把这一行换成 audio::QtMultimediaOutput 即可 —— 两个类实现的
+    // 是同一组端口，其余代码一行都不用动。这正是 §2.5 依赖倒置要换到的东西。
+    audio::FfmpegOutput audioOutput;
     playback::core::PlaybackService playbackService{audioOutput, &logger};
     playback::core::registerPlayback(commands, queries, playbackService);
 

@@ -1,0 +1,15 @@
+{
+    // 让 cpptools 用 xmake-vscode 自动生成的编译数据库做补全/跳转。
+    // compile_commands.json 由 `xmake project -k compile_commands` 产出，
+    // 插件在 build 后（xmake.autoGenerateCompileCommands = onBuild）会自动刷新它。
+    "configurations": [
+        {
+            "name": "xmake-msvc-x64",
+            "compileCommands": "${workspaceFolder}/.vscode/compile_commands.json",
+            "cppStandard": "c++20",
+            "cStandard": "c17",
+            "intelliSenseMode": "windows-msvc-x64"
+        }
+    ],
+    "version": 4
+}

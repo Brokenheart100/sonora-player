@@ -133,7 +133,12 @@ kernel::Result<void> PlaybackService::loadCurrentAndPlay() {
 void PlaybackService::handleFinished() {
     if (queue_.advance()) {
         (void)loadCurrentAndPlay();
-    } else if (logger_ != nullptr) {
+        return;
+    }
+    // 队列播完：必须显式停掉输出。否则引擎还停在"正在播"的状态，
+    // 界面上的按钮就永远显示"暂停"，位置也卡在末尾不再刷新。
+    (void)output_.stop();
+    if (logger_ != nullptr) {
         logger_->info("队列播完：共 {} 首", queue_.size());
     }
 }

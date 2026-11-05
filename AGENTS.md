@@ -54,6 +54,16 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 - **跨 target 的公开头里不许出现 Qt 类型**。Qt 的 includedirs 是 private 的，不随 `add_deps` 传给消费者，症状是下游 `fatal error C1083: 无法打开包括文件: "QAudioOutput"`。要藏就藏进 `struct Impl`（pimpl）：`platform/audio/QtMultimediaOutput.h` 是样板。
 - 注册 handler 时注意两个总线的能力不同：`CommandBus::on` 有两个 overload（收可调用对象 / 收 `shared_ptr<THandler>`），**传值对象两边都不匹配**（`error C2665`）；`QueryBus::on` 只有可调用版本。统一 `std::make_shared` 或包一层 lambda。
 
+**FFmpeg / vcpkg**
+
+- FFmpeg 走 vcpkg（`D:/vcpkg`），`xmake/targets.lua` 顶部有 `VCPKG_ROOT` / `VCPKG_TRIPLET` 常量。**debug 构建必须链 `installed/x64-windows/debug/lib`**，链 release 那套是跨 CRT 堆损坏，只会在 `av_malloc` 里炸。
+- 装 feature 要写进方括号：`ffmpeg[core,avcodec,avformat,swresample]:x64-windows`。这一版 vcpkg 的 classic 模式**不认** `--features` / `--no-default-features`（`error: unexpected switch`）。
+- `MambaMusic` 的 `after_build` 会把 `av*.dll` / `sw*.dll` 拷到 exe 旁边。缺这一步的症状是"双击立刻退出、没有任何输出"（不是崩溃，是 DLL 找不到）。
+- **`load()` 里不许同步 open 文件**：`avformat_open_input` + 建 `QAudioSink` 实测 225ms，会撞上 5ms 的命令延迟断言。现在 `FfmpegOutput::load()` 只登记路径并起线程，解码线程 open、GUI 线程建 sink。
+- 位置一律"样本记账"：`(seekStartSamples + written - ring.availableToRead()) * 1000 / rate`，最后 clamp 到 `durationMs`。**别把样本和毫秒分开写**——写成两段会让跳转后位置显示成 `45:28 / 2:02`。
+- 跳转精度：`av_seek_frame(..., AVSEEK_FLAG_BACKWARD)` 只落到关键帧附近，能早几十秒。用 `avformat_seek_file(fmt, stream, INT64_MIN, ts, INT64_MAX, 0)`，再按首帧 `pts` 把多出来的样本丢掉。
+- 队列播完必须显式 `output_.stop()`。只打日志不停输出，界面上的按钮会永远停在「暂停」。
+
 **QML / shader**
 
 - QML 要用注入的单例，文件头必须有 **`import MambaMusic 1.0`**，否则 `Library` 是 `undefined` 且**不报任何错**，绑定静静变成空串。

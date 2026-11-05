@@ -26,6 +26,14 @@ local function rel(...)
     return path.join(ROOT, ...)
 end
 
+-- FFmpeg 只从 vcpkg 拿。理由见 docs/DEPENDENCIES.md §3：gyan.dev / BtbN 的
+-- Windows 预编译包都是 MinGW 构建（.dll.a），和 MSVC 链接会得到
+-- `LNK2019: __imp_av_*` 那种看似"函数不存在"的错。
+-- 路径可用环境变量 VCPKG_ROOT 覆盖，默认就是本机那份。
+local VCPKG_ROOT = os.getenv("VCPKG_ROOT") or "D:/vcpkg"
+local VCPKG_TRIPLET = "x64-windows"
+local VCPKG_INSTALLED = path.join(VCPKG_ROOT, "installed", VCPKG_TRIPLET)
+
 -- 所有 target 共同的 Windows / MSVC 约束。集中一处，避免某个 target 漏规则。
 local function msvc()
     set_languages("c++20")
@@ -158,12 +166,21 @@ lib({
     qt = {"QtCore"},
 })
 lib({
+    name = "Mamba.Platform.AudioRing",
+    dir = P .. "audio/ring",
+    -- 纯 C++、零 Qt：SPSC 环形缓冲是音频线程与解码线程之间唯一的数据通道，
+    -- 它必须能被 mamba_tests 直接链进来跑两线程压测（M4「单测先行」那一条）。
+    -- 一旦把它塞进 Mamba.Platform.Audio，想测它就得拖 Qt DLL，那条压测就写不成了。
+    deps = {"Mamba.Kernel"},
+})
+lib({
     name = "Mamba.Platform.Audio",
     dir = P .. "audio",
     -- 只依赖播放模块的**契约**：音频输出是实现 IAudioOutput 端口的适配器，
     -- 它不该知道 PlayQueue 的存在。
     -- M3：加 QtMultimedia（QMediaPlayer 过渡引擎，见 docs/IMPLEMENTATION.md §M3）。
-    deps = {"Mamba.Kernel", "Mamba.Playback.Contracts"},
+    -- M4：加 ffmpeg（vcpkg 构建，见 docs/DEPENDENCIES.md §3），换掉 QMediaPlayer。
+    deps = {"Mamba.Kernel", "Mamba.Playback.Contracts", "Mamba.Platform.AudioRing"},
     qt = {"QtCore", "QtMultimedia"},
 })
 lib({
@@ -172,6 +189,16 @@ lib({
     deps = {"Mamba.Kernel"},
     qt = {"QtCore"},
 })
+
+-- FFmpeg 的 include/link 只挂在这一个 target 上：全项目只有它懂 FFmpeg。
+-- 注意 lib() 最后会把当前 target 设成别人，所以这里必须重新 target() 一次。
+target("Mamba.Platform.Audio")
+add_includedirs(path.join(VCPKG_INSTALLED, "include"))
+add_links("avformat", "avcodec", "swresample", "avutil")
+-- vcpkg 的 x64-windows 是 release + debug 两套：lib/ 用 /MD 编，debug/lib/ 用 /MDd 编。
+-- 我们 debug 构建走的是 /MDd（Qt 的 debug DLL 逼的），链错那一套得到的还是跨 CRT 的
+-- 堆损坏，只不过这次炸在 FFmpeg 的 av_malloc 里，症状更难认。
+add_linkdirs(path.join(VCPKG_INSTALLED, is_mode("debug") and "debug/lib" or "lib"))
 
 -- ── 表现层（MVVM）───────────────────────────────────────────────────────────
 -- 只依赖各模块的 Contracts。**这一行下面不许出现任何 *.Core。**
@@ -208,6 +235,20 @@ add_deps({
     "Mamba.Platform.Win",
 })
 
+-- vcpkg 装出来的 DLL 不会自己走到 exe 旁边。少这一步的症状是：`xmake` 一切正常、
+-- 双击 exe 立刻退出且没有任何输出（系统找不到 avcodec-*.dll）。
+after_build(function(target)
+    local bin = path.join(VCPKG_INSTALLED, is_mode("debug") and "debug/bin" or "bin")
+    if not os.isdir(bin) then
+        return
+    end
+    for _, pattern in ipairs({"av*.dll", "sw*.dll"}) do
+        for _, dll in ipairs(os.files(path.join(bin, pattern))) do
+            os.cp(dll, target:targetdir(), {force = true})
+        end
+    end
+end)
+
 -- ── 测试二进制 ──────────────────────────────────────────────────────────────
 -- 只链纯 C++ target，所以它不初始化 Qt、不加载 Qt DLL、能当纯单测跑。
 -- 领域层测不干净，说明领域层已经被污染了。
@@ -239,4 +280,6 @@ add_deps({
     -- 就是在这里被证明的，不是靠假端口。
     "Mamba.Platform.Storage",
     "Mamba.Catalog.Adapters",
+    -- 环形缓冲同样是纯 C++：M4 的两线程压测（100 万样本，不丢不重不越界）跑在这里。
+    "Mamba.Platform.AudioRing",
 })

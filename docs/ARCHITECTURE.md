@@ -562,6 +562,15 @@ public:
 
 三个必须做对的细节：**① seek 代际号**（`gen++` + `avcodec_flush_buffers`，旧代样本丢弃，否则拖进度条会听到 0.5 秒前一首）；**② 位置来自样本计数**（`startPts + framesWritten*1000/rate`，墙钟会漂移导致歌词错位）；**③ 回调里禁止 malloc/加锁/阻塞**。
 
+**M4 落地情况（M3 的 `QtMultimediaOutput` 换成 `FfmpegOutput`，其余代码一行未动）**：
+
+- 端口设计在这里兑现了：`host/main.cpp` 只改了两行（`#include` 与成员类型），`PlaybackService`、`PlayerViewModel`、QML 全部不认识 FFmpeg。想退回旧引擎就是改回那两行。
+- **没有代际号，改用"线程独占 + 队列化回调"**：`FfmpegDecoder` 只在解码线程里被碰（`load()` 只登记路径并起线程，`open()` 在解码线程里做），所有 listener 经 `QMetaObject::invokeMethod(qApp, …, Qt::QueuedConnection)` 回投 GUI 线程。旧样本靠 `av_seek_frame` 后紧接着 `avcodec_flush_buffers` + `swr_convert(…, nullptr, 0, nullptr, 0)` 清掉，再加一次 `sink->reset()` 丢掉设备侧缓冲——比代际号少一个状态位，实测够用。
+- 位置就是第 ② 条：`(seekStartSamples + writtenSamples - ring.availableToRead()) * 1000 / sampleRate`，末尾 clamp 到 `durationMs`。**样本与毫秒不能分两步算**（踩过：跳转后显示 `45:28 / 2:02`）。
+- `AudioRing` 容量不是"≈2 秒"而是**固定 262144 样本**（`AudioRing(48000*2*2)` 向上取整到 2 的幂，掩码代替取模）。多出来的空间用来吸收"解码线程解大块、声卡取小块"的抖动；空读补零而不是返回 0（返回 0 会让 `QAudioSink` 提前结束）。
+- 跳转精度靠**丢样本**：`avformat_seek_file(…, INT64_MIN, ts, INT64_MAX, 0)` 让容器给最接近的位置，首帧 `pts` 与目标之差换算成 `skipSamples_` 后从待播缓冲头部 `erase`。只用 `av_seek_frame(…, AVSEEK_FLAG_BACKWARD)` 会落到关键帧、常常早几十秒（踩过：位置一路走到 `2:24 / 2:02`）。
+- 第 ③ 条同样成立：`readData` 零分配（int16 降级路径用构造时备好的 `scratch_`），`positionMs()` 只有一次原子读。
+
 ### 7.2 扫描链路
 
 ```

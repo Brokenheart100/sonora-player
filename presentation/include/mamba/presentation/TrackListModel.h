@@ -21,64 +21,67 @@
 #include "mamba/kernel/ICommandBus.h"
 #include "mamba/kernel/IQueryBus.h"
 
-namespace mamba::presentation {
+namespace mamba::presentation
+{
 
-class TrackListModel final : public QAbstractListModel {
-    Q_OBJECT
-    Q_PROPERTY(int count READ count NOTIFY countChanged)
-    Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+    class TrackListModel final : public QAbstractListModel
+    {
+        Q_OBJECT
+        Q_PROPERTY(int count READ count NOTIFY countChanged)
+        Q_PROPERTY(QString status READ status NOTIFY statusChanged)
 
-public:
-    enum Role {
-        TitleRole = Qt::UserRole + 1,
-        ArtistRole,
-        AlbumRole,
-        DurationRole,
-        FilePathRole,
+    public:
+        enum Role
+        {
+            TitleRole = Qt::UserRole + 1,
+            ArtistRole,
+            AlbumRole,
+            DurationRole,
+            FilePathRole,
+        };
+        Q_ENUM(Role)
+
+        TrackListModel(kernel::ICommandBus &commands, kernel::IQueryBus &queries,
+                       QObject *parent = nullptr);
+
+        [[nodiscard]] int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+        [[nodiscard]] QVariant data(const QModelIndex &index, int role) const override;
+        [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+
+        [[nodiscard]] int count() const { return static_cast<int>(rows_.size()); }
+        [[nodiscard]] QString status() const { return status_; }
+
+        // 重新跑一次列表查询。M1 是全量刷新；分页与增量留给 M5 的投影表。
+        Q_INVOKABLE void refresh();
+
+        // 导入一个文件夹。path 来自 QML（UTF-8），交给命令总线时也保持 UTF-8。
+        Q_INVOKABLE void importFolder(const QString &path);
+
+        // 双击第 row 行：把整个列表当成队列，从这一行开始播。
+        // 「整个列表」而不是「这一首」——否则"下一首"无处可去。
+        Q_INVOKABLE void activate(int row);
+
+        // 拖进来的东西（M3 验收：拖一个 mp3 就出声）。
+        // 规则：文件 → 导入它所在目录 → 找到它 → 从它开始播；文件夹 → 只导入。
+        Q_INVOKABLE void dropUrls(const QVariantList &urls);
+
+    signals:
+        void countChanged();
+        void statusChanged();
+
+        // 已经开始播放（或尝试播放）。组合根据此刷新 PlayerViewModel。
+        void playbackStarted();
+
+    private:
+        void setStatus(QString text);
+        void playFrom(int row);
+        // 在已加载的行里按路径找下标；找不到返回 -1。路径比较忽略大小写（Windows）。
+        [[nodiscard]] int rowOfPath(const QString &filePath) const;
+
+        kernel::ICommandBus &commands_;
+        kernel::IQueryBus &queries_;
+        std::vector<catalog::contracts::TrackDto> rows_;
+        QString status_;
     };
-    Q_ENUM(Role)
 
-    TrackListModel(kernel::ICommandBus &commands, kernel::IQueryBus &queries,
-                   QObject *parent = nullptr);
-
-    [[nodiscard]] int rowCount(const QModelIndex &parent = QModelIndex()) const override;
-    [[nodiscard]] QVariant data(const QModelIndex &index, int role) const override;
-    [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
-
-    [[nodiscard]] int count() const { return static_cast<int>(rows_.size()); }
-    [[nodiscard]] QString status() const { return status_; }
-
-    // 重新跑一次列表查询。M1 是全量刷新；分页与增量留给 M5 的投影表。
-    Q_INVOKABLE void refresh();
-
-    // 导入一个文件夹。path 来自 QML（UTF-8），交给命令总线时也保持 UTF-8。
-    Q_INVOKABLE void importFolder(const QString &path);
-
-    // 双击第 row 行：把整个列表当成队列，从这一行开始播。
-    // 「整个列表」而不是「这一首」——否则"下一首"无处可去。
-    Q_INVOKABLE void activate(int row);
-
-    // 拖进来的东西（M3 验收：拖一个 mp3 就出声）。
-    // 规则：文件 → 导入它所在目录 → 找到它 → 从它开始播；文件夹 → 只导入。
-    Q_INVOKABLE void dropUrls(const QVariantList &urls);
-
-signals:
-    void countChanged();
-    void statusChanged();
-
-    // 已经开始播放（或尝试播放）。组合根据此刷新 PlayerViewModel。
-    void playbackStarted();
-
-private:
-    void setStatus(QString text);
-    void playFrom(int row);
-    // 在已加载的行里按路径找下标；找不到返回 -1。路径比较忽略大小写（Windows）。
-    [[nodiscard]] int rowOfPath(const QString &filePath) const;
-
-    kernel::ICommandBus &commands_;
-    kernel::IQueryBus &queries_;
-    std::vector<catalog::contracts::TrackDto> rows_;
-    QString status_;
-};
-
-}  // namespace mamba::presentation
+} // namespace mamba::presentation
