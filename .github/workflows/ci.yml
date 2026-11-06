@@ -178,7 +178,10 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
-          cache: true
+          # 关掉 action 自带的 Qt 缓存：它的 cache key 不含 modules，缓存命中时
+          # 会还原一份**没有 qtmultimedia** 的 Qt，于是我们这次刚修好的 C1083 又回来。
+          # 省下的 2 分钟不值得换来这种静默失效。
+          cache: false
           # QtMultimedia 在官方仓里是独立 addons 归档，不随基础包一起装。项目
           # platform/audio 有两条输出实现——QtMultimediaOutput.cpp（QAudioOutput）
           # 与 FfmpegOutput.cpp（QAudioSink）——缺这个模块直接
