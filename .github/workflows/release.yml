@@ -1,0 +1,672 @@
+# Sonora · 发布
+#
+# 触发：推一个 v* tag（v0.1.0、v0.2.0-rc.1）。也可以 workflow_dispatch 一个
+# 已存在的 tag 重发 —— 发版最常失败的一步（挂资产、写说明）不该迫使人改版本号。
+#
+# 只跑 release 一种模式：交付形态只有 release，debug 的「能编能测」由 ci.yml
+# 的 matrix 覆盖。这里比 ci 多做三件 ci 不该做的事：windeployqt 打包、从打好的
+# zip 里解出来真的启动一次、挂到 GitHub Release。
+#
+# 为什么**不**抽 reusable workflow：两者的 job 图不一样（ci 是 2×matrix 的并行
+# 构建，发布是 meta → deps → build → publish 的一条链）。抽成 workflow_call 就得
+# 把 matrix、缓存保存策略、打包步骤全变成 inputs，读的人要跳两层文件才能回答
+# 「这个 tag 到底跑了几步」，而日志也多一层嵌套。这里选择复制那段环境装配
+# （Qt / xmake / vcpkg，约 40 行），再用 meta job 的「版本常量与 ci.yml 一致」
+# 闸把复制的风险变成会叫的失败。真到该抽的时候，抽 composite action
+# （.github/actions/setup-toolchain）而不是 workflow：前者只是步骤列表，进哪条
+# 流水线都行，日志不减层次。
+#
+# 权限：顶层只读。contents: write 只给 publish，而那个 job 不编任何东西、只跑
+# gh —— 编译产物与写权限不待在同一个进程里。
+#
+# 出事了怎么看（公开仓库，不用登录）：
+#   * ::error:: / ::warning:: 注解在公开 run 页上直接可见 —— 所以每个可能失败的
+#     脚本都把自己的结论写成注解，而不是只 echo 进日志；
+#   * $GITHUB_STEP_SUMMARY 同样公开可见，发布 job 会把 tag、commit、包大小、sha256
+#     写进去；
+#   * job 日志本身要登录才能看（公开仓库也是），别把关键信息只留在日志里；
+#   * 注解还能走 API（只读、无需 token）：
+#       curl -s https://api.github.com/repos/Brokenheart100/sonora-player/commits/<sha>/check-runs
+#       curl -s https://api.github.com/repos/Brokenheart100/sonora-player/check-runs/<id>/annotations
+#     注解每步上限 10 条 error + 10 条 warning，所以脚本里都只取前几条。
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "要发布的已存在 tag（例如 v0.1.0）"
+        required: true
+        type: string
+      draft:
+        description: "建成草稿，先不对外发布"
+        required: false
+        type: boolean
+        default: false
+
+# 发布被中途 cancel 会留下「tag 有了、包没有」的半截状态，所以不取消同 tag 的旧
+# run（和 ci.yml 的 cancel-in-progress: true 相反，这是故意的）。
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.12.0"
+  XMAKE_VERSION: "3.1.2"
+  VCPKG_TRIPLET: "x64-windows"
+  # 与 ci.yml 逐字一致（meta job 会核对）；风控见 ci.yml 注释。
+  VCPKG_FEATURES: "avcodec,avformat,swresample"
+
+jobs:
+  # ── 1. tag 与版本 ──────────────────────────────────────────────────────────
+  # 跑在 ubuntu 上、十秒级：一个名字写错或版本号没统一的 tag，不该让 windows
+  # runner 先跑四十分钟再报错。
+  meta:
+    name: 校验 tag 与版本
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      sha: ${{ steps.tag.outputs.sha }}
+      zip: ${{ steps.tag.outputs.zip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          # 要 main 的历史来回答「这个 tag 在不在 main 上」。
+          fetch-depth: 0
+
+      # 版本号的真相源是 xmake.lua 的 set_version（它同时喂给 assets/app.rc 的
+      # 版本资源和 main.cpp 的 setApplicationVersion）。tag 只是**触发器**，
+      # 不是真相源：反过来让 tag 覆盖代码里的值，等于允许「tag 叫 v0.2.0、exe
+      # 属性页写 0.1.0.0」，而这种不一致只有用户会发现。
+      - name: 解析 tag 与版本
+        id: tag
+        shell: bash
+        env:
+          RAW_TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          tag="$RAW_TAG"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$ ]]; then
+            echo "::error::tag '$tag' 不是 vMAJOR.MINOR.PATCH（预发布写成 v0.2.0-rc.1）"
+            exit 1
+          fi
+          version="${tag#v}"
+          sha="$(git rev-parse HEAD)"
+          {
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "sha=$sha"
+            echo "zip=sonora-$version-win64.zip"
+          } >> "$GITHUB_OUTPUT"
+          echo "tag=$tag  version=$version  commit=$sha"
+
+      - name: 核对版本号三处一致
+        shell: bash
+        env:
+          WANT: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          want="$WANT"
+          xmake_v="$(grep -oP 'set_version\("\K[^"]+' xmake.lua | head -1)"
+          rc_v="$(grep -oP 'FILEVERSION\s+\K[0-9,]+' assets/app.rc | head -1 | awk -F, '{print $1"."$2"."$3}')"
+          main_v="$(grep -oP 'setApplicationVersion\(QStringLiteral\("\K[^"]+' host/main.cpp | head -1)"
+          printf '%-38s %s\n' "xmake.lua set_version" "$xmake_v"
+          printf '%-38s %s\n' "assets/app.rc FILEVERSION" "$rc_v"
+          printf '%-38s %s\n' "host/main.cpp setApplicationVersion" "$main_v"
+          printf '%-38s %s\n' "tag 推导" "$want"
+          bad=0
+          if [[ "$xmake_v" != "$want" ]]; then
+            echo "::error::xmake.lua 的 set_version 是 '$xmake_v'，tag 推导是 '$want'"
+            bad=1
+          fi
+          if [[ "$rc_v" != "$want" ]]; then
+            echo "::error::assets/app.rc 的 FILEVERSION 是 '$rc_v'，tag 推导是 '$want'"
+            bad=1
+          fi
+          if [[ "$main_v" != "$want" ]]; then
+            echo "::error::host/main.cpp 的 setApplicationVersion 是 '$main_v'，tag 推导是 '$want'"
+            bad=1
+          fi
+          if [[ $bad -ne 0 ]]; then
+            echo "::error::版本号不一致（三处 + tag 必须相同）；改代码里的值，不要换个 tag 绕过"
+            exit 1
+          fi
+
+      # tag 可以从任何 commit 推上来。发布一个不在 main 上的提交，等于把一条没人
+      # review 过的分支直接交给用户。要发 release 分支的热修就用手动触发（那条路
+      # 由人来担保），别把闸拆了。
+      - name: 核对 tag 在 main 上（仅 push 触发）
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git fetch --no-tags --quiet origin +refs/heads/main:refs/remotes/origin/main; then
+            echo "::warning::取不到 origin/main，跳过「tag 在 main 上」的核对"
+            exit 0
+          fi
+          if git merge-base --is-ancestor HEAD refs/remotes/origin/main; then
+            echo "ok：$(git rev-parse --short HEAD) 在 main 上"
+          else
+            echo "::error::$(git rev-parse --short HEAD) 不在 main 上：先合进 main 再发版；确实要从别处发热修，用 workflow_dispatch 跑这条流水线"
+            exit 1
+          fi
+
+      # 这份文件复制了 ci.yml 的版本常量。复制不可怕，两边悄悄分叉才可怕：
+      # CI 用 Qt 6.12.0 验绿、发布却用另一个版本打包，出的事没人复现得了。
+      - name: 核对与 ci.yml 的常量一致
+        shell: bash
+        run: |
+          set -euo pipefail
+          bad=0
+          check() { # $1=名字 $2=取值正则
+            local a b
+            a="$(grep -oP "$2" .github/workflows/ci.yml | head -1 || true)"
+            b="$(grep -oP "$2" .github/workflows/release.yml | head -1 || true)"
+            printf '%-16s ci=%-62s release=%s\n' "$1" "${a:-<缺>}" "${b:-<缺>}"
+            if [[ -z "$a" || "$a" != "$b" ]]; then
+              echo "::error::$1 在 ci.yml 与 release.yml 里不一致（${a:-缺} vs ${b:-缺}）；两边必须逐字相同"
+              bad=1
+            fi
+          }
+          check QT_VERSION 'QT_VERSION:\s*"\K[^"]+'
+          check XMAKE_VERSION 'XMAKE_VERSION:\s*"\K[^"]+'
+          check VCPKG_FEATURES 'VCPKG_FEATURES:\s*"\K[^"]+'
+          check aqtsource 'aqtsource:\s*"\K[^"]+'
+          [[ $bad -eq 0 ]] || exit 1
+
+  # ── 2. 依赖：FFmpeg 只编一次 ───────────────────────────────────────────────
+  # 和 ci.yml 一样单独成 job：actions/cache 只在 job 成功后才存，编一次 ffmpeg
+  # 要 25–40 分钟，塞进 build job 的话后面任何一步失败就白扔，重跑又从零开始。
+  #
+  # tag 触发的 run 能读到哪一份缓存，取决于 GitHub 的缓存作用域规则（tag 与分支
+  # 的缓存条目是分开的），所以这里**不假设**命中：命中 0 秒，没命中就老老实实编。
+  # 同一 tag 重跑第二次一定命中（这次 run 自己会存），下面那步会把结论写进 summary，
+  # 第一次发版就能看清自己仓库的实际行为。
+  deps:
+    name: 依赖（FFmpeg）
+    needs: meta
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      - name: 定位 vcpkg
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root -or -not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            $root = 'C:\vcpkg'
+          }
+          if (-not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            throw "找不到 vcpkg.exe（试过 VCPKG_INSTALLATION_ROOT 与 C:\vcpkg）"
+          }
+          "root=$root" >> $env:GITHUB_OUTPUT
+          "VCPKG_ROOT=$root" >> $env:GITHUB_ENV
+          & (Join-Path $root 'vcpkg.exe') version
+
+      - name: 缓存 vcpkg 已装二进制
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.vcpkg.outputs.root }}/installed
+          # key 必须与 ci.yml 逐字相同，否则两边各存一份、各编一遍。
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-avcodec-avformat-swresample
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-
+
+      - name: 报告缓存命中情况
+        shell: pwsh
+        env:
+          CACHE_HIT: ${{ steps.vcpkg-cache.outputs.cache-hit }}
+        run: |
+          if ($env:CACHE_HIT -eq 'true') {
+            "vcpkg 缓存：命中（ffmpeg 不用编）" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          } else {
+            "vcpkg 缓存：未命中 → 这次要现编 ffmpeg（25–40 分钟，属正常）" |
+              Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          }
+
+      - name: 安装 FFmpeg（${{ env.VCPKG_TRIPLET }}）
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # features 写在端口名后的方括号里（classic 模式没有 --features）。
+          # 失败原因写成 ::error:: 注解：job 日志要登录才看得到，注解公开可读。
+          $log = "$env:RUNNER_TEMP/vcpkg-ffmpeg.log"
+          & "$env:VCPKG_ROOT\vcpkg.exe" install "ffmpeg[core,$env:VCPKG_FEATURES]:$env:VCPKG_TRIPLET" `
+            --clean-after-build 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path $log -Pattern 'error|Error|ERROR' |
+              Select-Object -First 8 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 25 | ForEach-Object { "::warning::$_" }
+            throw "vcpkg 安装 ffmpeg 失败（exit $code）"
+          }
+
+      - name: 核对缓存里该有的东西都在
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_ROOT
+          foreach ($p in "$root\installed\x64-windows\include\libavcodec\avcodec.h",
+                         "$root\installed\x64-windows\lib\avcodec.lib") {
+            if (-not (Test-Path $p)) { throw "缺少 $p；缓存内容不完整，不要往下传" }
+          }
+
+  # ── 3. release 构建、打包、冒烟 ────────────────────────────────────────────
+  build:
+    name: release 构建与打包
+    needs: [meta, deps]
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      TAG: ${{ needs.meta.outputs.tag }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      ZIP_NAME: ${{ needs.meta.outputs.zip }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.meta.outputs.tag }}
+
+      # 除了让 cl.exe 进 PATH，这一步还负责给 windeployqt 准备 VCINSTALLDIR ——
+      # 没有它，windeployqt --compiler-runtime 只打一句 warning、一个运行库都不拷
+      # （本机实测），最终发出去的是「缺 msvcp140.dll」的包。打包后有硬核对。
+      - name: 准备 MSVC 环境
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: 准备 Python（aqtinstall 需要 3.12）
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装 Qt（${{ env.QT_VERSION }} · win64_msvc2022_64）
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: false
+          # qtshadertools 只为 qsb.exe 存在（本流水线用不到，但资源里已有烘焙好的
+          # .qsb，保持一致免得哪天要重烘时 CI 与本机行为不同）。
+          modules: qtmultimedia qtshadertools
+          aqtsource: "git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7"
+          setup-python: false
+
+      - name: 安装 xmake（${{ env.XMAKE_VERSION }}）
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: ${{ env.XMAKE_VERSION }}
+          actions-cache-folder: ".xmake-action-cache"
+
+      - name: 定位 vcpkg
+        id: vcpkg
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root -or -not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            $root = 'C:\vcpkg'
+          }
+          if (-not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            throw "找不到 vcpkg.exe（试过 VCPKG_INSTALLATION_ROOT 与 C:\vcpkg）"
+          }
+          "root=$root" >> $env:GITHUB_OUTPUT
+          "VCPKG_ROOT=$root" >> $env:GITHUB_ENV
+
+      # 只读还原：写缓存是 deps job 的活（它单独成功，缓存才存得住）。
+      - name: 还原 vcpkg 已装二进制
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.vcpkg.outputs.root }}/installed
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-avcodec-avformat-swresample
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-
+
+      - name: 配置（release）
+        shell: pwsh
+        run: |
+          # QT_ROOT_DIR 由 install-qt-action 经 GITHUB_ENV 导出：步骤 env: 块里的
+          # ${{ env.* }} 读不到它（拿到空串），只能在脚本里取。
+          $env:QTDIR = $env:QT_ROOT_DIR
+          $log = "$env:RUNNER_TEMP/xmake-configure.log"
+          xmake f -m release -a x64 -y --qt="$env:QT_ROOT_DIR" 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path $log -Pattern 'error' | Select-Object -First 8 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 20 | ForEach-Object { "::warning::$_" }
+            throw "xmake f 失败（exit $code）"
+          }
+
+      - name: 构建全部 target
+        shell: pwsh
+        run: |
+          $env:QTDIR = $env:QT_ROOT_DIR
+          $log = "$env:RUNNER_TEMP/xmake-build.log"
+          xmake -y 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path $log -Pattern 'error C[0-9]|error LNK|error :|error:' |
+              Select-Object -First 6 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 30 | ForEach-Object { "::warning::$_" }
+            throw "xmake 构建失败（exit $code）"
+          }
+
+      # 发版前先跑一遍单测：tag 可能指向一个自己也编不过测试的提交，而包一旦
+      # 挂上 Release 就有人在下载了。
+      - name: 构建并运行单测（release）
+        shell: pwsh
+        run: |
+          xmake build -y sonora_tests
+          if ($LASTEXITCODE -ne 0) { throw "sonora_tests 构建失败（exit $LASTEXITCODE）" }
+          $exe = "build/windows/x64/release/sonora_tests.exe"
+          if (-not (Test-Path $exe)) { throw "找不到 $exe" }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw "单测失败（exit $LASTEXITCODE）" }
+
+      - name: 打包（windeployqt）
+        shell: pwsh
+        run: |
+          $dir = "build/windows/x64/release"
+          $dist = "dist"
+          if (-not (Test-Path "$dir/sonora.exe")) { throw "找不到 $dir/sonora.exe" }
+          Remove-Item $dist -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force $dist | Out-Null
+          Copy-Item "$dir/sonora.exe" $dist
+
+          # xmake/targets.lua 的 after_build 已经把 av*/sw* 拷到 exe 旁边；缺了
+          # 这一步的症状是「双击立刻退出、零日志」。
+          $ff = @(Get-ChildItem "$dir/av*.dll", "$dir/sw*.dll")
+          if ($ff.Count -lt 4) { throw "期望至少 4 个 ffmpeg DLL 在 $dir，实际 $($ff.Count) 个" }
+          $ff | ForEach-Object { Copy-Item $_.FullName $dist -Force }
+
+          # Qt 6.8 起的 windeployqt 自己也会带一份 avcodec-*.dll（Qt 附带的 FFmpeg），
+          # 与我们 vcpkg 那份**同名而不同构建**。本机实测：目标比源新时不覆盖；但
+          # 「谁更新」在 CI 里取决于缓存还原带进来的 mtime —— 不能拿运气当构建属性。
+          # 先记哈希，部署完把我们的盖回去并核对，钉死「exe 链接的那份」。
+          $ours = @{}
+          Get-ChildItem "$dist/av*.dll", "$dist/sw*.dll" | ForEach-Object {
+            $ours[$_.Name] = (Get-FileHash $_.FullName -Algorithm SHA256).Hash
+          }
+
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          $exeInDist = (Resolve-Path "$dist/sonora.exe").Path
+          & (Join-Path $env:QT_ROOT_DIR 'bin/windeployqt.exe') `
+            --release `
+            --compiler-runtime `
+            --no-translations `
+            --qmldir presentation/qml `
+            $exeInDist
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt 失败（exit $LASTEXITCODE）" }
+
+          # 顺序很重要：先看 windeployqt 动过哪些（它自带的 FFmpeg 与我们同名不同构建），
+          # 再盖回来并核对最终内容。若先盖回再比对，断言恒真，等于没检查。
+          $swapped = @()
+          foreach ($name in $ours.Keys) {
+            $now = (Get-FileHash (Join-Path $dist $name) -Algorithm SHA256).Hash
+            if ($now -ne $ours[$name]) { $swapped += $name }
+          }
+          if ($swapped.Count -gt 0) { "windeployqt 覆盖了我们的 FFmpeg：$($swapped -join ', ') → 已盖回" }
+          else { "windeployqt 没有动我们的 FFmpeg" }
+          $ff | ForEach-Object { Copy-Item $_.FullName $dist -Force }
+          foreach ($name in $ours.Keys) {
+            $now = (Get-FileHash (Join-Path $dist $name) -Algorithm SHA256).Hash
+            if ($now -ne $ours[$name]) { throw "$name 盖回后哈希仍不符（拷贝失败）" }
+          }
+
+          # --compiler-runtime 靠一张工具集版本表找 CRT：Qt 6.12 不认识未来的 VC 版本
+          # （本机 VS 2026 = VC145 时它只打 warning、一个都不拷）。直接按 vcvars 给的
+          # VCToolsRedistDir 补，比赌 Qt 的版本表确定。
+          $crtNeeded = @('msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll')
+          $missingCrt = @($crtNeeded | Where-Object { -not (Test-Path (Join-Path $dist $_)) })
+          if ($missingCrt.Count -gt 0) {
+            if (-not $env:VCToolsRedistDir) {
+              throw "windeployqt 没拷运行库（缺 $($missingCrt -join ', ')），且 VCToolsRedistDir 为空：准备 MSVC 环境那步没生效？"
+            }
+            $crtDir = Get-ChildItem (Join-Path $env:VCToolsRedistDir 'x64') -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue |
+              Select-Object -First 1
+            if (-not $crtDir) { throw "windeployqt 没拷运行库，且 VCToolsRedistDir 下找不到 Microsoft.VC*.CRT" }
+            "windeployqt 没拷运行库（缺 $($missingCrt -join ', ')）→ 从 $($crtDir.Name) 直接补"
+            foreach ($n in $missingCrt) {
+              $src = Join-Path $crtDir.FullName $n
+              if (-not (Test-Path $src)) { throw "$n 不在 $($crtDir.FullName)" }
+              Copy-Item $src $dist -Force
+            }
+          }
+          else { "运行库已由 windeployqt 拷贝" }
+
+          $required = @(
+            'sonora.exe',
+            'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Qml.dll', 'Qt6Quick.dll', 'Qt6Multimedia.dll',
+            'platforms/qwindows.dll',
+            # QAudioSink 的设备实现来自多媒体插件，不在 Qt6Multimedia.dll 本体里：
+            # 少它 → 能起窗口、点播放没声音。
+            'multimedia/windowsmediaplugin.dll',
+            # --compiler-runtime 的产物。缺了在没装 VC++ 运行库的机器上双击就是
+            # 「找不到 msvcp140.dll」。
+            'msvcp140.dll', 'vcruntime140.dll', 'vcruntime140_1.dll'
+          )
+          $missing = @($required | Where-Object { -not (Test-Path (Join-Path $dist $_)) })
+          if ($missing.Count -gt 0) {
+            throw "dist 里缺：$($missing -join ', ')（运行库缺失多半是 VCINSTALLDIR 没备好）"
+          }
+
+          $readme = @"
+          Sonora Music $env:VERSION
+
+          版本 $env:VERSION   tag $env:TAG   构建自 GitHub Actions（$env:GITHUB_SHA）
+
+          怎么用
+            1. 解压到任意目录（不要在压缩包里直接双击）。
+            2. 双击 sonora.exe。首次启动会建曲库：%APPDATA%\Sonora\Sonora\sonora.sqlite
+               （那个目录不可写时退到程序旁的 data\）。
+            3. 把音乐文件夹拖进窗口，或命令行 sonora.exe D:\Music 直接导入。
+
+          系统要求
+            Windows 10 1809 以上 / Windows 11，x64。
+            Visual C++ 运行库已随包附带（msvcp140.dll、vcruntime140*.dll）；
+            若被杀毒软件剥离，装一次官方 vc_redist.x64.exe 即可。
+
+          本包不含任何音乐文件。解码能力来自 FFmpeg（LGPL 组件以动态库随包分发，
+          可自行替换同 ABI 大版本的构建）。脚本以外的第三方组件版权见仓库 docs/。
+          "@
+          Set-Content -Path (Join-Path $dist 'README.txt') -Value $readme -Encoding utf8
+
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE $env:ZIP_NAME
+          Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path "$dist/*" -DestinationPath $zipPath -CompressionLevel Optimal
+          $hash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          "$hash  $env:ZIP_NAME" | Set-Content "$zipPath.sha256" -Encoding ascii
+          "包：$env:ZIP_NAME  $([int]((Get-Item $zipPath).Length / 1MB))MB  sha256=$hash"
+
+      # 从**打好的 zip** 解出来启动一次：这一步挡的是「编译全绿、双击立刻退出」
+      # 那类只在交付链上出现的坏包（缺 DLL、缺插件、缺 QML 模块）。15 秒足够区分
+      # 「起来了」和「一启动就死」。
+      - name: 冒烟：解压后真的启动一次
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE $env:ZIP_NAME
+          $smoke = Join-Path $env:RUNNER_TEMP 'smoke'
+          Remove-Item $smoke -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zipPath -DestinationPath $smoke
+          $exe = Join-Path $smoke 'sonora.exe'
+          if (-not (Test-Path $exe)) { throw "zip 解开后没有 sonora.exe" }
+
+          $out = Join-Path $env:RUNNER_TEMP 'smoke-out.log'
+          $err = Join-Path $env:RUNNER_TEMP 'smoke-err.log'
+          # GUI 子系统进程的 qDebug 默认走 OutputDebugString，重定向看不到。
+          $env:QT_FORCE_STDERR_LOGGING = '1'
+          $p = Start-Process -FilePath $exe -WorkingDirectory $smoke -PassThru `
+            -RedirectStandardOutput $out -RedirectStandardError $err
+          Start-Sleep -Seconds 15
+          $p.Refresh()
+          if ($p.HasExited) {
+            Get-Content $err -Tail 30 -ErrorAction SilentlyContinue |
+              ForEach-Object { "::error::$_" }
+            throw "解压后的 sonora.exe 在 15 秒内退出了（exit $($p.ExitCode)）：这是「缺 DLL / 缺插件」的典型症状"
+          }
+          Stop-Process -Id $p.Id -Force
+          Get-Content $err -ErrorAction SilentlyContinue |
+            Where-Object { $_ -match '\[qml\]|Could not|Failed' } |
+            Select-Object -First 10 | ForEach-Object { "::warning::$_" }
+          "冒烟通过：解压后可启动并保持运行 15 秒"
+
+      - name: 写发布摘要（公开可读）
+        shell: pwsh
+        run: |
+          $zipPath = Join-Path $env:GITHUB_WORKSPACE $env:ZIP_NAME
+          $dist = "dist"
+          $size = [math]::Round((Get-Item $zipPath).Length / 1MB, 1)
+          $hash = (Get-Content "$zipPath.sha256").Split(' ')[0]
+          $files = (Get-ChildItem $dist -Recurse -File).Count
+          $ff = (Get-ChildItem "$dist/av*.dll", "$dist/sw*.dll").Name -join ', '
+          @(
+            "### Sonora $env:VERSION",
+            "",
+            "| 项 | 值 |",
+            "| --- | --- |",
+            "| tag | ``$env:TAG`` |",
+            "| commit | ``$env:GITHUB_SHA`` |",
+            "| 包 | ``$env:ZIP_NAME``（$size MB，$files 个文件） |",
+            "| sha256 | ``$hash`` |",
+            "| ffmpeg | $ff |"
+          ) | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      # 先留 artifact：万一 publish 那步挂了（token 权限、release 名冲突），不至于
+      # 让 40 分钟的构建跟着丢。
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonora-win64-release
+          path: |
+            ${{ env.ZIP_NAME }}
+            ${{ env.ZIP_NAME }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 收集失败现场
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-logs
+          path: |
+            build/**/*.log
+            .xmake/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── 4. 挂到 GitHub Release ─────────────────────────────────────────────────
+  # 独立成 job 的两个理由：写权限只出现在这里（这个 job 不编代码、不跑第三方
+  # action），以及「构建」和「发布」失败时的重跑代价完全不同（前者 40 分钟，
+  # 后者 10 秒）。
+  publish:
+    name: 发布到 GitHub Release
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ needs.meta.outputs.tag }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      ZIP_NAME: ${{ needs.meta.outputs.zip }}
+      SHA: ${{ needs.meta.outputs.sha }}
+      DRAFT: ${{ inputs.draft || 'false' }}
+    steps:
+      - name: 取回构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: sonora-win64-release
+          path: out
+
+      # 发布动作是幂等的：release 已存在就只覆盖资产与说明（--clobber），
+      # 所以「打了一半挂掉」可以直接重跑这条流水线，不用删 tag 重来。
+      - name: 创建或更新 Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd out
+          zip="$ZIP_NAME"
+          [[ -f "$zip" ]] || { echo "::error::取回的产物里没有 $zip"; exit 1; }
+          sum="$(cut -d' ' -f1 "$zip.sha256")"
+          actual="$(sha256sum "$zip" | cut -d' ' -f1)"
+          if [[ "$sum" != "$actual" ]]; then
+            echo "::error::产物哈希不符（打包时 $sum，取回后 $actual）"
+            exit 1
+          fi
+
+          # 说明分两段：手工写死的「装什么、怎么装、要什么」在前，GitHub 生成的
+          # 变更列表在后。自动笔记走 API 而不是 `gh release create --generate-notes`：
+          # `gh release edit` 没有那个开关，走 API 才能让「首次发布」和「重跑覆盖」
+          # 写出完全一样的说明。
+          cat > header.md <<EOF
+          **Windows x64 免安装包**：解压后双击 \`sonora.exe\`。
+
+          | | |
+          | --- | --- |
+          | 版本 | \`$VERSION\` |
+          | tag | \`$TAG\` |
+          | commit | \`$SHA\` |
+          | 资产 | \`$zip\`（$(( $(stat -c%s "$zip") / 1024 / 1024 )) MB） |
+          | sha256 | \`$sum\` |
+
+          - 需要 Windows 10 1809+ / Windows 11（x64）。VC++ 运行库已随包附带。
+          - 本包不含音乐文件；首次启动在 \`%APPDATA%\Sonora\` 建曲库。
+          - 校验：\`sha256sum -c $zip.sha256\`（或 \`certutil -hashfile $zip SHA256\`）。
+          EOF
+          # 自动笔记单独取：取不到也只丢变更列表，不能拖垮发布。
+          if ! gh api "repos/$GH_REPO/releases/generate-notes" -f tag_name="$TAG" --jq .body > body.md; then
+            echo "::warning::取不到自动生成的变更列表，只用手写说明"
+            : > body.md
+          fi
+          # 空一行再接生成的笔记：标题紧贴列表最后一行时，渲染器可能把标题吞进列表项。
+          { cat header.md; printf '\n'; cat body.md; } > notes.md
+
+          flags=()
+          if [[ "$DRAFT" == "true" ]]; then
+            flags+=(--draft)
+          elif [[ "$VERSION" == *-* ]]; then
+            # 预发布（v0.2.0-rc.1）：不抢 "Latest" 标记。
+            flags+=(--prerelease)
+          else
+            flags+=(--latest)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在：覆盖资产与说明（可以反复重跑，不用删 tag 重来）"
+            gh release upload "$TAG" "$zip" "$zip.sha256" --clobber
+            gh release edit "$TAG" --title "Sonora $VERSION" --notes-file notes.md "${flags[@]}"
+          else
+            # --verify-tag：tag 必须已经在远端。我们**不**让 gh 顺手建 tag ——
+            # 发布流水线只消费 tag，不创造 tag。
+            gh release create "$TAG" "$zip" "$zip.sha256" \
+              --verify-tag \
+              --title "Sonora $VERSION" \
+              --notes-file notes.md \
+              "${flags[@]}"
+          fi
+
+          url="$(gh release view "$TAG" --json url --jq .url)"
+          {
+            echo "### 已发布：$TAG"
+            echo ""
+            echo "- $url"
+            echo "- 资产：\`$zip\`、\`$zip.sha256\`"
+            echo "- sha256：\`$sum\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "release: $url"
