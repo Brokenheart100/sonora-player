@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Effects
 import "../comic"
 import "../theme"
 import MambaMusic 1.0
@@ -16,6 +17,128 @@ Item {
 
     // 唱片转速：33⅓ 转/分 = 每圈 1.8 秒。这里慢一点，视觉上不晃眼。
     readonly property int spinMs: 5400
+
+    // ── 集中线：只在换歌那一瞬间闪一下 ──────────────────────────────────
+    // 用 Canvas 画，不用 `assets/shaders/lines.frag`——自定义 UBO 里的 `vec2`
+    // 到不了 shader，实测渲染出来是一团同心红光晕而不是射线。
+    //
+    // 注意这里动画的是 `flash` 而不是 `opacity`：NumberAnimation 一旦作用在
+    // `opacity` 上，就会把这个属性上的绑定打断，动画结束后永远停在 0——
+    // 表现为"射线再也不出现"。留一个 `flash` 中间量，`opacity` 的绑定才活得下来。
+    Canvas {
+        id: burstLayer
+        anchors.fill: parent
+        opacity: flash
+        visible: flash > 0.01
+
+        // 0 = 不显示；换歌时由 burstAnim 推到 0.42 再回落
+        property real flash: 0
+
+        onWidthChanged: requestPaint()
+        onHeightChanged: requestPaint()
+        Component.onCompleted: requestPaint()
+
+        onPaint: {
+            const ctx = getContext("2d");
+            ctx.reset();
+
+            const cx = record.x + record.width / 2;
+            const cy = record.y + record.height / 2;
+            const r0 = record.width * 0.50;   // 正好贴住唱片外缘
+            const r1 = record.width * 0.95;
+
+            // 文案 + 进度条那块是禁区：射线要么绕开，要么提前收笔。
+            // 让它穿字而过，这一屏就会像"渲染坏了"而不是"有冲击力"。
+            const keep = { x: -20, y: record.y + record.height + 4,
+                           w: lyricsPanel.x - 8, h: page.height };
+
+            // 射线进入禁区的最小参数 t（slab 法），进不去就是 Infinity
+            function enterT(ox, oy, dx, dy) {
+                let lo = 0, hi = 1e9;
+                const ax = [[ox, dx, keep.x, keep.x + keep.w],
+                            [oy, dy, keep.y, keep.y + keep.h]];
+                for (let k = 0; k < 2; ++k) {
+                    const o = ax[k][0], d = ax[k][1], a = ax[k][2], b = ax[k][3];
+                    if (Math.abs(d) < 1e-6) {
+                        if (o < a || o > b) return Infinity;
+                        continue;
+                    }
+                    let t0 = (a - o) / d, t1 = (b - o) / d;
+                    if (t0 > t1) { const s = t0; t0 = t1; t1 = s; }
+                    lo = Math.max(lo, t0);
+                    hi = Math.min(hi, t1);
+                    if (lo > hi) return Infinity;
+                }
+                return lo > 0 ? lo : Infinity;
+            }
+
+            // 页面边界：唱片贴在左上角，往左/往上的射线本来就没地方走，
+            // 与其让它们在半空被硬切成小残桩，不如按"还能走多远"收笔。
+            const cxMin = -burstLayer.x, cxMax = page.width - burstLayer.x;
+            const cyMin = -burstLayer.y, cyMax = page.height - burstLayer.y;
+
+            function exitT(ox, oy, dx, dy) {
+                let t = Infinity;
+                if (dx > 1e-6) t = Math.min(t, (cxMax - ox) / dx);
+                else if (dx < -1e-6) t = Math.min(t, (cxMin - ox) / dx);
+                if (dy > 1e-6) t = Math.min(t, (cyMax - oy) / dy);
+                else if (dy < -1e-6) t = Math.min(t, (cyMin - oy) / dy);
+                return t;
+            }
+
+            ctx.fillStyle = Theme.ink;
+            for (let i = 0; i < 28; ++i) {
+                const a = (i * (360 / 28) + (i % 3 - 1) * 2.5) * Math.PI / 180;
+                const ca = Math.cos(a), sa = Math.sin(a);
+
+                // 唱臂压在唱片右上方：正对它的那几根从臂后露头，
+                // 把起点推到臂外，省得在臂边上留一撮 8px 的碎屑
+                // 唱臂那一小片角度干脆不画：起点被臂挡住、终点在臂外露出一撮，
+                // 补丁式地"从臂后露头"总会在某个角度留下碎屑，不如留白。
+                // `a` 落在 [0, 2π)，唱臂在右上（−41°..−13°）对应 5.56–6.02 rad
+                if (a > 5.56 && a < 6.02)
+                    continue;
+                const start = r0 + (i % 4) * 2.5;
+                let end = Math.min(r1, exitT(cx, cy, ca, sa) - 2);
+                const hit = enterT(cx, cy, ca, sa);
+                if (hit < end)
+                    end = Math.max(start, hit - 8);
+                if (end - start < 55)                   // 太短的残桩不如不画
+                    continue;
+
+                const w = 3.4 + (i % 3) * 1.8;          // 焦点处宽
+                const tip = 0;                          // 收成真正的针尖：末端落在哪都不像被切断
+                const px = -sa, py = ca;                // 法线
+
+                ctx.beginPath();
+                ctx.moveTo(cx + ca * start + px * w * 0.5, cy + sa * start + py * w * 0.5);
+                ctx.lineTo(cx + ca * end + px * tip, cy + sa * end + py * tip);
+                ctx.lineTo(cx + ca * end - px * tip, cy + sa * end - py * tip);
+                ctx.lineTo(cx + ca * start - px * w * 0.5, cy + sa * start - py * w * 0.5);
+                ctx.closePath();
+                ctx.fill();
+            }
+        }
+    }
+
+    SequentialAnimation {
+        id: burstAnim
+        NumberAnimation {
+            target: burstLayer
+            property: "flash"
+            from: 0
+            to: 0.55
+            duration: 110
+            easing.type: Easing.OutQuad
+        }
+        NumberAnimation {
+            target: burstLayer
+            property: "flash"
+            to: 0
+            duration: 330
+            easing.type: Easing.InQuad
+        }
+    }
 
     // ── 唱片 ────────────────────────────────────────────────────────────
     Item {
@@ -74,50 +197,106 @@ Item {
                 }
             }
 
-            // 中心标签：漫画里最爱在唱片中心写歌名
-            Rectangle {
+            // 中心标签：有封面就把封面裁成圆形贴上去（唱片中心本来就是圆的）；
+            // 没封面才回到漫画里的老做法——红标上写歌名。
+            Item {
+                id: label
                 anchors.centerIn: parent
                 width: disc.width * 0.46
                 height: width
-                radius: width / 2
-                color: Theme.accent
-                border.width: 2
-                border.color: Theme.paperHigh
 
-                Column {
-                    anchors.centerIn: parent
-                    width: parent.width * 0.78
-                    spacing: 3
+                readonly property bool hasCover:
+                    Player.coverUrl.length > 0 && coverImage.status === Image.Ready
 
-                    Text {
-                        width: parent.width
-                        text: Player.hasTrack ? Player.title : qsTr("未选曲")
-                        color: Theme.paperHigh
-                        font.family: Fonts.display
-                        font.pixelSize: 16
-                        horizontalAlignment: Text.AlignHCenter
-                        wrapMode: Text.Wrap
-                        elide: Text.ElideRight
-                        maximumLineCount: 2
-                    }
-                    Text {
-                        width: parent.width
-                        text: Player.hasTrack ? Player.artist : ""
-                        color: "#FFE3DC"
-                        font.family: Theme.fontText
-                        font.pixelSize: 11
-                        horizontalAlignment: Text.AlignHCenter
-                        elide: Text.ElideRight
-                    }
+                // 白圈：不管里面是封面还是红标，都压一道白边，才像一张唱片
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: Theme.paperHigh
                 }
 
-                // 中心孔
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: Theme.paperHigh
+                Item {
+                    id: labelFace
+                    anchors.fill: parent
+                    anchors.margins: 4
+
+                    // 封面本体是隐藏的：可见的那一份由下面的 MultiEffect 用圆形遮罩画出来
+                    Image {
+                        id: coverImage
+                        anchors.fill: parent
+                        source: Player.coverUrl
+                        sourceSize: Qt.size(Math.round(width * 2), Math.round(height * 2))
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        smooth: true
+                        visible: false
+                    }
+
+                    // 遮罩：只用 alpha 通道，颜色随便给个不透明的
+                    Item {
+                        id: coverMask
+                        anchors.fill: parent
+                        visible: false
+                        layer.enabled: true
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: "white"
+                        }
+                    }
+
+                    MultiEffect {
+                        anchors.fill: parent
+                        visible: label.hasCover
+                        source: coverImage
+                        maskEnabled: true
+                        maskSource: coverMask
+                    }
+
+                    // 没封面时的红标 + 歌名
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: !label.hasCover
+                        radius: width / 2
+                        color: Theme.accent
+
+                        Column {
+                            anchors.centerIn: parent
+                            width: parent.width * 0.78
+                            spacing: 3
+
+                            Text {
+                                width: parent.width
+                                text: Player.hasTrack ? Player.title : qsTr("未选曲")
+                                color: Theme.paperHigh
+                                font.family: Fonts.display
+                                font.pixelSize: 16
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.Wrap
+                                elide: Text.ElideRight
+                                maximumLineCount: 2
+                            }
+                            Text {
+                                width: parent.width
+                                text: Player.hasTrack ? Player.artist : ""
+                                color: "#FFE3DC"
+                                font.family: Theme.fontText
+                                font.pixelSize: 11
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                            }
+                        }
+                    }
+
+                    // 中心孔：永远在最上层，封面也压不住
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 8
+                        height: 8
+                        radius: 4
+                        color: Theme.paperHigh
+                    }
                 }
             }
         }
@@ -174,6 +353,17 @@ Item {
             border.width: 2
             border.color: Theme.ink
         }
+    }
+
+    // ── 看戏的小猫：跟着播放状态换表情 ──────────────────────────────────
+    // 放在左下角：那里是页面上唯一不承载信息的空白，角色立绘在漫画里
+    // 也就是干这个的——把空白填成"有人在看"。
+    Mascot {
+        anchors.left: parent.left
+        anchors.leftMargin: 6
+        anchors.bottom: parent.bottom
+        width: 132
+        height: 132
     }
 
     // ── 曲目信息与进度 ──────────────────────────────────────────────────
@@ -323,18 +513,30 @@ Item {
                 }
             }
 
-            onCurrentIndexChanged: {
-                if (currentIndex < 0) {
+            function syncTo(index, animated) {
+                if (index < 0) {
                     return
                 }
-                const item = itemAtIndex(currentIndex)
+                const item = itemAtIndex(index)
                 if (!item) {
                     return
                 }
                 const desired = item.y + item.height / 2 - height / 2
-                scrollAnim.to = Math.max(0, Math.min(Math.max(0, contentHeight - height), desired))
-                scrollAnim.start()
+                const target = Math.max(0, Math.min(Math.max(0, contentHeight - height), desired))
+                if (animated) {
+                    scrollAnim.to = target
+                    scrollAnim.start()
+                } else {
+                    scrollAnim.stop()
+                    contentY = target
+                }
             }
+
+            onCurrentIndexChanged: syncTo(currentIndex, true)
+            // 切歌、或者刚打开这一页：模型一换就立刻对到当前句，不要从第一行滑过去
+            // （动画只在"当前句往前走"时才用）。
+            onCountChanged: syncTo(currentIndex, false)
+            Component.onCompleted: syncTo(currentIndex, false)
         }
 
         NumberAnimation {
@@ -362,6 +564,12 @@ Item {
 
     Connections {
         target: Player
+        // 换歌 = 情绪上来的一瞬间，墨线从唱片四周放射出去。
+        function onTrackChanged() {
+            if (Player.hasTrack) {
+                burstAnim.restart()
+            }
+        }
         function onPositionChanged() {
             if (!seek.pressed) {
                 seek.value = Player.progress

@@ -20,7 +20,6 @@
 #include <QString>
 #include <QVariant>
 
-#include <cstdint>
 #include <vector>
 
 #include "mamba/kernel/IQueryBus.h"

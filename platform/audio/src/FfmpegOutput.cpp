@@ -71,6 +71,9 @@ struct FfmpegOutput::Impl {
     std::atomic<std::int32_t> volume{80};
     std::atomic<std::int64_t> durationMs{0};
     std::atomic<std::int64_t> seekStartSamples{0};
+    // 跳转起点（毫秒）。位置现在以 QAudioSink 的 processedUSecs() 为基准，
+    // 得靠这个基点把它换算成"这首歌里的绝对时间"。
+    std::atomic<std::int64_t> seekStartMs{0};
     std::atomic<std::int64_t> writtenSamples{0};
     std::atomic<std::int64_t> lastPositionMs{0};
     std::atomic<PlaybackState> state{PlaybackState::Idle};
@@ -92,18 +95,37 @@ struct FfmpegOutput::Impl {
 
     std::int64_t positionMs() const noexcept
     {
-        const std::int64_t written = writtenSamples.load(std::memory_order_acquire);
-        const auto available = static_cast<std::int64_t>(ring.availableToRead());
-        const std::int64_t consumed = std::max<std::int64_t>(0, written - available);
+        const std::int64_t total = durationMs.load(std::memory_order_relaxed);
+
+        // 真正的播放头是 QAudioSink 自己报的 processedUSecs()：它数的是"已经喂给
+        // 声卡、放出来了"的微秒数。
+        //
+        // 之前用的是"环里被拉走的样本数"，那个数比耳朵听到的早整整两段缓冲
+        // （我们的环最多压 2.9 秒，sink 内部再压一截），表现就是歌词抢先唱、
+        // 进度条也超前。这是 M8 之后用户报的"歌词不同步"的根因。
+        if (sink != nullptr) {
+            const std::int64_t base = seekStartMs.load(std::memory_order_relaxed);
+            const auto playedUs = sink->processedUSecs();
+            const std::int64_t played = static_cast<std::int64_t>(playedUs / 1000);
+            std::int64_t ms = base + std::max<std::int64_t>(0, played);
+            if (total > 0 && ms > total) {
+                ms = total;
+            }
+            return ms;
+        }
+
+        // sink 还没建好（load 刚返回、GUI 线程还没跑到 buildAudio）：退回样本计数。
         if (sampleRate <= 0) {
             return 0;
         }
+        const std::int64_t written = writtenSamples.load(std::memory_order_acquire);
+        const auto available = static_cast<std::int64_t>(ring.availableToRead());
+        const std::int64_t consumed = std::max<std::int64_t>(0, written - available);
         // 两个量都是**样本**，必须先加再换成毫秒。分两步写会把 seek 起点当成
         // 毫秒直接用——跳到 50% 时位置会显示成 45:28（样本数当毫秒）。
         const std::int64_t samples = seekStartSamples.load(std::memory_order_relaxed) + consumed;
         std::int64_t ms = samples * 1000 / sampleRate;
         // 第二道闸：容器跳转的落点不精确，宁可让进度条停在末尾，也不要越过总时长。
-        const std::int64_t total = durationMs.load(std::memory_order_relaxed);
         if (total > 0 && ms > total) {
             ms = total;
         }
@@ -203,6 +225,13 @@ struct FfmpegOutput::Impl {
         sink = std::make_unique<QAudioSink>(outputDevice, audioFormat);
         sink->setVolume(static_cast<qreal>(volume.load()) / 100.0);
 
+        // 设备侧缓冲定死 125ms。默认值在 Windows 共享模式下可以到几百毫秒，
+        // 那段时间里"已经喂进去"和"耳朵听到"是两个时间点——进度条和歌词都会跑在前面
+        // （用户报的"歌词不同步"有一半是它）。太小又会欠载爆音，125ms 是折中。
+        const int bytesPerFrame = channelCount * (deviceFormat == AudioOutDevice::SampleFormat::Float32 ? 4 : 2);
+        const int bufferBytes = std::max(8192, (rate / 8) * bytesPerFrame);
+        sink->setBufferSize(bufferBytes);
+
         {
             std::lock_guard<std::mutex> lock(readyMutex);
             sinkReady = true;
@@ -230,6 +259,7 @@ struct FfmpegOutput::Impl {
         channels = format.channels;
         durationMs.store(format.durationMs);
         seekStartSamples.store(0);
+        seekStartMs.store(0);
         writtenSamples.store(0);
         lastPositionMs.store(0);
         ring.clear();
@@ -266,6 +296,7 @@ struct FfmpegOutput::Impl {
         ring.clear();
         writtenSamples.store(0, std::memory_order_release);
         seekStartSamples.store(ms * sampleRate / 1000, std::memory_order_relaxed);
+        seekStartMs.store(ms, std::memory_order_relaxed);
         lastPositionMs.store(ms);
 
         // 光清我们自己的环不够：QAudioSink 内部和 WASAPI 里还压着跳转前的声音，
@@ -428,6 +459,7 @@ kernel::Result<void> FfmpegOutput::load(std::string_view utf8Path)
     impl_->ring.clear();
     impl_->durationMs.store(0);
     impl_->seekStartSamples.store(0);
+    impl_->seekStartMs.store(0);
     impl_->writtenSamples.store(0);
     impl_->lastPositionMs.store(0);
 
@@ -451,8 +483,20 @@ kernel::Result<void> FfmpegOutput::play()
     impl_->wake.notify_all();
 
     // sink 可能还没建好（load 刚返回），buildAudio 里会补上 start。
-    if (impl_->sink != nullptr && impl_->sink->state() != QAudio::ActiveState) {
-        impl_->sink->start(impl_->device.get());
+    auto *sink = impl_->sink.get();
+    if (sink != nullptr) {
+        if (sink->state() == QAudio::SuspendedState) {
+            // 从暂停回来必须走 resume()。对已 suspend 的 sink 调 start() 只会
+            // 打出 "QAudioSink::start() called while already started"，一点声音都不出。
+            sink->resume();
+        } else if (sink->state() != QAudio::ActiveState) {
+            sink->start(impl_->device.get());
+        }
+        // 状态必须发出去。之前这里不发，PlaybackService 就一直停在 Paused：
+        // 界面上按钮还写着「播放」、再按一次又走 play() 分支——用户看到的就是
+        // "按了播放没反应、播放/暂停乱跳"（实测 resume 之后 p=false、面板显示已暂停，
+        // 而声音已经在放了）。
+        impl_->emitState(PlaybackState::Playing);
     }
     return kernel::Result<void>::ok();
 }
@@ -476,6 +520,7 @@ kernel::Result<void> FfmpegOutput::stop()
     impl_->decoderOpen.store(false, std::memory_order_release);
     impl_->ring.clear();
     impl_->seekStartSamples.store(0);
+    impl_->seekStartMs.store(0);
     impl_->writtenSamples.store(0);
     impl_->lastPositionMs.store(0);
     // 不清 durationMs：播完之后界面上还该看得见"这首歌有多长"，

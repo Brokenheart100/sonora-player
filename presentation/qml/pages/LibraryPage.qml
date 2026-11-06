@@ -69,9 +69,9 @@ Item {
                     font.family: Theme.fontText
                     font.pixelSize: Theme.textBody
                     clip: true
-                    // 进曲库页就能直接打字：搜索是这一页最常用的动作，
-                    // 让用户先点一下输入框是白送给他的一个障碍。
-                    focus: true
+                    // 不给 focus:true。搜索框一旦抢到键盘焦点，窗口级的
+                    // Shortcut（空格 / ← / →）就再也收不到按键——用户会觉得
+                    // "快捷键坏了"。点一下输入框就能打字，这点成本比"播放键失灵"划算。
                     onTextEdited: Library.setSearchText(text)
 
                     Text {

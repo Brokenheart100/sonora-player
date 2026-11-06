@@ -17,7 +17,7 @@ Item {
     // 队列抽屉由 Shell 负责显示（它是整窗的浮层，不属于这条栏）。
     signal queueRequested
 
-    // ── 封面位（M6 接真实封面，先放"空唱片"）──────────────────────────
+    // ── 封面位（M8 后接上真实封面）──────────────────────────────────────
     MangaPanel {
         id: cover
         width: 56
@@ -28,8 +28,21 @@ Item {
         padding: 0
         fillColor: Theme.paperAlt
 
+        Image {
+            id: art
+            anchors.fill: parent
+            source: Player.coverUrl
+            sourceSize: Qt.size(112, 112)
+            fillMode: Image.PreserveAspectCrop
+            asynchronous: true
+            smooth: true
+            // 没有封面（或图还没读出来）时回到"空唱片"音符，别留一个白框
+            visible: Player.coverUrl.length > 0 && status === Image.Ready
+        }
+
         Text {
             anchors.centerIn: parent
+            visible: !art.visible
             text: qsTr("♪")
             color: Theme.ink
             font.family: Fonts.display

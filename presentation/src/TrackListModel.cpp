@@ -283,7 +283,7 @@ namespace mamba::presentation
         for (const auto &item : rows_)
         {
             command.entries.push_back(playback::contracts::QueueEntry{
-                item.id, item.filePath, item.title, item.artistName});
+                item.id, item.filePath, item.title, item.artistName, item.coverPath});
         }
         command.startIndex = row;
 

@@ -21,6 +21,9 @@ struct QueueEntry {
     std::string filePath;   // UTF-8
     std::string title;
     std::string artistName;
+    // 封面绝对路径（UTF-8），没有封面就是空串。播放器不知道封面怎么存的，
+    // 它只负责把"这一路带过来的东西"原样交给界面——唱片中心和播放条都用它。
+    std::string coverPath;
 };
 
 /// 一整个列表交给播放器：点第 3 行，就是把整个列表从第 3 行开始播。
@@ -67,6 +70,8 @@ struct PlayerSnapshot {
     // 当前曲目在磁盘上的位置。歌词要靠它找同名 .lrc —— 歌词模块不认识曲库，
     // 表现层也不能为了一个路径去加载曲目聚合，所以让快照把它带出来。
     std::string filePath;
+    // 封面绝对路径，没有就是空串。理由同上：界面要显示封面，但不该去查曲库。
+    std::string coverPath;
 };
 
 }  // namespace mamba::playback::contracts

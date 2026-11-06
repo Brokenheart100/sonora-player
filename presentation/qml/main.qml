@@ -12,7 +12,7 @@ Window {
     minimumWidth: 960
     minimumHeight: 640
     visible: true
-    title: qsTr("MambaMusic")
+    title: "MambaMusic"
     color: Theme.paper
 
     Shell {

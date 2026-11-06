@@ -6,12 +6,22 @@ import "theme"
 import MambaMusic 1.0
 
 // 应用外壳：侧栏 + 内容区 + 底部播放条，全部落在 MangaPanel 里
-// （ARCHITECTURE.md §M2）。页面切换用 Loader，不用的页面不创建 (SqueUI 原则)。
+// （ARCHITECTURE.md §M2）。页面切换用 PageTurner：页面常驻、翻转入场，
+// 不按需创建（实测按需创建会在转场首帧留 50ms 尖峰，见 §10.7）。
 Item {
     id: shell
 
-    property int currentPage: 1        // 0 = 曲库，1 = 正在播放，2 = 组件画廊
+    property int currentPage: 0        // 0 = 曲库，1 = 正在播放
     property bool queueOpen: false     // 右下角抽屉：当前播放队列
+
+    // 焦点落在文本输入框里时（曲库页的搜索框），空格和方向键属于输入法，
+    // 不能拿去控制播放。`text` 是 TextInput/TextEdit 才有的属性。
+    readonly property bool typing: {
+        const item = Window.window ? Window.window.activeFocusItem : null;
+        return item !== null && item !== undefined && item.text !== undefined;
+    }
+
+
 
 
     // ── 背景：整页唯一的一个 shader ─────────────────────────────────────
@@ -88,13 +98,6 @@ Item {
             }
             NavItem {
                 width: sidebar.width
-                label: qsTr("组件画廊")
-                hint: qsTr("M2")
-                active: shell.currentPage === 2
-                onClicked: shell.currentPage = 2
-            }
-            NavItem {
-                width: sidebar.width
                 label: qsTr("歌单")
                 hint: qsTr("M6")
                 enabled: false
@@ -117,8 +120,12 @@ Item {
         }
     }
 
+
+
     // ── 内容区 ──────────────────────────────────────────────────────────
-    Loader {
+    // 页面切换走 PageTurner（转场），不是直接换 Loader：见 layout/PageTurner.qml
+    // 顶部关于"为什么不用 ShaderEffectSource 快照"的说明。
+    PageTurner {
         id: content
         anchors.left: sidebar.right
         anchors.leftMargin: 16
@@ -129,15 +136,47 @@ Item {
         anchors.bottom: playerBar.top
         anchors.bottomMargin: 14
 
-        sourceComponent: shell.currentPage === 0
-                         ? libraryPage
-                         : (shell.currentPage === 1 ? nowPlayingPage : storybookPage)
+        pages: [libraryPage, nowPlayingPage]
+        index: shell.currentPage
+    }
 
-        // 页面叫 LibraryPage 而不是 Library：Library 是注入的单例名字，
-        // 同名组件会被单例遮住，加载时报 "Element is not creatable"。
-        Component { id: libraryPage; LibraryPage { } }
-        Component { id: nowPlayingPage; NowPlaying { } }
-        Component { id: storybookPage; Storybook { } }
+    // 页面叫 LibraryPage 而不是 Library：Library 是注入的单例名字，
+    // 同名组件会被单例遮住，加载时报 "Element is not creatable"。
+    Component { id: libraryPage; LibraryPage { } }
+    Component { id: nowPlayingPage; NowPlaying { } }
+
+
+    // ── 拟声字层 ────────────────────────────────────────────────────────
+    // 盖在内容区之上、播放条之下：它是"画面上贴的字"，不属于任何一页。
+    // 池化 6 个，不 new 对象（见 SfxText.qml 顶部的说明）。
+    SfxText {
+        id: sfx
+        anchors.left: content.left
+        anchors.right: content.right
+        anchors.top: content.top
+        anchors.bottom: content.bottom
+    }
+
+    Connections {
+        target: Player
+
+        function onPlayingChanged() {
+            if (Player.playing) {
+                sfx.burst(qsTr("咚！"), sfx.width * 0.26, sfx.height * 0.40, true)
+            } else {
+                sfx.burst(qsTr("呼——"), sfx.width * 0.24, sfx.height * 0.44, false)
+            }
+        }
+
+        function onTrackChanged() {
+            if (Player.hasTrack) {
+                sfx.burst(qsTr("啪！"), sfx.width * 0.18, sfx.height * 0.22, true)
+            }
+        }
+
+        function onModeLabelChanged() {
+            sfx.burst(qsTr("转！"), sfx.width * 0.34, sfx.height * 0.16, false)
+        }
     }
 
     // ── 底部播放条 ──────────────────────────────────────────────────────
@@ -266,9 +305,9 @@ Item {
 
     // ── 键盘 ────────────────────────────────────────────────────────────
     // 空格 / ←→ 是"听完整张专辑不用摸鼠标"的全部条件；Esc 用来收浮层。
-    Shortcut { sequence: "Space"; onActivated: Player.toggle() }
-    Shortcut { sequence: "Left"; onActivated: Player.previous() }
-    Shortcut { sequence: "Right"; onActivated: Player.next() }
+    Shortcut { sequence: "Space"; enabled: !shell.typing; onActivated: Player.toggle() }
+    Shortcut { sequence: "Left"; enabled: !shell.typing; onActivated: Player.previous() }
+    Shortcut { sequence: "Right"; enabled: !shell.typing; onActivated: Player.next() }
     Shortcut { sequence: "Escape"; onActivated: shell.queueOpen = false }
 
     // ── 拖放：拖进来的音频直接进曲库并开播 ──────────────────────────────

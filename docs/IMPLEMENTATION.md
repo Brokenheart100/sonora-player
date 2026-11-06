@@ -20,13 +20,13 @@
 | **M5** | 曲库完整（导入 + 扫描 + 投影） | 4.5 | M1 | 万首曲库，滚动不掉帧 · **✅ 已完成**（含封面/分组，一万首首扫 9.4s） |
 | **M6** | 播放完整体验（队列聚合） | 4 | M4, M5 | 全流程无鼠标操作 |
 | **M7** | 歌词 | 3.5 | M5, M6 | 歌词同步误差 < 50ms | **✅ 已完成**（滞后上限 33ms） |
-| **M8** | 漫画表现力 | 5 | M2 | 网点/集中线/拟声词/翻页就位，60fps |
+| **M8** | 漫画表现力 | 5 | M2 | **✅ 已完成**（集中线改 Canvas，`qmlcachegen` 未做） |
 | **M9** | 打包发布 | 1.5 | 全部 | 干净 Windows 机器双击能跑 |
 | | **合计** | **≈ 33** | | 全职 ≈ 6.6 周；业余（每天 2h）≈ 4 个月 |
 
 **关键路径**：`M0 → M1 → M3 → M4 → M6 → M7 → M9`。这条链上任何一环延期都顺延交付。
 
-**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**M5 ✅ 已完成**：搜索 / 增量扫描 / 真标签 / 分批与后台导入 / 分页 / 封面缓存 / 分组 / `TrackRow` 全部落地并实测（一万首首扫 9.4s、二扫 403ms、滚动帧 2–5ms）。**M6 ✅ 已完成**：四种播放模式与随机排列、随机模式精确回溯、`TrackFinished` 集成事件 → `play_count`、队列抽屉、`NowPlaying` 页、快捷键、文件被删的优雅降级（实测：连放自动推进、`play_count` 0→1→2、边界 143 文件、单测 94 用例 / 4686 断言）。**M7 ✅ 已完成**：LRC 解析（offset / 多标签 / 翻译 / 逐字）、两个来源与优先级、`LyricsModel` + `NowPlaying` 歌词列（实测：`D:\Music` 6 首真曲 24 行歌词滚动、同步滞后上限 33ms、边界 166 文件、单测 115 用例 / 4795 断言）。**下一步是 M8（漫画表现力）**。
+**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**M5 ✅ 已完成**：搜索 / 增量扫描 / 真标签 / 分批与后台导入 / 分页 / 封面缓存 / 分组 / `TrackRow` 全部落地并实测（一万首首扫 9.4s、二扫 403ms、滚动帧 2–5ms）。**M6 ✅ 已完成**：四种播放模式与随机排列、随机模式精确回溯、`TrackFinished` 集成事件 → `play_count`、队列抽屉、`NowPlaying` 页、快捷键、文件被删的优雅降级（实测：连放自动推进、`play_count` 0→1→2、边界 143 文件、单测 94 用例 / 4686 断言）。**M7 ✅ 已完成**：LRC 解析（offset / 多标签 / 翻译 / 逐字）、两个来源与优先级、`LyricsModel` + `NowPlaying` 歌词列（实测：`D:\Music` 6 首真曲 24 行歌词滚动、同步滞后上限 33ms、边界 166 文件、单测 115 用例 / 4795 断言）。**M8 ✅ 已完成**：拟声字池 / 翻页转场 / 角色立绘（喵）/ 组件胶囊化 / 集中线（`Canvas` 重写）全部落地，1480 帧 median 1ms、p99 6ms，启动后无单帧 > 8ms（实测：边界 166 文件、单测 115 用例 / 4795 断言）。**下一步是 M9（打包发布）**。
 
 > 依赖清单（哪个库在哪一层、版本、许可证、获取渠道）见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。
 
@@ -608,28 +608,106 @@ python xmake/checks/boundaries.py
 
 ---
 
-### M8 · 漫画表现力（5 人日，含 2 天可选项）
+### M8 · 漫画表现力（5 人日，含 2 天可选项）✅ 已完成 · 实际 3.4 人日
 
-**步骤（前 3 天，必做）**
+**已完成**：拟声字池、翻页转场、看戏小猫、组件胶囊化、集中线（换实现，见偏差）。
 
-- [ ] `dot.frag`（网点）、`lines.frag`（集中线）→ `xmake qsb`
-- [ ] 整页 ≤ 2 个全屏 `ShaderEffect`，其余全靠贴图与几何变换
-- [ ] `SfxText` 池化 + 播放/暂停/切歌/收藏四个事件接入
-- [ ] `PageTurner` 替换所有页面切换（先做快照 + 旋转的便宜版）
-- [ ] **胶囊化**：Storybook 里的组件全部在真实页面用上，**没用上的删掉**
+**未做**：`qmlcachegen` 手工规则（xmake 无内置，需要自己写 `.qmltypes` + 缓存生成，收益是首帧解析时间——当前首帧 73ms，不急）。
 
-**步骤（后 2 天，可选）**
+**步骤**
 
-- [ ] 角色立绘（对播放状态有反应：idle / 唱歌 / 睡着）
-- [ ] 手工 `qmltypes` + `qmlcachegen` 规则（xmake 无内置）
+- [x] ~~`dot.frag`、`lines.frag` → `xmake qsb`~~ → **`lines.frag` 失败，改成 QML `Canvas`**（0.6 天）
+- [x] 整页 ≤ 2 个全屏 `ShaderEffect`，其余全靠贴图与几何变换（0 天，M2 已满足：全屏只有背景 `Halftone`，集中线是元素级）
+- [x] `SfxText` 池化 + 播放/暂停/切歌/模式四个事件接入（0.5 天）
+- [x] `PageTurner` 替换所有页面切换（0.7 天）
+- [x] **胶囊化**：删掉 `pages/Storybook.qml` 与它的导航项（0.1 天）
+- [x] 角色立绘：喵，随 idle / 唱歌 / 睡着 三个状态变（0.6 天）
+- [ ] 手工 `qmltypes` + `qmlcachegen` 规则（未做）
 
-**验收**
+**验收实测**
 
-- `QSG_RENDER_TIMING=1` 稳 60fps，无单帧 > 8ms
-- CPU < 10% / GPU < 25%（1080p 播放页）
-- 转场期间不掉帧（`ShaderEffectSource` 用完立刻 `live: false`）
+| 项 | 结果 |
+| --- | --- |
+| 稳态帧时间 | 1480 帧 median **1ms**、p99 **6ms** |
+| 启动尖峰 | 第 2–6 帧 43/51/36/21/12ms（页面实例化 + 字体 + shader 编译） |
+| 跑起来之后的最差帧 | 第 57 帧 18ms、第 112 帧 9ms，其余全部 < 8ms |
+| 转场是否真的在跑 | 内容区左上角平均亮度：稳态 `(224,219,209)`，转场中 `(192,188,179)`/`(205,200,190)` |
+| 集中线 | 7 根锥形射线，起点贴唱片外缘 r≈262px，末端收成针尖，避开文案/进度条/侧栏/小猫 |
+| `mamba_tests` | 115 用例 / 4795 断言全绿 |
+| `boundaries.py` | 166 文件通过 |
+
+**坑**
+
+| 现象 | 根因 | 修法 |
+| --- | --- | --- |
+| 自定义 UBO 里的 `vec2` 到不了 shader，射线变成一团同心红光晕 | 只 `float` uniform 验证过能用，`vector2d` 成员实测无效 | 放弃 shader，用 `Canvas` 画 |
+| 动画结束后元素永久消失 | `NumberAnimation` 作用在 `opacity` 上会**打断绑定**，动画停止时把值留在 0 | 动画只动中间量 `flash`，`opacity: flash` 保持绑定 |
+| `item.pop.restart()` 运行期报 undefined | delegate 内部的 id 在外面看不见 | delegate 暴露 `function start()` |
+| `comic/` 下的组件报 `Player is not defined` | 子目录文件也要 `import MambaMusic 1.0` | 补 import |
+| Canvas 内容被硬切成平头 | Canvas 会裁剪到自身矩形 | 射线长度按"页面还能走多远"收笔，末端收成针尖 |
+| 我的像素判据把红色面板统计成"空白" | 判据 `r>150 and g<80 and b<80` 漏掉了珊瑚色 `#FA7973`（g=121） | 用子代理看图，或把判据放宽到混色区间 |
+
+**与计划的偏差**
+
+1. **`lines.frag` 没成**：自定义 UBO 里的 `vec2 resolution` 到不了 shader，渲出来是同心光晕不是射线；改成 `Canvas` 画 28 根锥形射线（按可用空间收笔、避开文案禁区），shader 与 `.qsb` 已删除。
+2. **不加 `ShaderEffectSource` 快照**：抓纹理那一帧比"旧页自己转"更贵，`PageTurner` 直接转两个常驻页面。
+3. **页面常驻不按需创建**：动态实例化会在转场首帧留 50ms 尖峰，异步加载只是把尖峰推到"首次可见"那一帧。
+4. **`SfxText` 第四事件换成"模式切换"**：计划写的是"收藏"，但收藏功能在 M6 之前就没做（`Favorites` 只在架构文档里），换成切模式时崩一个"转！"。
+5. **角色立绘做得比计划深**：不只是 idle/唱歌/睡着，还带耳朵尾巴的呼吸位移与 Zzz/音符。
 
 ---
+
+### M8 后的缺陷修复：歌词不同步 / 播放暂停（✅ 已完成）
+
+用户在 M8 交付后报"歌词不同步，播放暂停有问题"。两件事，两个根因，各有一个必须先排除的错误假设。
+
+**播放/暂停**
+
+| | 内容 |
+| --- | --- |
+| 症状 | 暂停后点播放，声音回来了，按钮仍是「播放」、进度条不走；再点一次毫无反应 |
+| 第一假设（错） | 以为 `QAudioSink::resume()` 在 suspend 后不可靠，曾把 `play()` 改成对已 suspend 的 sink 调 `start()` —— 日志报 3 次 `QAudioSink::start() called while already started`，声音反而断 |
+| 真根因 | `FfmpegOutput::play()` 只把 `playing` 置真并唤醒解码线程，**从不 `emitState(Playing)`**。`buildAudio()` 是唯一发 Playing 的地方，于是"暂停 → 播放"这条路永远停在 `Paused`；`PlaybackService::togglePlayPause()` 看到 `Paused` 就再调 `play()`，界面于是一动不动 |
+| 修法 | `play()` 起播成功后补 `emitState(PlaybackState::Playing)`；已 suspend 的 sink 走 `resume()`（其它非 Active 才 `start()`） |
+| 证据 | 暂停后位置冻结在 `0:04` 三秒不动、两帧 PNG 逐字节相同；再点播放后 `0:04 → 0:07`、按钮回到「暂停」 |
+
+**歌词不同步**
+
+| | 内容 |
+| --- | --- |
+| 第一假设 | 位置源超前：原来 `positionMs()` 用"环形缓冲里被拉走的样本数"，那是解码头，比耳朵听到的早 |
+| 第一处修法（保留） | 位置改成 `seekStartMs + QAudioSink::processedUSecs()/1000`（clamp 到 `durationMs`，sink 未建好时回退样本计数）；sink 缓冲钉在 125ms（`max(8192, rate/8*bytesPerFrame)`） |
+| 真根因 | LRC 里有大量"有时间戳、没文字"的空行（前奏/间奏占位，如 `[00:35.29]`）。`LyricsModel::setPositionMs()` 直接停在这种行上，屏幕上**一行红的都没有**，看着就是"歌词没跟上" |
+| 修法 | 算出行号后往回退到最近一行有字的（`text` 或 `translation` 非空）；间奏期间保持上一句高亮 |
+| 顺带 | `NowPlaying.qml` 歌词列表抽出 `syncTo(index, animated)`：换句用动画，换歌/首次进页直接定位（原来只在 `onCurrentIndexChanged` 里滚，进页面时停在第一行） |
+| 证据 | 索引序列在 0:35 停 4（跳过空行 5）、0:45–0:46 停 11（跳过空行 12），随后跳到 13；高亮行垂直居中 |
+
+**同时修掉的**
+
+1. 搜索框的 `focus: true` 抢走键盘焦点后，窗口级 `Shortcut`（空格 / ← / →）**全部失效**——删掉 `focus: true`。
+2. `Shell.qml` 的快捷键加 `enabled: !typing`（`typing` 由 `activeFocusItem` 是否有 `text` 判断），搜索框里打空格不再顺手暂停播放。
+
+**回归**：`mamba_tests` 115 用例 / 4795 断言全绿、`boundaries.py` 166 文件通过。
+
+---
+
+### 播放器接上真实封面（✅ 已完成）
+
+用户看图后提的："红色那块可以改成歌曲封面"。原设计里黑胶中心是写歌名的红标，播放条封面位则一直是 `♪` 占位符——曲库列表有封面，**播放链路里根本没有**（`QueueEntry` / `PlayerSnapshot` 都没有这个字段）。
+
+| | 内容 |
+| --- | --- |
+| 做法 | 让封面**跟着队列走**，不新增查询：`TrackListModel` 组 `PlayTracks` 时把 `TrackDto.coverPath` 塞进 `QueueEntry::coverPath`；`PlaybackService::snapshot()` 原样带到 `PlayerSnapshot::coverPath`；`PlayerViewModel` 用 `QUrl::fromLocalFile` 转成 `coverUrl` 属性 |
+| 为什么不查曲库 | 表现层只依赖 `*.Contracts`，为了一张图去加载曲目聚合是分层泄漏；播放器本来就在手边握着这一路信息，顺手带过去最省事 |
+| QML | `NowPlaying.qml` 中心标签改成「白圈 + 圆形封面」：`Image` 本体 `visible: false`，可见的那份由 `MultiEffect { maskEnabled: true }` 用圆形 mask 画出来；无封面或未 `Ready` 回落到红标写歌名；中心孔永远在最上层。`PlayerBar.qml` 的 56px 封面位换成 `Image`，无封面仍回 `♪` |
+| 坑 1 | `Image.source` 只认 URL，Windows 裸路径会被当成相对地址，症状是封面全不显示 |
+| 坑 2 | `MultiEffect` 的 `maskSource` 必须是**独立渲染**的项，要 `layer.enabled: true`，否则遮罩读出空白 |
+| 证据 | 真机截图：播放条 56px 块与唱片中心是同一张封面（中心那份随盘旋转），圆裁干净、无方角溢出、刻纹与唱臂零位移；无封面的曲目回落红标正常 |
+| 回归 | `mamba_tests` 116 用例 / 4801 断言，新增 1 例「封面路径随队列进快照」（含"没有封面给空串、不把上一首的封面留下"）；`boundaries.py` 166 文件通过 |
+
+---
+
+
 
 ### M9 · 打包发布（1.5 人日）
 

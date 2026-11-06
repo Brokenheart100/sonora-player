@@ -18,37 +18,42 @@
 
 #include "fake_audio_output.h"
 
-namespace {
+namespace
+{
 
-using mamba::kernel::ErrorCode;
-using mamba::playback::contracts::PlaybackState;
-using mamba::playback::contracts::PlayTracks;
-using mamba::playback::contracts::QueueEntry;
-using mambatest::FakeAudioOutput;
+    using mamba::kernel::ErrorCode;
+    using mamba::playback::contracts::PlaybackState;
+    using mamba::playback::contracts::PlayTracks;
+    using mamba::playback::contracts::QueueEntry;
+    using mambatest::FakeAudioOutput;
 
-QueueEntry entry(std::uint64_t id, std::string path, std::string title) {
-    QueueEntry e;
-    e.trackId = id;
-    e.filePath = std::move(path);
-    e.title = std::move(title);
-    return e;
-}
+    QueueEntry entry(std::uint64_t id, std::string path, std::string title)
+    {
+        QueueEntry e;
+        e.trackId = id;
+        e.filePath = std::move(path);
+        e.title = std::move(title);
+        return e;
+    }
 
-PlayTracks playCommand(std::vector<QueueEntry> entries, std::int32_t startIndex = 0) {
-    PlayTracks command;
-    command.entries = std::move(entries);
-    command.startIndex = startIndex;
-    return command;
-}
+    PlayTracks playCommand(std::vector<QueueEntry> entries, std::int32_t startIndex = 0)
+    {
+        PlayTracks command;
+        command.entries = std::move(entries);
+        command.startIndex = startIndex;
+        return command;
+    }
 
-std::vector<QueueEntry> threeTracks() {
-    return {entry(1, "C:/m/a.flac", "甲"), entry(2, "C:/m/b.mp3", "乙"),
-            entry(3, "C:/m/c.wav", "丙")};
-}
+    std::vector<QueueEntry> threeTracks()
+    {
+        return {entry(1, "C:/m/a.flac", "甲"), entry(2, "C:/m/b.mp3", "乙"),
+                entry(3, "C:/m/c.wav", "丙")};
+    }
 
-}  // namespace
+} // namespace
 
-TEST_CASE("播放第一条：装载 + play + 快照") {
+TEST_CASE("播放第一条：装载 + play + 快照")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
 
@@ -69,7 +74,29 @@ TEST_CASE("播放第一条：装载 + play + 快照") {
     CHECK(snapshot.state == PlaybackState::Playing);
 }
 
-TEST_CASE("空队列是参数错误，不是崩溃") {
+TEST_CASE("封面路径随队列进快照：界面不该为了一张图去查曲库")
+{
+    FakeAudioOutput output;
+    mamba::playback::core::PlaybackService service{output};
+
+    auto tracks = threeTracks();
+    tracks[0].coverPath = "C:/m/covers/甲.png";
+    tracks[1].coverPath = "C:/m/covers/乙.png";
+    tracks[2].coverPath.clear();
+
+    REQUIRE(service.playTracks(playCommand(tracks, 0)).hasValue());
+    CHECK(service.snapshot().coverPath == "C:/m/covers/甲.png");
+
+    REQUIRE(service.next().hasValue());
+    CHECK(service.snapshot().coverPath == "C:/m/covers/乙.png");
+
+    // 没有封面的曲子给空串，而不是把上一首的封面留在快照里
+    REQUIRE(service.next().hasValue());
+    CHECK(service.snapshot().coverPath.empty());
+}
+
+TEST_CASE("空队列是参数错误，不是崩溃")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
 
@@ -80,7 +107,8 @@ TEST_CASE("空队列是参数错误，不是崩溃") {
     CHECK(service.snapshot().hasTrack == false);
 }
 
-TEST_CASE("toggle 在播放与暂停之间切换") {
+TEST_CASE("toggle 在播放与暂停之间切换")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
     REQUIRE(service.playTracks(playCommand(threeTracks())).hasValue());
@@ -92,7 +120,8 @@ TEST_CASE("toggle 在播放与暂停之间切换") {
     CHECK(output.state() == PlaybackState::Playing);
 }
 
-TEST_CASE("seek 会被夹到 [0, duration]") {
+TEST_CASE("seek 会被夹到 [0, duration]")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
     REQUIRE(service.playTracks(playCommand(threeTracks())).hasValue());
@@ -104,7 +133,8 @@ TEST_CASE("seek 会被夹到 [0, duration]") {
     CHECK(output.posMs == output.duration);
 }
 
-TEST_CASE("next 走到队尾返回 NotFound 并停下") {
+TEST_CASE("next 走到队尾返回 NotFound 并停下")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
     REQUIRE(service.playTracks(playCommand(threeTracks(), 2)).hasValue());
@@ -115,7 +145,8 @@ TEST_CASE("next 走到队尾返回 NotFound 并停下") {
     CHECK(output.stopCount >= 1);
 }
 
-TEST_CASE("previous 在第一首时回到开头") {
+TEST_CASE("previous 在第一首时回到开头")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
     REQUIRE(service.playTracks(playCommand(threeTracks(), 0)).hasValue());
@@ -126,7 +157,8 @@ TEST_CASE("previous 在第一首时回到开头") {
     CHECK(output.posMs == 0);
 }
 
-TEST_CASE("播完自动下一首") {
+TEST_CASE("播完自动下一首")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
     REQUIRE(service.playTracks(playCommand(threeTracks())).hasValue());
@@ -142,7 +174,8 @@ TEST_CASE("播完自动下一首") {
     CHECK(service.snapshot().queueIndex == 2);
 }
 
-TEST_CASE("音量夹到 0..100") {
+TEST_CASE("音量夹到 0..100")
+{
     FakeAudioOutput output;
     mamba::playback::core::PlaybackService service{output};
 
@@ -155,7 +188,8 @@ TEST_CASE("音量夹到 0..100") {
     CHECK(service.snapshot().volume == 100);
 }
 
-TEST_CASE("装载失败会冒泡成错误，而不是假装在播") {
+TEST_CASE("装载失败会冒泡成错误，而不是假装在播")
+{
     FakeAudioOutput output;
     output.failLoad = true;
     mamba::playback::core::PlaybackService service{output};
@@ -209,13 +243,13 @@ TEST_CASE("文件被删：自动推进跳过装不上的那首，不崩也不卡
     mamba::playback::contracts::PlayTracks command;
     command.entries = {
         {1, "C:/m/a.flac", "A", "X"},
-        {2, "C:/m/gone.flac", "B", "X"},   // 播到它之前被删了
+        {2, "C:/m/gone.flac", "B", "X"}, // 播到它之前被删了
         {3, "C:/m/c.flac", "C", "X"},
     };
     REQUIRE(service.playTracks(command));
 
     output.unloadable.insert("C:/m/gone.flac");
-    output.finishCurrent();   // a.flac 放完 → 下一首 gone.flac 装不上 → 应该落到 c.flac
+    output.finishCurrent(); // a.flac 放完 → 下一首 gone.flac 装不上 → 应该落到 c.flac
 
     CHECK(output.loadedPath == "C:/m/c.flac");
     CHECK(service.snapshot().queueIndex == 2);
@@ -239,7 +273,7 @@ TEST_CASE("整个队列都坏掉：停下来，而不是无限重试")
     output.finishCurrent();
 
     // 两首都装不上：停掉输出，state 不该停在 Playing。
-    CHECK(output.loadedPath == "C:/m/a.flac");   // 第一首是开始播放前就装好的
+    CHECK(output.loadedPath == "C:/m/a.flac"); // 第一首是开始播放前就装好的
     CHECK(service.snapshot().state != mamba::playback::contracts::PlaybackState::Playing);
     CHECK(output.stopCount > 0);
 }

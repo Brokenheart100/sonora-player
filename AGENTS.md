@@ -94,6 +94,15 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 - **GBK 歌词一律拒绝**，`ErrorCode::Unavailable` + 提示"用记事本另存为 UTF-8"。不要猜编码：猜错是整屏乱码，比不显示难受得多。
 - **来源顺序是"同名 `.lrc` → 内嵌标签"**，`LyricsSourceChain` 出错立刻停（不降级）。`Instrumental`（解析出零行）由 `GetLyricsHandler` 填占位行，界面不自己判断。
 - 内嵌歌词只认 `LYRICS` / `UNSYNCEDLYRICS` / `SYNCEDLYRICS` 三个属性键；Windows 上 `TagLib::FileName` 必须传 `path.c_str()` 的 `wchar_t*`（见上面曲库那条）。
+- **LRC 里有"有时间戳、没文字"的空行**（前奏/间奏占位，`[00:35.29]` 后面什么都没有）。`LyricsModel::setPositionMs()` 算出行号后要往回退到最近一行有字的，否则间奏期间屏幕上**一行红的都没有**，用户会报"歌词不同步"。两处二分规则都要改（见上一条）。
+- 歌词列表要**换歌即对位**：`onCurrentIndexChanged` 用动画滚，`onCountChanged` 和 `Component.onCompleted` 直接设 `contentY`；只挂前者的话，进页面/切歌时停在第一行。
+
+**播放状态**
+
+- **`FfmpegOutput::play()` 起播后必须 `emitState(Playing)`**。只置 `playing=true` 的话，"暂停 → 播放"路径永远停在 `Paused`：声音在响、按钮还写"播放"、再点一次毫无反应（用户报的"播放暂停有问题"就是这个）。
+- 已 `suspend()` 的 sink 用 `resume()`，**不要** `start()`——`start()` 会重开数据流并报 `QAudioSink::start() called while already started`。
+- 进度位置用 `seekStartMs + sink->processedUSecs()/1000`，**不要**用"环形缓冲里被拉走的样本数"：那是解码头，比耳朵听到的早一截。
+- 键盘焦点不在自己的输入框里时别让 `TextInput` 抢焦点：搜索框写 `focus: true` 会让窗口级 `Shortcut` 全部失效。快捷键要加 `enabled: !typing` 守卫，`typing` 由 `activeFocusItem` 是否带 `text` 判断。
 
 **QML / shader**
 
@@ -102,6 +111,11 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 - `ShaderEffect` **没有 `live` 属性**（那是 `ShaderEffectSource` 的），写上去整个组件加载失败。
 - 改完 `.frag` 要重烘焙：`PATH=".../Qt/6.12.0/msvc2022_64/bin:$PATH" xmake qsb`。xmake 的 task 沙箱里**没有 `pcall` / `import` / `catch`**，`qsb.exe` 只能从 `QTDIR` 或 PATH 找。
 - 加了新的界面文案，要重跑 `python tools/subset_fonts.py`，否则新字掉回系统字体（视觉上很明显）。
+- **动画不要作用在会被绑定的属性上**。`NumberAnimation { target: x; property: "opacity" }` 一旦跑过，`opacity` 上的绑定就被打断，动画结束值留在最后一帧——症状是"第一次闪了一下，之后再也没出现过"。动画只动一个中间量（`flash`），`opacity: flash` 保持绑定。
+- **自定义 UBO 里的 `vec2` 不可信**：`float` 成员能到 shader，`vector2d` 实测到不了（现象是坐标全错、射线变成一团同心光晕）。要么拆成两个 `float`，要么别用 shader——集中线最后是 `Canvas` 画的。
+- **`Canvas` 会裁剪到自身矩形**，画到边界外的部分被平切。射线、扩散、投影这类"要往外走"的图形，长度要按"还能走多远"收笔，末端收成针尖，末端落在哪都不像被切断。
+- delegate 内部的 `id` **在外面看不见**（`item.pop.restart()` → `TypeError: Cannot call method 'restart' of undefined`）。给 delegate 加一个 `function start()` 当门面。
+- `comic/`、`layout/` 这些子目录里的组件**也要** `import MambaMusic 1.0`，否则 `ReferenceError: Player is not defined`——而且只在运行时炸。
 
 **调试**
 

@@ -22,14 +22,16 @@
         <file alias="qml/comic/Halftone.qml">presentation/qml/comic/Halftone.qml</file>
         <file alias="qml/comic/InkSlider.qml">presentation/qml/comic/InkSlider.qml</file>
         <file alias="qml/comic/TrackRow.qml">presentation/qml/comic/TrackRow.qml</file>
+        <file alias="qml/comic/SfxText.qml">presentation/qml/comic/SfxText.qml</file>
+        <file alias="qml/comic/Mascot.qml">presentation/qml/comic/Mascot.qml</file>
 
         <!-- 页面 -->
         <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>
         <file alias="qml/pages/NowPlaying.qml">presentation/qml/pages/NowPlaying.qml</file>
-        <file alias="qml/pages/Storybook.qml">presentation/qml/pages/Storybook.qml</file>
 
         <!-- 布局部件 -->
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>
+        <file alias="qml/layout/PageTurner.qml">presentation/qml/layout/PageTurner.qml</file>
 
         <!-- 字体与 shader -->
         <file alias="fonts/ZCOOLKuaiLe-Subset.ttf">assets/fonts/ZCOOLKuaiLe-Subset.ttf</file>
