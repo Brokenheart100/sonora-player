@@ -190,8 +190,13 @@ jobs:
           # 归档名取自 https://download.qt.io/online/qtsdkrepository/windows_x86/
           # desktop/qt6_6120/qt6_6120_msvc2022_64/ 下的
           # qt.qt6.6120.addons.qtmultimedia.win64_msvc2022_64/。
-          # 不需要 qtshadertools：Qt6Multimedia.dll 不引用 Qt6ShaderTools。
-          modules: qtmultimedia
+          #
+          # qtshadertools 也必须装：`qsb.exe`（烘焙 .qsb）属于这个 addon，不在
+          # qtbase 里。缺它的症状是「核对 shader 已重新烘焙并提交」那步 1 秒就
+          # 抛 "QTDIR 无效 / 找不到 qsb.exe"（run #7 的 debug job）。
+          # 运行时不需要 Qt6ShaderTools.dll：sonora.exe 的导入表里没有它
+          # （QShader 反序列化在 QtGui 里），所以这个 addon 只是给 qsb 用的。
+          modules: qtmultimedia qtshadertools
           # Qt 6.11 起官方仓库换了目录布局（现在是 qt6_6120/qt6_6120_msvc2022_64/，
           # 不再有嵌套的 qt6_6120/qt6_6120/），而 PyPI 上的 aqtinstall 3.3.0 仍按
           # 老布局拼 URL，直接报 "Failed to locate XML data for Qt version '6.12.0'"
