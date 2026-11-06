@@ -32,6 +32,10 @@ qrc_*.cpp
 Thumbs.db
 *.res
 *.rc
+# 例外：Windows 资源脚本必须进仓库 —— 它是 exe 图标与版本信息的唯一来源。
+# 少了它 xmake 静默跳过（构建照样绿），但发出去的包没有图标、属性页没有版本号，
+# 而 release.yml 的版本闸会在 tag 上以「grep: No such file or directory」暴露它。
+!assets/app.rc
 /.qmake.cache
 /.qmake.stash
 
