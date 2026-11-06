@@ -168,9 +168,22 @@ jobs:
           # --features / --no-default-features 这两个选项（那是 manifest 模式
           # 的 --x-feature / --x-no-default-features），run #3 就是死在这。
           # 带 core = 只要列出的 feature，不要端口默认的 avdevice/avfilter/swscale。
+          #
+          # 失败原因必须落到「注解」上：job 日志要登录 GitHub 才看得到，而 ::error::
+          # 注解在公开的 run 页上就能读（run #4 那次跑了 16 分钟后失败，日志拿不到，
+          # 只能靠这一手把 vcpkg 的报错挖出来）。
+          $log = "$env:RUNNER_TEMP/vcpkg-ffmpeg.log"
+          "磁盘可用：$([int]((Get-PSDrive C).Free / 1GB))GB"
           & "$env:VCPKG_ROOT\vcpkg.exe" install "ffmpeg[core,$env:VCPKG_FEATURES]:$env:VCPKG_TRIPLET" `
-            --clean-after-build
-          if ($LASTEXITCODE -ne 0) { throw "vcpkg 安装 ffmpeg 失败（exit $LASTEXITCODE）" }
+            --clean-after-build 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path $log -Pattern 'error|Error|ERROR' -Context 0,1 |
+              Select-Object -First 8 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 25 | ForEach-Object { "::warning::$_" }
+            throw "vcpkg 安装 ffmpeg 失败（exit $code）"
+          }
 
       # ── 构建 ───────────────────────────────────────────────────────────────
       - name: 配置
