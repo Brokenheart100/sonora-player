@@ -586,7 +586,11 @@ jobs:
       VERSION: ${{ needs.meta.outputs.version }}
       ZIP_NAME: ${{ needs.meta.outputs.zip }}
       SHA: ${{ needs.meta.outputs.sha }}
-      DRAFT: ${{ inputs.draft || 'false' }}
+      # 草稿开关的三个来源：手动触发的输入 > 仓库变量 RELEASE_DRAFT > 默认 false。
+      # 仓库变量是为了「第一次发版先发草稿」这种一次性策略：`gh variable set
+      # RELEASE_DRAFT --body true` → 推 tag → 包进了草稿 → 自己下载验一遍 →
+      # `gh release edit <tag> --draft=false`，验完把变量删掉，之后 tag 直接公开。
+      DRAFT: ${{ inputs.draft || vars.RELEASE_DRAFT || 'false' }}
     steps:
       - name: 取回构建产物
         uses: actions/download-artifact@v4
