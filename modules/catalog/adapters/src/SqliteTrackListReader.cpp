@@ -1,12 +1,12 @@
-#include "mamba/catalog/adapters/SqliteTrackListReader.h"
+#include "sonora/catalog/adapters/SqliteTrackListReader.h"
 
 #include <cstdint>
 #include <string>
 #include <string_view>
 
-#include "mamba/catalog/adapters/SearchText.h"
+#include "sonora/catalog/adapters/SearchText.h"
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 
 using kernel::Result;
 using platform::storage::SqliteStatement;
@@ -105,4 +105,4 @@ Result<contracts::TrackListResult> SqliteTrackListReader::list(
     return Result<contracts::TrackListResult>::ok(std::move(result));
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

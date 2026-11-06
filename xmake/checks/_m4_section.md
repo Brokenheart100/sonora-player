@@ -24,7 +24,7 @@
 | 播完自动下一首 | wav 队列连播到第 6 首 |
 | 队列播完 | 输出停止、按钮回「播放」、进度归零 |
 | 命令延迟 | `[warn] 命令同步耗时 224.97ms` 修复后消失（残下一次 6.56ms，来自 `stopWorker` 的 join） |
-| 单测 | `mamba_tests` 68 用例 / 3353 断言全绿（含 `AudioRing` 百万样本压测） |
+| 单测 | `sonora_tests` 68 用例 / 3353 断言全绿（含 `AudioRing` 百万样本压测） |
 | 边界 | `boundaries.py` 126 文件通过 |
 | 切歌 50 次 / 拔耳机 / 320kbps CPU 对比 | **没测**，见偏差第 5 条 |
 
@@ -34,7 +34,7 @@
 | --- | --- | --- |
 | vcpkg classic 不认 `--features` | `error: unexpected switch` | 写成 `ffmpeg[core,avcodec,avformat,swresample]:x64-windows` |
 | debug 链 release 库 | 只在 `av_malloc` 里炸，堆损坏 | debug 构建链 `installed/x64-windows/debug/lib`（/MDd） |
-| 没拷 FFmpeg DLL | 双击 exe 立刻退出、零输出 | `MambaMusic` 的 `after_build` 拷 `av*.dll` / `sw*.dll` |
+| 没拷 FFmpeg DLL | 双击 exe 立刻退出、零输出 | `Sonora` 的 `after_build` 拷 `av*.dll` / `sw*.dll` |
 | 在命令线程里 open | `命令同步耗时 224.97ms`，UI 卡 | `load()` 只登记 + 起线程；解码线程 open，GUI 线程建 sink |
 | 位置单位混用 | 跳 50% 后显示 `45:28 / 2:02` | 样本与毫秒必须先合成再换算 |
 | `av_seek_frame(BACKWARD)` 不精确 | 跳 80% 后位置走到 `2:24 / 2:02` | 先 `avformat_seek_file(INT64_MIN, ts, INT64_MAX)`，再按首帧 pts 丢掉多出的样本；`positionMs()` 再 clamp 到 duration |

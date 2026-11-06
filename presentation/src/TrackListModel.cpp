@@ -1,4 +1,4 @@
-#include "mamba/presentation/TrackListModel.h"
+#include "sonora/presentation/TrackListModel.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -7,10 +7,10 @@
 #include <QUrl>
 #include <utility>
 
-#include "mamba/catalog/contracts/Commands.h"
-#include "mamba/playback/contracts/Commands.h"
+#include "sonora/catalog/contracts/Commands.h"
+#include "sonora/playback/contracts/Commands.h"
 
-namespace mamba::presentation
+namespace sonora::presentation
 {
     namespace
     {
@@ -355,4 +355,4 @@ namespace mamba::presentation
         return -1;
     }
 
-} // namespace mamba::presentation
+} // namespace sonora::presentation

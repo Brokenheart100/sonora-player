@@ -1,12 +1,12 @@
-#include "mamba/lyrics/core/app/GetLyricsHandler.h"
+#include "sonora/lyrics/core/app/GetLyricsHandler.h"
 
 #include <utility>
 #include <vector>
 
-#include "mamba/lyrics/core/domain/LrcParser.h"
-#include "mamba/lyrics/core/domain/Lyrics.h"
+#include "sonora/lyrics/core/domain/LrcParser.h"
+#include "sonora/lyrics/core/domain/Lyrics.h"
 
-namespace mamba::lyrics::core {
+namespace sonora::lyrics::core {
 namespace {
 
 using contracts::LyricLine;
@@ -78,4 +78,4 @@ kernel::Result<contracts::LyricsView> GetLyricsHandler::handle(
     return kernel::Result<LyricsView>::ok(std::move(view));
 }
 
-}  // namespace mamba::lyrics::core
+}  // namespace sonora::lyrics::core

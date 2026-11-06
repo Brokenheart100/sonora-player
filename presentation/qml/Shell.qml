@@ -3,7 +3,7 @@ import "comic"
 import "pages"
 import "layout"
 import "theme"
-import MambaMusic 1.0
+import Sonora.Presentation 1.0
 
 // 应用外壳：侧栏 + 内容区 + 底部播放条，全部落在 MangaPanel 里
 // （ARCHITECTURE.md §M2）。页面切换用 PageTurner：页面常驻、翻转入场，
@@ -52,7 +52,7 @@ Item {
                 height: 74
 
                 Text {
-                    text: qsTr("MAMBA")
+                    text: qsTr("SONORA")
                     color: Theme.ink
                     font.family: Fonts.display
                     font.pixelSize: 27

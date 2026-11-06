@@ -14,27 +14,27 @@
 #include <string_view>
 #include <utility>
 
-#include "mamba/kernel/Error.h"
-#include "mamba/playback/contracts/AudioOutput.h"
+#include "sonora/kernel/Error.h"
+#include "sonora/playback/contracts/AudioOutput.h"
 
-namespace mambatest {
+namespace sonoratest {
 
-using mamba::kernel::ErrorCode;
-using mamba::playback::contracts::ErrorListener;
-using mamba::playback::contracts::FinishedListener;
-using mamba::playback::contracts::IAudioOutput;
-using mamba::playback::contracts::IPositionStream;
-using mamba::playback::contracts::PlaybackState;
-using mamba::playback::contracts::StateListener;
+using sonora::kernel::ErrorCode;
+using sonora::playback::contracts::ErrorListener;
+using sonora::playback::contracts::FinishedListener;
+using sonora::playback::contracts::IAudioOutput;
+using sonora::playback::contracts::IPositionStream;
+using sonora::playback::contracts::PlaybackState;
+using sonora::playback::contracts::StateListener;
 
 class FakeAudioOutput final : public IAudioOutput, public IPositionStream {
 public:
     // ── IAudioOutput ────────────────────────────────────────────────────────
-    mamba::kernel::Result<void> load(std::string_view filePathUtf8) override {
+    sonora::kernel::Result<void> load(std::string_view filePathUtf8) override {
         // 按路径失败：模拟"文件在播放前排被删掉了"。
         if (failLoad || unloadable.count(std::string{filePathUtf8}) > 0) {
             currentState = PlaybackState::Failed;
-            return mamba::kernel::Error{ErrorCode::Unavailable, "假装解不开"};
+            return sonora::kernel::Error{ErrorCode::Unavailable, "假装解不开"};
         }
         loadedPath = std::string{filePathUtf8};
         posMs = 0;
@@ -45,7 +45,7 @@ public:
         return {};
     }
 
-    mamba::kernel::Result<void> play() override {
+    sonora::kernel::Result<void> play() override {
         ++playCount;
         currentState = PlaybackState::Playing;
         if (stateListener) {
@@ -54,7 +54,7 @@ public:
         return {};
     }
 
-    mamba::kernel::Result<void> pause() override {
+    sonora::kernel::Result<void> pause() override {
         currentState = PlaybackState::Paused;
         if (stateListener) {
             stateListener(currentState);
@@ -62,7 +62,7 @@ public:
         return {};
     }
 
-    mamba::kernel::Result<void> stop() override {
+    sonora::kernel::Result<void> stop() override {
         ++stopCount;
         posMs = 0;
         currentState = PlaybackState::Stopped;
@@ -72,13 +72,13 @@ public:
         return {};
     }
 
-    mamba::kernel::Result<void> seekMs(std::int64_t target) override {
+    sonora::kernel::Result<void> seekMs(std::int64_t target) override {
         ++seekCount;
         posMs = target < 0 ? 0 : (target > duration ? duration : target);
         return {};
     }
 
-    mamba::kernel::Result<void> setVolume(std::int32_t target) override {
+    sonora::kernel::Result<void> setVolume(std::int32_t target) override {
         volume_ = target < 0 ? 0 : (target > 100 ? 100 : target);
         return {};
     }
@@ -120,4 +120,4 @@ private:
     ErrorListener errorListener;
 };
 
-} // namespace mambatest
+} // namespace sonoratest

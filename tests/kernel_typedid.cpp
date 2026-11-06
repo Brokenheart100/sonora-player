@@ -7,15 +7,15 @@
 #include <string>
 #include <unordered_set>
 
-#include <mamba/kernel/TypedId.h>
+#include <sonora/kernel/TypedId.h>
 
 namespace {
 
 struct TrackTag;
 struct AlbumTag;
 
-using TrackId = mamba::kernel::TypedId<TrackTag>;
-using AlbumTagId = mamba::kernel::TypedId<AlbumTag>;
+using TrackId = sonora::kernel::TypedId<TrackTag>;
+using AlbumTagId = sonora::kernel::TypedId<AlbumTag>;
 
 }  // namespace
 

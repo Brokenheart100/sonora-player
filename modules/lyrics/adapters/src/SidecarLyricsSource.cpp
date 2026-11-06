@@ -1,4 +1,4 @@
-#include "mamba/lyrics/adapters/SidecarLyricsSource.h"
+#include "sonora/lyrics/adapters/SidecarLyricsSource.h"
 
 #include <fstream>
 #include <optional>
@@ -7,7 +7,7 @@
 
 #include "PathText.h"
 
-namespace mamba::lyrics::adapters {
+namespace sonora::lyrics::adapters {
 namespace {
 
 using ByteBuffer = std::string;
@@ -115,4 +115,4 @@ SidecarLyricsSource::load(std::string_view audioFilePath) const
     return kernel::Result<std::optional<core::LyricsDocument>>::ok(std::move(document));
 }
 
-}  // namespace mamba::lyrics::adapters
+}  // namespace sonora::lyrics::adapters

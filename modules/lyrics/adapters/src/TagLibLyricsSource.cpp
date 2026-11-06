@@ -1,4 +1,4 @@
-#include "mamba/lyrics/adapters/TagLibLyricsSource.h"
+#include "sonora/lyrics/adapters/TagLibLyricsSource.h"
 
 #include <array>
 #include <optional>
@@ -12,7 +12,7 @@
 
 #include "PathText.h"
 
-namespace mamba::lyrics::adapters {
+namespace sonora::lyrics::adapters {
 namespace {
 
 // 优先 `LYRICS`（ID3v2 标准），其次 `UNSYNCEDLYRICS`（老名字），
@@ -64,4 +64,4 @@ TagLibLyricsSource::load(std::string_view audioFilePath) const
     return kernel::Result<std::optional<core::LyricsDocument>>::ok(std::nullopt);
 }
 
-}  // namespace mamba::lyrics::adapters
+}  // namespace sonora::lyrics::adapters

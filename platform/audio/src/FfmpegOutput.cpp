@@ -1,4 +1,4 @@
-#include "mamba/platform/audio/FfmpegOutput.h"
+#include "sonora/platform/audio/FfmpegOutput.h"
 
 #include <algorithm>
 #include <atomic>
@@ -17,11 +17,11 @@
 #include <QMediaDevices>
 #include <QMetaObject>
 
-#include "mamba/platform/audio/AudioOutDevice.h"
-#include "mamba/platform/audio/AudioRing.h"
-#include "mamba/platform/audio/FfmpegDecoder.h"
+#include "sonora/platform/audio/AudioOutDevice.h"
+#include "sonora/platform/audio/AudioRing.h"
+#include "sonora/platform/audio/FfmpegDecoder.h"
 
-namespace mamba::platform::audio {
+namespace sonora::platform::audio {
 
 using playback::contracts::ErrorListener;
 using playback::contracts::FinishedListener;
@@ -585,4 +585,4 @@ void FfmpegOutput::setErrorListener(playback::contracts::ErrorListener listener)
     impl_->onError = std::move(listener);
 }
 
-}  // namespace mamba::platform::audio
+}  // namespace sonora::platform::audio

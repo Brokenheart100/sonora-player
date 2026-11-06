@@ -1,10 +1,10 @@
-#include "mamba/presentation/LyricsModel.h"
+#include "sonora/presentation/LyricsModel.h"
 
 #include <algorithm>
 
-#include "mamba/lyrics/contracts/Queries.h"
+#include "sonora/lyrics/contracts/Queries.h"
 
-namespace mamba::presentation
+namespace sonora::presentation
 {
     namespace
     {
@@ -187,4 +187,4 @@ namespace mamba::presentation
         };
     }
 
-} // namespace mamba::presentation
+} // namespace sonora::presentation

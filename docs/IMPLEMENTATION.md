@@ -1,4 +1,4 @@
-# MambaMusic 实现步骤
+# Sonora 实现步骤
 
 > 按什么顺序做、每步怎么算做完。
 > 架构（Clean Architecture / DDD / CQRS / 模块化单体 / MSVC 约束）见 [架构设计](ARCHITECTURE.md)。
@@ -120,7 +120,7 @@ D:\vcpkg\vcpkg install "ffmpeg[core,avcodec,avformat,swresample]:x64-windows" --
 | 运行时 DLL | `installed/x64-windows/bin`（debug 在 `debug/bin`） |
 
 > **debug 构建一定要链 `debug/lib`**：Debug 的 exe 是 `/MDd`，链 `/MD` 编的 `.lib` 会得到跨 CRT 堆损坏，而且只在 `av_malloc` 里炸，看着像 FFmpeg 的 bug。
-> **DLL 必须拷到 exe 旁边**：`MambaMusic` 的 `after_build` 已经做了；手动跑 exe 时如果没拷，症状是"双击立刻退出、没有任何输出"。
+> **DLL 必须拷到 exe 旁边**：`Sonora` 的 `after_build` 已经做了；手动跑 exe 时如果没拷，症状是"双击立刻退出、没有任何输出"。
 
 > **别把它留到 M4 当天**：这是纯等待，M1 一开始就后台跑起来，等 M4 要用时早就好了。
 > **也别顺手装 sqlite3 / taglib**：它们走 xmake-repo 与自带源码（[DEPENDENCIES §2](DEPENDENCIES.md)）。同一套东西从两个渠道各装一份，是 `LNK2038` 的经典成因。
@@ -154,7 +154,7 @@ M4 之前再加一条：`D:/vcpkg/vcpkg list | grep ffmpeg` 要有 `ffmpeg:x64-w
 
 - [x] 删 `CMakeLists.txt`、根 `Main.qml`/`main.cpp`、`.vscode/launch.json`、`.vscode/settings.json`
 - [x] 建目录骨架：`modules/{kernel,contracts,catalog,playback,playlists,lyrics,preferences}`、`platform/{storage,audio,filesystem,win}`、`presentation/{src,qml}`、`host`、`tests`
-- [x] 23 个 target（22 静态库 + 1 可执行；另有默认关闭的 `mamba_tests`），每个 `include/<inc>/probe.h` + `src/probe.cpp`（`probe()` 返回互不相同的编号，用来验证链接）
+- [x] 23 个 target（22 静态库 + 1 可执行；另有默认关闭的 `sonora_tests`），每个 `include/<inc>/probe.h` + `src/probe.cpp`（`probe()` 返回互不相同的编号，用来验证链接）
 - [x] 写 `xmake.lua` + `xmake/targets.lua`（[架构 §9.3/9.4](ARCHITECTURE.md)）
 - [x] 写 `xmake/checks/boundaries.py`（[架构 §6.5](ARCHITECTURE.md)）
 - [x] `host/main.cpp`：`QGuiApplication` + `PassThrough` 高 DPI + 空 `main.qml`（1140×760 纸色 `#f2ece0`）
@@ -163,12 +163,12 @@ M4 之前再加一条：`D:/vcpkg/vcpkg list | grep ffmpeg` 要有 `ffmpeg:x64-w
 **验收结果（逐条实测）**
 
 - [x] `xmake f -m debug -a x64 -y` 无报错（Qt SDK 自动识别为 6.12.0）
-- [x] `xmake` 编译 23 个 target 全绿：**3.4s**（从零全量，warm 缓存 7s 内）；`mamba_tests` 另计
+- [x] `xmake` 编译 23 个 target 全绿：**3.4s**（从零全量，warm 缓存 7s 内）；`sonora_tests` 另计
 - [x] 窗口能起（1140×760 空窗口，进程常驻约 100MB）
 - [x] **边界下界测试**：`modules/catalog/core/src/probe.cpp` 里写 `#include <QString>` → `fatal error C1083: 无法打开包括文件: "QString"`
-- [x] **边界上界测试**：`presentation/src/probe.cpp` 里写 `#include <mamba/catalog/core/probe.h>` → `fatal error C1083`
+- [x] **边界上界测试**：`presentation/src/probe.cpp` 里写 `#include <sonora/catalog/core/probe.h>` → `fatal error C1083`
 - [x] `python xmake/checks/boundaries.py` → 边界检查通过（46 个文件）
-- [x] `mamba_tests` 12 项全绿（12 个纯 C++ 库链接正常，不需要 QCoreApplication）
+- [x] `sonora_tests` 12 项全绿（12 个纯 C++ 库链接正常，不需要 QCoreApplication）
 
 > 那两个"必须编译失败"是 M0 最重要的验收项。它们一旦通过，说明 23 个 target 的依赖图是对的，后面所有人都不用再操心边界。
 
@@ -177,8 +177,8 @@ M4 之前再加一条：`D:/vcpkg/vcpkg list | grep ffmpeg` 要有 `ffmpeg:x64-w
 ```bash
 xmake f -m debug -a x64 -y
 xmake                       # 全量
-xmake r MambaMusic          # 起窗口（xmake 会注入 Qt 的 runenv PATH）
-xmake build mamba_tests && ./build/windows/x64/debug/mamba_tests.exe
+xmake r sonora          # 起窗口（xmake 会注入 Qt 的 runenv PATH）
+xmake build sonora_tests && ./build/windows/x64/debug/sonora_tests.exe
 python xmake/checks/boundaries.py
 ```
 
@@ -196,8 +196,8 @@ python xmake/checks/boundaries.py
 
 **M1 之前还要知道的**
 
-- `Mamba.Presentation` 的头文件在 `presentation/include/mamba/presentation/`，实现和 QML 在 `presentation/src/` 与 `presentation/qml/`，同一个 target 编译。
-- `mamba_tests` 是 `set_default(false)`，`xmake` 全量不会编它，要显式 `xmake build mamba_tests`。
+- `Sonora.Presentation` 的头文件在 `presentation/include/sonora/presentation/`，实现和 QML 在 `presentation/src/` 与 `presentation/qml/`，同一个 target 编译。
+- `sonora_tests` 是 `set_default(false)`，`xmake` 全量不会编它，要显式 `xmake build sonora_tests`。
 - **Qt 类型的 moc 需要头文件在 `add_files` 里**：`targets.lua` 的 `lib()` 已在 `if spec.qt` 时 `add_files(include/**.h)`，新加带 `Q_OBJECT` 的类不用再改构建脚本；但如果新建了一个没有 `src/*.cpp` 的纯头文件 Qt target，得自己加。
 
 ---
@@ -211,15 +211,15 @@ python xmake/checks/boundaries.py
 **步骤（已完成，括号内为实际耗时与偏差）**
 
 1. **依赖接入 + Kernel**（0.7 天 → 约 0.8）✅
-   - ✅ `TypedId<Tag>` / `Result<T>` / `IDomainEvent` / `IClock` / `ITaskQueue` / `ILogger`，12 个头全在 `modules/kernel/include/mamba/kernel/`
+   - ✅ `TypedId<Tag>` / `Result<T>` / `IDomainEvent` / `IClock` / `ITaskQueue` / `ILogger`，12 个头全在 `modules/kernel/include/sonora/kernel/`
    - ✅ `ICommandBus` / `IQueryBus` + `CommandBus` / `QueryBus`（`type_index` 表 + 5ms 慢命令告警）
    - ✅ doctest 2.5.3（`{configs = {cmake = false}}`，不需要 cmake）；M0 的 12 个 probe 断言搬进 `tests/m0_links.cpp`
-   - ⚠️ `mamba::kernel::toString` 改名为 `toName`——它会被 doctest 的无限定 `toString` 通过 ADL 抓走，非模板精确匹配胜过模板，导致所有枚举断言编译失败
+   - ⚠️ `sonora::kernel::toString` 改名为 `toName`——它会被 doctest 的无限定 `toString` 通过 ADL 抓走，非模板精确匹配胜过模板，导致所有枚举断言编译失败
 2. **存储地基**（0.5 天 → 约 0.6）✅
-   - ✅ amalgamation 在 `third_party/sqlite3/`（3.54.1）+ 独立 target `Mamba.ThirdParty.Sqlite`
+   - ✅ amalgamation 在 `third_party/sqlite3/`（3.54.1）+ 独立 target `Sonora.ThirdParty.Sqlite`
    - ✅ 编译开关：`SQLITE_ENABLE_FTS5`、`SQLITE_ENABLE_MATH_FUNCTIONS`、`SQLITE_THREADSAFE=1`、`SQLITE_DEFAULT_WAL_SYNCHRONOUS=1`、`SQLITE_DQS=0`、`SQLITE_OMIT_DEPRECATED`
    - ✅ `SqliteUnitOfWork` + `__module_version` + `Migrator`（整体一个事务）
-   - ✅ `Mamba.Platform.Storage` 是**纯 C++**（不链 Qt），`mamba_tests` 直接链它
+   - ✅ `Sonora.Platform.Storage` 是**纯 C++**（不链 Qt），`sonora_tests` 直接链它
    - ⚠️ 放弃 SQLiteCpp，自写约 500 行薄封装（见偏差 2）
 3. **Catalog 领域最小集**（1 天 → 约 0.7）✅
    - ⚠️ 没有把 `TrackPath` / `Duration` / `NormalizedTitle` 拆成值对象，用 `TrackDetails` + `trimTitle()` 代替（见偏差 3）
@@ -241,7 +241,7 @@ python xmake/checks/boundaries.py
 - ✅ 关掉重开列表还在：第二次启动输出 `导入完成：扫描 20，导入 0，跳过 20，失败 0`，列表仍 20 行
 - ✅ 导入时 UI 不卡：20 个文件同步导入未触发 5ms 慢命令告警
 - ✅ **命令延迟体检**：`CommandBus` 以 5ms 为阈值打 warn，实测未触发
-- ✅ 全部单测通过：**52 个 TEST_CASE / 270 断言**，且领域层测试不初始化 Qt（`mamba_tests` 不链任何 Qt target）
+- ✅ 全部单测通过：**52 个 TEST_CASE / 270 断言**，且领域层测试不初始化 Qt（`sonora_tests` 不链任何 Qt target）
 - ✅ `python xmake/checks/boundaries.py` → 104 个文件通过
 - ⚠️ **架构开销体检**：见下，换了一种量法
 
@@ -255,7 +255,7 @@ python xmake/checks/boundaries.py
 | 切片本身（契约 + 端口 + 应用 + 适配器 + 表现层 + 组合根） | 24 | 超 12，但含地基 |
 | **再加一个同类功能的边际成本**（例：`RescanLibrary`） | **2 新增 + 1 修改** | **通过** |
 
-真正的分层税在"加一个命令/查询"这件事上，是 3 个文件而不是 24。`*.Contracts` 保留：它让 `Mamba.Presentation` 物理上看不见 Domain，而边际成本只是一个头文件。
+真正的分层税在"加一个命令/查询"这件事上，是 3 个文件而不是 24。`*.Contracts` 保留：它让 `Sonora.Presentation` 物理上看不见 Domain，而边际成本只是一个头文件。
 
 **本次踩到的四个坑（都是"看起来没报错"的那种，已全部修复）**
 
@@ -264,7 +264,7 @@ python xmake/checks/boundaries.py
 | `LNK2001: staticMetaObject` / `qt_metacast` | `qt.moc` 规则只处理 **add_files 里出现的**头文件，而 `lib()` 只 add 了 `src/**.cpp` | `targets.lua` 的 `lib()` 里 `if spec.qt` 分支加 `add_files(include/**.h)`；**不要**再写 `{rules = "qt.moc"}`（会触发 `has already been added`） |
 | 启动即退出，无日志，退出码 `-1073740940`（`0xC0000374` HEAP_CORRUPTION） | debug 构建强写 `set_runtimes("MD")`，而 Qt debug DLL（`Qt6Cored.dll`）是 `/MDd` → 进程里两套 CRT | 删掉三处 `set_runtimes("MD")`，让 xmake 按模式给 `/MDd` / `/MD` |
 | SQLite `unable to open database file` | `mkpath` 返回成功但目录实际不可写（沙箱拦子进程），写入时才失败 | `directoryIsWritable()` 真写一个探针文件；回落到 `<exe>/data` 并把最终路径打到 stderr |
-| 窗口能起、不报错、列表空白、页脚空白 | QML 没 `import MambaMusic 1.0`，`Library` 是 `undefined`，所有绑定悄悄变空串（C++ 侧 `refresh ok=1 rows=20`） | `main.qml` 加 `import MambaMusic 1.0`；诊断用 `typeof Library === "undefined"` 探针 |
+| 窗口能起、不报错、列表空白、页脚空白 | QML 没 `import Sonora.Presentation 1.0`，`Library` 是 `undefined`，所有绑定悄悄变空串（C++ 侧 `refresh ok=1 rows=20`） | `main.qml` 加 `import Sonora.Presentation 1.0`；诊断用 `typeof Library === "undefined"` 探针 |
 
 **与计划的偏差（6 处）**
 
@@ -367,13 +367,13 @@ python xmake/checks/boundaries.py
 | `.demo/music/` 的 20 个假 flac | 能进库、能在列表里显示，一播就 `Failed` | 验收必须真音频。新增 `tools/make_test_audio.py` 用标准库合成 WAV（带淡入淡出，避免爆音被误判成链路问题） |
 | 模拟点击送不进窗口 | `mouse_event` 无反应、滚轮不滚 | 这个会话里合成输入到不了前台窗口，改用 `PostMessage(WM_MOUSEMOVE/WM_LBUTTONDOWN/WM_LBUTTONUP)`，坐标是**客户区像素**（窗口截图 1792×1256 含窗框，客户区 1770×1200） |
 | core 里连注释都不能提 Qt | 边界脚本报「Qt 类型/宏 QMediaPlayer 侵入了 core 层」 | `boundaries.py` 扫的是文本，注释也算。改成「底层播放器」这类中性说法 |
-| platform 层看不见别的模块 contracts | 报「platform 层不许 include `mamba/playback/contracts/AudioOutput.h`」 | 规则漏了一列：`Mamba.Platform.Audio` 实现的正是 `Playback.Contracts` 的端口。已在 `include_allowed()` 的跨模块分支补上 `platform` |
+| platform 层看不见别的模块 contracts | 报「platform 层不许 include `sonora/playback/contracts/AudioOutput.h`」 | 规则漏了一列：`Sonora.Platform.Audio` 实现的正是 `Playback.Contracts` 的端口。已在 `include_allowed()` 的跨模块分支补上 `platform` |
 
 **与计划的偏差**
 
 1. 三个命令 → 六个。`PlayTracks` 与 `TogglePlayPause` 分开是有用的（前者换队列，后者只翻状态），而 `SetVolume` / `Next` / `Previous` 各自是独立意图；合成一个 `PlayerCommand{kind}` 只会让 Handler 里长出一棵 switch。
 2. 文件对话框没做。拖放 + 双击已经覆盖"把歌弄进来并播放"，对话框留到 M6（那里还要处理文件夹选择与递归开关）。
-3. 端口放 `Playback.Contracts` 而非 `Mamba.Kernel`：实现方（Platform.Audio）只该依赖契约，不该依赖整个内核；这条 dep 在 `xmake/targets.lua` 里本来就是现成的。
+3. 端口放 `Playback.Contracts` 而非 `Sonora.Kernel`：实现方（Platform.Audio）只该依赖契约，不该依赖整个内核；这条 dep 在 `xmake/targets.lua` 里本来就是现成的。
 4. `previous()` 的"播过 3 秒先回开头"惯例推后到 M6：`PlaybackService` 现在不持 `IPositionStream`，硬塞进去会让领域层多一个只为 UI 服务的依赖。
 5. 列表里的时长仍是 `--:--`：`BasicMetadataReader` 只从文件名拆标题/艺术家，不读时长（M5 换 TagLib）。播放条上的时长是真值，来自底层播放器。
 
@@ -405,7 +405,7 @@ python xmake/checks/boundaries.py
 | 播完自动下一首 | wav 队列连播到第 6 首 |
 | 队列播完 | 输出停止、按钮回「播放」、进度归零 |
 | 命令延迟 | `[warn] 命令同步耗时 224.97ms` 修复后消失（残下一次 6.56ms，来自 `stopWorker` 的 join） |
-| 单测 | `mamba_tests` 68 用例 / 3353 断言全绿（含 `AudioRing` 百万样本压测） |
+| 单测 | `sonora_tests` 68 用例 / 3353 断言全绿（含 `AudioRing` 百万样本压测） |
 | 边界 | `boundaries.py` 126 文件通过 |
 | 切歌 50 次 / 拔耳机 / 320kbps CPU 对比 | **没测**，见偏差第 5 条 |
 
@@ -415,7 +415,7 @@ python xmake/checks/boundaries.py
 | --- | --- | --- |
 | vcpkg classic 不认 `--features` | `error: unexpected switch` | 写成 `ffmpeg[core,avcodec,avformat,swresample]:x64-windows` |
 | debug 链 release 库 | 只在 `av_malloc` 里炸，堆损坏 | debug 构建链 `installed/x64-windows/debug/lib`（/MDd） |
-| 没拷 FFmpeg DLL | 双击 exe 立刻退出、零输出 | `MambaMusic` 的 `after_build` 拷 `av*.dll` / `sw*.dll` |
+| 没拷 FFmpeg DLL | 双击 exe 立刻退出、零输出 | `Sonora` 的 `after_build` 拷 `av*.dll` / `sw*.dll` |
 | 在命令线程里 open | `命令同步耗时 224.97ms`，UI 卡 | `load()` 只登记 + 起线程；解码线程 open，GUI 线程建 sink |
 | 位置单位混用 | 跳 50% 后显示 `45:28 / 2:02` | 样本与毫秒必须先合成再换算 |
 | `av_seek_frame(BACKWARD)` 不精确 | 跳 80% 后位置走到 `2:24 / 2:02` | 先 `avformat_seek_file(INT64_MIN, ts, INT64_MAX)`，再按首帧 pts 丢掉多出的样本；`positionMs()` 再 clamp 到 duration |
@@ -479,7 +479,7 @@ python xmake/checks/boundaries.py
 | `ImportSummary` 拿不到 | 它定义在 `Catalog.Core`，而 Presentation 只依赖 `*.Contracts`；且 `dispatch` 类型擦除只回 `Result<void>` | 界面只要"成功/失败 + 刷新后的总数"，逐文件计数留在 Handler 日志里 |
 | `TagLib::FileName` 传 `string_view` 崩 | 它是 `const char*`，`string_view` 不保证 0 结尾 | 先落 `std::string` 再 `.c_str()` |
 | 中文名文件"读不出标签、时长 0" | Windows 上 `TagLib::FileName` 的 `char*` 构造按**本地编码（GBK）**打开文件，喂 UTF-8 就打不开 | 传 `std::filesystem::path::c_str()`（Windows 上是 `wchar_t*`）——真实音乐库 `D:\Music` 的 7 首里 5 首正是这么挂的 |
-| 重链 `LNK1168` | 上一次跑起来的 exe 还占着文件 | 构建前 `taskkill /F /IM MambaMusic.exe` |
+| 重链 `LNK1168` | 上一次跑起来的 exe 还占着文件 | 构建前 `taskkill /F /IM sonora.exe` |
 | 「输入没反应」 | 本 harness 里 `PostMessage` 发的 `WM_CHAR`/滚轮到不了 Qt（窗口没被激活） | 用"预设初值 + `Component.onCompleted`"临时代替键盘输入验证，验完撤掉 |
 | 专辑列只剩两个字、标题被压扁 | 列宽按**截图里的物理像素**手算，而委托实际只有 **927 逻辑像素**（1180 逻辑宽减侧栏，截图是 1.5 倍 dpr 的 1792）；`0.85 * 927` 再加固定 90px 时长列，专辑列被挤到 37px | 列宽改百分比 + **弹性列用锚点链**（`anchors.left/right` 相互引用），时长列 `x: width - 58`；诊断靠临时把 `Math.round(row.width)` 打到某一列读出来 |
 | 封面全不显示 | `data()` 返回裸路径，`Image.source` 会当相对地址解析 | 返回 `QUrl::fromLocalFile(path).toString()` |
@@ -538,7 +538,7 @@ python xmake/checks/boundaries.py
 | # | 坑 | 现象 | 修法 |
 | --- | --- | --- | --- |
 | 1 | `ShufflePlanner` 的 Fisher–Yates 写成 `i > 0` + `dist{0, i}` | "第一首固定"不成立，测试断言 `front() == 2` 实际拿到 1 | 改成 `i > 1` + `dist{1, i}`：最后一个待换位置必须是下标 1，否则下标 0 会被卷进去 |
-| 2 | `mamba::playback::core` 里裸写 `contracts::TrackFinished` | `C2039: "TrackFinished": 不是 "mamba::playback::contracts" 的成员` | 模块内的 `contracts` 一定盖住外层的；跨模块类型必须写全 `mamba::contracts::…` |
+| 2 | `sonora::playback::core` 里裸写 `contracts::TrackFinished` | `C2039: "TrackFinished": 不是 "sonora::playback::contracts" 的成员` | 模块内的 `contracts` 一定盖住外层的；跨模块类型必须写全 `sonora::contracts::…` |
 | 3 | `TrackFinished` 用聚合初始化 `{id, now}` | `C2440: 无法从 initializer list 转换`——它继承了 `IDomainEvent`，不再是聚合 | 给它加一个两参数构造函数 |
 | 4 | `Result<SqliteStatement>` 想直接 `return` 成 `Result<void>` | `C2440` ×2 | 逐层 `Result<void>::fail(x.error())`，和仓储里的写法保持一致 |
 | 5 | `presentation` 里想用 `ImportSummary` 之外的领域类型 | `C3878`/`C2059`，根因是 Presentation 只依赖 `*.Contracts` | 界面拿不到逐文件计数（M5 已记过一次），这次换成"事件让别人去记账，界面只刷新" |
@@ -582,7 +582,7 @@ python xmake/checks/boundaries.py
 | 切歌无残影 | — | `loadFor()` 按文件路径变化触发 `beginResetModel`，`currentIndex` 归 -1 后由下一个 tick 重新定位 |
 | 无歌词不显示空盒子 | — | `Lyrics.visible` 为假时列表 `visible: false`，只留一句居中提示（纯音乐显示「纯音乐」，编码错误显示原因） |
 | 真实素材 | — | `D:\Music` 6 首 mp3 + 6 个同名 `.lrc`（含网易云 JSON 头）全部解析成功，`matched` 24 行 |
-| 单测 | — | `mamba_tests` **115 用例 / 4795 断言** |
+| 单测 | — | `sonora_tests` **115 用例 / 4795 断言** |
 | 边界 | — | `boundaries.py` **166 文件通过** |
 | 字体 | 不回落系统字体 | `tools/subset_fonts.py` 重跑：742 字符、1479 KB → 116 KB（8%） |
 
@@ -633,7 +633,7 @@ python xmake/checks/boundaries.py
 | 跑起来之后的最差帧 | 第 57 帧 18ms、第 112 帧 9ms，其余全部 < 8ms |
 | 转场是否真的在跑 | 内容区左上角平均亮度：稳态 `(224,219,209)`，转场中 `(192,188,179)`/`(205,200,190)` |
 | 集中线 | 7 根锥形射线，起点贴唱片外缘 r≈262px，末端收成针尖，避开文案/进度条/侧栏/小猫 |
-| `mamba_tests` | 115 用例 / 4795 断言全绿 |
+| `sonora_tests` | 115 用例 / 4795 断言全绿 |
 | `boundaries.py` | 166 文件通过 |
 
 **坑**
@@ -643,7 +643,7 @@ python xmake/checks/boundaries.py
 | 自定义 UBO 里的 `vec2` 到不了 shader，射线变成一团同心红光晕 | 只 `float` uniform 验证过能用，`vector2d` 成员实测无效 | 放弃 shader，用 `Canvas` 画 |
 | 动画结束后元素永久消失 | `NumberAnimation` 作用在 `opacity` 上会**打断绑定**，动画停止时把值留在 0 | 动画只动中间量 `flash`，`opacity: flash` 保持绑定 |
 | `item.pop.restart()` 运行期报 undefined | delegate 内部的 id 在外面看不见 | delegate 暴露 `function start()` |
-| `comic/` 下的组件报 `Player is not defined` | 子目录文件也要 `import MambaMusic 1.0` | 补 import |
+| `comic/` 下的组件报 `Player is not defined` | 子目录文件也要 `import Sonora.Presentation 1.0` | 补 import |
 | Canvas 内容被硬切成平头 | Canvas 会裁剪到自身矩形 | 射线长度按"页面还能走多远"收笔，末端收成针尖 |
 | 我的像素判据把红色面板统计成"空白" | 判据 `r>150 and g<80 and b<80` 漏掉了珊瑚色 `#FA7973`（g=121） | 用子代理看图，或把判据放宽到混色区间 |
 
@@ -687,7 +687,7 @@ python xmake/checks/boundaries.py
 1. 搜索框的 `focus: true` 抢走键盘焦点后，窗口级 `Shortcut`（空格 / ← / →）**全部失效**——删掉 `focus: true`。
 2. `Shell.qml` 的快捷键加 `enabled: !typing`（`typing` 由 `activeFocusItem` 是否有 `text` 判断），搜索框里打空格不再顺手暂停播放。
 
-**回归**：`mamba_tests` 115 用例 / 4795 断言全绿、`boundaries.py` 166 文件通过。
+**回归**：`sonora_tests` 115 用例 / 4795 断言全绿、`boundaries.py` 166 文件通过。
 
 ---
 
@@ -703,7 +703,7 @@ python xmake/checks/boundaries.py
 | 坑 1 | `Image.source` 只认 URL，Windows 裸路径会被当成相对地址，症状是封面全不显示 |
 | 坑 2 | `MultiEffect` 的 `maskSource` 必须是**独立渲染**的项，要 `layer.enabled: true`，否则遮罩读出空白 |
 | 证据 | 真机截图：播放条 56px 块与唱片中心是同一张封面（中心那份随盘旋转），圆裁干净、无方角溢出、刻纹与唱臂零位移；无封面的曲目回落红标正常 |
-| 回归 | `mamba_tests` 116 用例 / 4801 断言，新增 1 例「封面路径随队列进快照」（含"没有封面给空串、不把上一首的封面留下"）；`boundaries.py` 166 文件通过 |
+| 回归 | `sonora_tests` 116 用例 / 4801 断言，新增 1 例「封面路径随队列进快照」（含"没有封面给空串、不把上一首的封面留下"）；`boundaries.py` 166 文件通过 |
 
 ---
 
@@ -789,17 +789,17 @@ xmake f -m debug -a x64 -y
 xmake
 
 # 3. 运行
-xmake r MambaMusic
+xmake r sonora
 
 # 4. 单测（纯 C++，不链 Qt）
-xmake build mamba_tests && ./build/windows/x64/debug/mamba_tests.exe
+xmake build sonora_tests && ./build/windows/x64/debug/sonora_tests.exe
 
 # 5. 边界脚本
 python xmake/checks/boundaries.py
 
 # 6. 边界探针（两条都必须编译失败；验完记得还原）
 #    modules/catalog/core/src/probe.cpp  += #include <QString>                  → C1083
-#    presentation/src/probe.cpp          += #include <mamba/catalog/core/probe.h> → C1083
+#    presentation/src/probe.cpp          += #include <sonora/catalog/core/probe.h> → C1083
 
 # 7. 改完 .frag 之后重新烘焙（xmake 的 task 沙箱里没有 import，只能靠 QTDIR / PATH 找 qsb）
 PATH="/d/Software/Qt/6.12.0/msvc2022_64/bin:$PATH" xmake qsb
@@ -808,7 +808,7 @@ PATH="/d/Software/Qt/6.12.0/msvc2022_64/bin:$PATH" xmake qsb
 python tools/subset_fonts.py          # 或加 --check 只看字符数
 
 # 9. 帧时间（GUI 子系统进程必须加 QT_FORCE_STDERR_LOGGING，否则 qDebug 全丢）
-QT_FORCE_STDERR_LOGGING=1 QSG_RENDER_TIMING=1 ./build/windows/x64/debug/MambaMusic.exe
+QT_FORCE_STDERR_LOGGING=1 QSG_RENDER_TIMING=1 ./build/windows/x64/debug/sonora.exe
 ```
 
 跑起来看不到窗口但进程立刻退出时，先看 stderr 的 `[qml]` 行——`host/main.cpp` 把 `QQmlApplicationEngine::warnings` 转成了普通 stderr 输出。
@@ -816,6 +816,98 @@ QT_FORCE_STDERR_LOGGING=1 QSG_RENDER_TIMING=1 ./build/windows/x64/debug/MambaMus
 Switch to release：`xmake f -m release -y && xmake`。
 
 > **debug 构建不要写死 `/MD`**：Qt 的 debug DLL 是 `/MDd`，两套 CRT 会让进程在第一次跨 DLL 分配时以 `0xC0000374`（STATUS_HEAP_CORRUPTION）静默退出，且不打任何日志。`xmake/targets.lua` 现在不设 `set_runtimes`，让 xmake 按模式给。
+
+---
+
+## 7. 持续集成（GitHub Actions）
+
+流水线在 `.github/workflows/ci.yml`，触发条件：推 `main`、对 `main` 的 PR、手动 `workflow_dispatch`。纯文档改动（`docs/**`、`*.md`、`.demo/**`）不触发构建。
+
+它存在的理由只有一句：**AGENTS.md §3「改完必须做的事」不该靠人记**。
+
+### 7.1 两个 job
+
+| job | 跑在哪 | 干什么 | 命中缓存的耗时 |
+| --- | --- | --- | --- |
+| `boundaries` | `ubuntu-latest` | `python xmake/checks/boundaries.py` —— 纯 Python，十秒级，拦 target 图管不到的腐化 | ~15s |
+| `build` | `windows-latest` | 矩阵 `debug` / `release`：装 Qt + vcpkg FFmpeg + xmake → 全量构建 → 核对 DLL 拷贝 → 编 `sonora_tests` 并跑 → 核对 shader 产物字节与字体覆盖 →（手动触发时）打包 | ~8min / 腿 |
+
+`boundaries` 先跑、`build` 用 `needs` 依赖它：边界脏了就别浪费 16 分钟的 Windows 机时。
+
+### 7.2 为什么每个地方是那样
+
+- **只有 Windows**：`xmake.lua` 里 `set_allowedplats("windows")`。放开跨平台会让 `#ifdef _WIN32` 在两周内漏进 `core/`。
+- **debug 与 release 都编**：debug 是日常形态（Qt 的 debug DLL 是 `/MDd`），release 才是交付形态。只编一种的流水线会漏掉"xmake 给了 `/MD`、某个第三方库却是 `/MDd`"这类只在交付时炸的问题——症状是 `0xC0000374` 静默退出。
+- **FFmpeg 从 vcpkg 源码编**：gyan.dev / BtbN 那两家 Windows 预编译包都是 MinGW 建的（`.dll.a`），和 MSVC 链接会得到 `LNK2019: __imp_av_*` 的假象。代价是 25–40 分钟，所以用 `actions/cache` 缓存整个 `installed/` 目录；**key 里带 triplet 与 features**，改了 features 必然重编，不会复用旧缓存。
+- **`xmake f --qt="$env:QT_ROOT_DIR"`**：`install-qt-action` 会把 `QT_ROOT_DIR` 写出来；显式传比依赖 `PATH` 自动识别更不容易因为 runner 镜像变化而翻车。
+- **核对 ffmpeg DLL 在不在 exe 旁边**：这是 `xmake/targets.lua` 的 `after_build` 干的活。少了的症状是编译全绿、双击 exe 立刻退出且零输出。CI 里直接数 `av*.dll` + `sw*.dll` 的个数。
+- **`sonora_tests` 单独显式构建**：它是 `set_default(false)`，`xmake` 全量不会编它。它只链纯 C++ target，不初始化 Qt、不加载 Qt DLL——领域层测不干净就说明领域层被污染了。
+- **shader 产物核对字节，字体核对覆盖**：`.qsb` 是确定性的，跑一遍 `xmake qsb` 再看 `git status --porcelain -- assets/shaders` 就该干净；`.gitattributes` 里把 `*.qsb`、`*.ttf` 标成 binary、其余 `text=auto eol=lf`，否则 Windows runner 的 `core.autocrlf=true` 会把 `.frag` 改成 CRLF，每次 diff 都是满屏假阳性。字体则相反——子集字节依赖 fontTools 版本，比字节只会产出"内容一样、字节不同"的假失败，所以 CI 用的是 `python tools/subset_fonts.py --verify`：只查「界面上的每个字都在已提交的子集里」。
+- **qmllint 只报告不阻断**：QML 的类型错误大多只在运行时现形；qmllint 挡不住绑定语义问题，能抓的只是拼写与导入错误。等它稳定了再改成阻断。
+- **打包只在手动触发时做**：平时只证明"能编能测"。`workflow_dispatch` 时才跑 `windeployqt --qmldir presentation/qml` 并打成 zip，供真机试听。
+
+### 7.3 需要人维护的两处版本号
+
+`ci.yml` 顶部的 `QT_VERSION` 与 `XMAKE_VERSION` 必须与本机一致，否则"本地能编、CI 编不过"会变成日常困扰。升级时改这里，并在 `docs/DEPENDENCIES.md` §6 记一笔。
+
+### 7.4 本地复现同一套检查
+
+```bash
+xmake f -m debug -a x64 -y --qt="$QT_PREFIX"
+xmake -y && xmake build -y sonora_tests && ./build/windows/x64/debug/sonora_tests.exe
+python xmake/checks/boundaries.py
+PATH="$QT_PREFIX/bin:$PATH" xmake qsb && git diff --exit-code -- assets/shaders
+python tools/subset_fonts.py --verify
+python tools/subset_fonts.py && git diff --exit-code -- assets/fonts   # 本机换了字才需要
+```
+
+`rm -rf build .xmake` 之后再跑一遍，才是 CI 的冷启动路径。
+
+### 7.5 还缺什么（M9 之前该补的）
+
+- 没有 `clang-format` / `clang-tidy` 检查——仓库至今没有 `.clang-format`，先定风格再上钩子，否则一次检查会产出几千行 diff。
+- 没有覆盖率门槛，只证明跑通。
+- 没有发布流水线（签名、安装包、自动更新），那是 M9 的事。
+
+### 7.6 接上 CI 当天就查出来的两个旧账
+
+这两条都不是 CI 的 bug，是它第一次让"没人跑过的那条命令"变成了会失败的红灯：
+
+1. **字体子集落后了两代**：仓库里 `assets/fonts/ZCOOLKuaiLe-Subset.ttf` 只有 **734 个字形**，而当时的界面需要 **949 个字符**（其中 10 个源字体本来就没有，只能回落系统字体）——M5–M8 新增的文案一直在回落系统字体，只在截图里表现为"某几个字看起来不像手写体"。重新裁切后是 **939 字 / 154 KB**（源字体的 10%）。
+2. **`tools/subset_fonts.py` 只扫 `.qml`**：`presentation/src/PlayerViewModel.cpp` 里的 `QStringLiteral("播放中")`、`QStringLiteral("已暂停")` 这类 C++ 文案从来没进过子集（C++ 字符串字面量里 484 个中文、89 个不在字体里）。现在脚本会扫 `presentation/src/**.cpp` 的**字符串字面量**（`C_STRING_LITERAL` 正则，不扫整文件——注释里的中文会把 154 KB 撑成 500 KB），并用 `--verify` 在 CI 里拦住"改了文案没重裁字体"。
+
+这两条也是 `--verify` 为什么要按"覆盖"而不是"字节"判定：字体子集的字节取决于 fontTools 版本，比字节只会得到与真实问题无关的失败信号。
+
+---
+
+## 8. 改名 Sonora 与应用图标（✅ 已完成，2026-11）
+
+### 8.1 改名
+
+按命名规范一次性从 MambaMusic 改成 Sonora：产品名 Sonora、工程名 `Sonora`、命名空间 `sonora::`、头文件根 `include/sonora/`、可执行程序 `sonora.exe`、QML 模块 `Sonora.Presentation`、Windows 显示名 Sonora Music。名字与落点见 [ARCHITECTURE.md §0 命名](ARCHITECTURE.md)。
+
+改动范围：**183 个文本文件 + 23 个 `include/mamba` 目录**。做法是脚本化的有序替换（先钉死 `MambaMusic.exe` / `import MambaMusic 1.0` / `target("MambaMusic")` 这类专有串，再做 `Mamba.`→`Sonora.`、`mamba::`→`sonora::`、`mamba/`→`sonora/` 的兜底），然后靠编译器把漏网的找出来——实际只有一处需要人工判断：`.github/` 目录曾被"跳过 `.git`"的前缀匹配误伤，CI 里的名字是单独补的。
+
+验证：`xmake -y` 12.6s 全绿；`sonora_tests` 116 用例 / 4801 断言；`boundaries.py` 166 文件；真机启动无 `[qml]` 告警（说明 `import Sonora.Presentation 1.0` 这条带点的模块 URI 解析正常）。
+
+> 带点模块名的坑：`qmlRegisterSingletonInstance("Sonora.Presentation", …)` 与 `import Sonora.Presentation 1.0` 必须**逐字一致**；写成 `import Sonora 1.0` 不会报错，只会让 `Library` 变 `undefined`、绑定静默变空（和 `import` 写错文件名时的表现一样）。
+
+### 8.2 应用图标
+
+设计：漫画分格里的黑胶唱片——米白纸张、粗黑描边、红色标签、一道黄色闪电，右上角两颗四角星。全部由 `tools/make_icon.py` 用 Pillow 画出来（没有二进制美术资产，改配色/构图就是改几行坐标）。
+
+| 产物 | 用途 |
+| --- | --- |
+| `assets/icons/sonora.ico` | 16/24/32/48/64/128/256 七档，由 2048px 母版逐档 LANCZOS 缩（不让 Pillow 自己缩），PNG 压缩条目 |
+| `assets/icons/sonora.png` | 512px；进 qrc，`QGuiApplication::setWindowIcon()` 用 |
+| `assets/app.rc` | `IDI_APPICON` + `VERSIONINFO`（ProductName = Sonora Music）；由 `xmake/targets.lua` 挂到 `sonora` target 上 |
+
+两个容易踩的点：
+
+1. **`.ico` 与窗口图标是两条路径**。`.ico` 只决定资源管理器/快捷方式上看到的东西，运行期任务栏图标来自 `setWindowIcon(QIcon(":/icons/sonora.png"))`。只做前者，任务栏仍会是白纸。
+2. **`rc.exe` 的相对路径以 `.rc` 文件所在目录为基准**，所以 `assets/app.rc` 里写的是 `"icons/sonora.ico"`；写成相对仓库根的路径会在 CI 上失败（本机因为工作目录恰好对，看不出来）。
+
+自检（不依赖肉眼）：`ExtractAssociatedIcon(sonora.exe)` 取出来的 32px 位图应与 `assets/icons/preview-32.png` **逐像素一致**；运行中窗口标题栏左侧应能数出红色与黄色像素。
 
 ---
 

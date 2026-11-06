@@ -6,9 +6,9 @@
 #include <thread>
 #include <vector>
 
-#include <mamba/platform/audio/AudioRing.h>
+#include <sonora/platform/audio/AudioRing.h>
 
-using mamba::platform::audio::AudioRing;
+using sonora::platform::audio::AudioRing;
 
 namespace {
 

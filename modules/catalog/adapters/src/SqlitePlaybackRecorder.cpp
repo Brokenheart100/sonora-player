@@ -1,12 +1,12 @@
-#include "mamba/catalog/adapters/SqlitePlaybackRecorder.h"
+#include "sonora/catalog/adapters/SqlitePlaybackRecorder.h"
 
 #include <string_view>
 
-#include "mamba/kernel/Error.h"
-#include "mamba/platform/storage/SqliteError.h"
-#include "mamba/platform/storage/SqliteStatement.h"
+#include "sonora/kernel/Error.h"
+#include "sonora/platform/storage/SqliteError.h"
+#include "sonora/platform/storage/SqliteStatement.h"
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -39,4 +39,4 @@ Result<void> SqlitePlaybackRecorder::record(std::uint64_t trackId,
     return Result<void>::ok();
 }
 
-} // namespace mamba::catalog::adapters
+} // namespace sonora::catalog::adapters

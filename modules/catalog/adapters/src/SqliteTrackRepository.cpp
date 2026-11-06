@@ -1,13 +1,13 @@
-#include "mamba/catalog/adapters/SqliteTrackRepository.h"
+#include "sonora/catalog/adapters/SqliteTrackRepository.h"
 
 #include <optional>
 #include <string>
 #include <utility>
 
-#include "mamba/catalog/adapters/SearchText.h"
-#include "mamba/catalog/core/domain/Track.h"
+#include "sonora/catalog/adapters/SearchText.h"
+#include "sonora/catalog/core/domain/Track.h"
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -330,4 +330,4 @@ Result<std::int64_t> SqliteTrackRepository::rebuildSearchIndexFromTracks()
     return Result<std::int64_t>::ok(indexed);
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

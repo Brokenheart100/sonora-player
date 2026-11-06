@@ -1,4 +1,4 @@
-#include "mamba/catalog/adapters/FileCoverStore.h"
+#include "sonora/catalog/adapters/FileCoverStore.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -7,7 +7,7 @@
 #include <system_error>
 #include <utility>
 
-namespace mamba::catalog::adapters
+namespace sonora::catalog::adapters
 {
     namespace
     {
@@ -128,4 +128,4 @@ namespace mamba::catalog::adapters
         return kernel::Result<std::string>::ok(std::move(key));
     }
 
-} // namespace mamba::catalog::adapters
+} // namespace sonora::catalog::adapters

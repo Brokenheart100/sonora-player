@@ -8,16 +8,16 @@
 #include <string>
 #include <vector>
 
-#include "mamba/lyrics/core/domain/LrcParser.h"
-#include "mamba/lyrics/core/domain/LyricTimeline.h"
-#include "mamba/lyrics/core/domain/Lyrics.h"
+#include "sonora/lyrics/core/domain/LrcParser.h"
+#include "sonora/lyrics/core/domain/LyricTimeline.h"
+#include "sonora/lyrics/core/domain/Lyrics.h"
 
 namespace {
 
-using mamba::lyrics::core::LrcParser;
-using mamba::lyrics::core::LyricEntry;
-using mamba::lyrics::core::LyricTimeline;
-using mamba::lyrics::core::Lyrics;
+using sonora::lyrics::core::LrcParser;
+using sonora::lyrics::core::LyricEntry;
+using sonora::lyrics::core::LyricTimeline;
+using sonora::lyrics::core::Lyrics;
 
 }  // namespace
 
@@ -156,7 +156,7 @@ TEST_CASE("LyricTimeline：边界值、重复时间戳、空时间轴")
 
 TEST_CASE("parseTimeTag：合法写法与非法写法")
 {
-    using mamba::lyrics::core::LrcParser;
+    using sonora::lyrics::core::LrcParser;
 
     REQUIRE(LrcParser::parseTimeTag("00:12.00").has_value());
     CHECK(*LrcParser::parseTimeTag("00:12.00") == 12000);

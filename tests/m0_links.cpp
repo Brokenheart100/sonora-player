@@ -8,36 +8,36 @@
 // 本二进制不许链）。改 probe 编号时这里要同步改。
 #include "doctest_support.h"
 
-#include <mamba/catalog/contracts/probe.h>
-#include <mamba/catalog/core/probe.h>
-#include <mamba/contracts/probe.h>
-#include <mamba/kernel/probe.h>
-#include <mamba/lyrics/contracts/probe.h>
-#include <mamba/lyrics/core/probe.h>
-#include <mamba/playback/contracts/probe.h>
-#include <mamba/playback/core/probe.h>
-#include <mamba/playlists/contracts/probe.h>
-#include <mamba/playlists/core/probe.h>
-#include <mamba/preferences/contracts/probe.h>
-#include <mamba/preferences/core/probe.h>
+#include <sonora/catalog/contracts/probe.h>
+#include <sonora/catalog/core/probe.h>
+#include <sonora/contracts/probe.h>
+#include <sonora/kernel/probe.h>
+#include <sonora/lyrics/contracts/probe.h>
+#include <sonora/lyrics/core/probe.h>
+#include <sonora/playback/contracts/probe.h>
+#include <sonora/playback/core/probe.h>
+#include <sonora/playlists/contracts/probe.h>
+#include <sonora/playlists/core/probe.h>
+#include <sonora/preferences/contracts/probe.h>
+#include <sonora/preferences/core/probe.h>
 
 TEST_CASE("M0 链接探针：12 个纯 C++ 库都能到达")
 {
-    CHECK(mamba::kernel::probe() == 1);
-    CHECK(mamba::contracts::probe() == 2);
+    CHECK(sonora::kernel::probe() == 1);
+    CHECK(sonora::contracts::probe() == 2);
 
-    CHECK(mamba::catalog::contracts::probe() == 3);
-    CHECK(mamba::catalog::core::probe() == 4);
+    CHECK(sonora::catalog::contracts::probe() == 3);
+    CHECK(sonora::catalog::core::probe() == 4);
 
-    CHECK(mamba::playback::contracts::probe() == 6);
-    CHECK(mamba::playback::core::probe() == 7);
+    CHECK(sonora::playback::contracts::probe() == 6);
+    CHECK(sonora::playback::core::probe() == 7);
 
-    CHECK(mamba::playlists::contracts::probe() == 9);
-    CHECK(mamba::playlists::core::probe() == 10);
+    CHECK(sonora::playlists::contracts::probe() == 9);
+    CHECK(sonora::playlists::core::probe() == 10);
 
-    CHECK(mamba::lyrics::contracts::probe() == 12);
-    CHECK(mamba::lyrics::core::probe() == 13);
+    CHECK(sonora::lyrics::contracts::probe() == 12);
+    CHECK(sonora::lyrics::core::probe() == 13);
 
-    CHECK(mamba::preferences::contracts::probe() == 15);
-    CHECK(mamba::preferences::core::probe() == 16);
+    CHECK(sonora::preferences::contracts::probe() == 15);
+    CHECK(sonora::preferences::core::probe() == 16);
 }

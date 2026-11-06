@@ -1,6 +1,6 @@
-#include "mamba/platform/storage/SqliteTransaction.h"
+#include "sonora/platform/storage/SqliteTransaction.h"
 
-namespace mamba::platform::storage {
+namespace sonora::platform::storage {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -69,4 +69,4 @@ void SqliteTransaction::rollback() noexcept
     active_ = false;
 }
 
-}  // namespace mamba::platform::storage
+}  // namespace sonora::platform::storage

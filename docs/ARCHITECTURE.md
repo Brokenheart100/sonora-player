@@ -1,4 +1,4 @@
-# MambaMusic 架构设计
+# Sonora 架构设计
 
 > **栈**：Qt 6.12 (MSVC；实测 VS 2026) · C++20 · QML · FFmpeg · TagLib · SQLite · xmake · Windows x64 only
 > **架构**：Clean Architecture（同心圆）+ 严格 DDD（战术模式）+ CQRS（通道分离）+ MVVM（表现层）+ 模块化单体（Modular Monolith）
@@ -34,6 +34,21 @@
 | 插件系统 | 内核未稳定时插件契约 = 锁死错误设计 |
 | 跨模块数据库外键与 JOIN | 模块化单体的核心纪律，破坏它等于回到大泥球（见 §6.4） |
 | 桌面歌词 / 迷你窗 / 移动端 / Web | 各自都是独立小项目 |
+
+### 命名（2026-11 由 MambaMusic 改名为 Sonora）
+
+| 用途 | 名称 | 落在哪 |
+| --- | --- | --- |
+| 产品名 | Sonora | 文档、`AGENTS.md`、版本信息 |
+| GitHub 仓库 | `sonora-player` | remote |
+| 构建工程 | `Sonora` | `xmake.lua` 的 `set_project("Sonora")` |
+| C++ 命名空间 | `Sonora`（小写 `sonora::`） | 所有源码；头文件根目录 `include/sonora/` |
+| 可执行程序 | `sonora` | `xmake/targets.lua` 的 `target("sonora")` → `sonora.exe` |
+| QML 模块 | `Sonora.Presentation` | `qmlRegisterSingletonInstance("Sonora.Presentation", …)` + 每个 QML 文件的 `import Sonora.Presentation 1.0` |
+| Windows 显示名称 | Sonora Music | `setApplicationDisplayName()` + `assets/app.rc` 的 `ProductName` |
+
+改名的连带效应（都属于预期）：SQLite 库名变成 `sonora.sqlite`，`QStandardPaths` 的数据目录随应用名变成 `<AppData>/Sonora/...`，所以**老的 `mamba.sqlite` 不会被自动迁移**——开发机换名前把库搬过去或重新扫描即可。
+
 
 ---
 
@@ -104,17 +119,17 @@
 
 | 组件 | 是什么 | 为什么单独存在 |
 | --- | --- | --- |
-| `Mamba.Contracts` | 跨模块集成事件 + 共享 DTO（`TrackRefDto` 等） | 模块间唯一的通信媒介 |
-| `Mamba.Platform.Storage` | 自带 SQLite amalgamation（FTS5/JSON/WAL 编译开关固定）、基于 SQLiteCpp 的连接与语句封装、`IUnitOfWork` 实现、迁移执行器 | 被多个模块的适配器复用，但不是任何模块的领域概念 |
-| `Mamba.Platform.Audio` | `IAudioOutput` 的两个实现（QtMultimedia / FFmpeg）+ `AudioRing` | 技术能力，没有业务语义 |
+| `Sonora.Contracts` | 跨模块集成事件 + 共享 DTO（`TrackRefDto` 等） | 模块间唯一的通信媒介 |
+| `Sonora.Platform.Storage` | 自带 SQLite amalgamation（FTS5/JSON/WAL 编译开关固定）、基于 SQLiteCpp 的连接与语句封装、`IUnitOfWork` 实现、迁移执行器 | 被多个模块的适配器复用，但不是任何模块的领域概念 |
+| `Sonora.Platform.Audio` | `IAudioOutput` 的两个实现（QtMultimedia / FFmpeg）+ `AudioRing` | 技术能力，没有业务语义 |
 | `Presentation` + `Host` | MVVM 与组合根 | 见 §2.3 与 §4.4 |
 
 ### 2.3 合法依赖边（**这是本架构的宪法**）
 
-| 从 ＼ 到 | Kernel | `Mamba.Contracts` | `X.Contracts` | `X.Core` | `X.Adapters` | Presentation | 外部库 |
+| 从 ＼ 到 | Kernel | `Sonora.Contracts` | `X.Contracts` | `X.Core` | `X.Adapters` | Presentation | 外部库 |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `Kernel` | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| `Mamba.Contracts` | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ |
+| `Sonora.Contracts` | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ |
 | `X.Contracts` | ✓ | ✓ | — | ✗ | ✗ | ✗ | ✗ |
 | **`X.Core`**（Domain+Application） | ✓ | ✓ | 自己的 ✓ / **别的模块 ✗** | — | ✗ | ✗ | **✗ 全部** |
 | `X.Adapters` | ✓ | ✓ | ✓ | ✓ | — | ✗ | ✓ |
@@ -134,7 +149,7 @@ Java / .NET 的 Clean Architecture 靠包名 + 分层目录，靠 review 维持�
 C++ 有一个别人没有的礼物：**头文件路径是构建系统给的**。所以：
 
 - `X.Core` 目标**不 `add_deps` 任何带 Qt 的目标** → Qt 头文件不在 include 路径上 → 领域层污染直接编译失败。
-- `Presentation` 目标**不 `add_deps` `*.Core`** → `#include <mamba/catalog/domain/Track.h>` 找不到文件。
+- `Presentation` 目标**不 `add_deps` `*.Core`** → `#include <sonora/catalog/domain/Track.h>` 找不到文件。
 - 跨模块只能 `add_deps(...Contracts)` → 想 include 别人聚合？编译失败。
 
 剩下的靠一个 12 行的 CI 脚本兜底（§6.5）：禁止 `../` 跨 target 相对 include，禁止 `core/` 里出现 `Q[A-Z]`、`sqlite3.h`、`libav*`、`#include <windows.h>`。
@@ -161,7 +176,7 @@ C++ 有一个别人没有的礼物：**头文件路径是构建系统给的**。
 **我们要的样子**（M1 已落地）：
 
 ```
-modules/catalog/core/include/mamba/catalog/core/ports/Ports.h   ← 接口住在这里（高层定义）
+modules/catalog/core/include/sonora/catalog/core/ports/Ports.h   ← 接口住在这里（高层定义）
 modules/catalog/adapters/src/SqliteTrackRepository.cpp          ← 实现它（低层依赖高层）
 host/main.cpp                                                   ← 唯一 new 实现的地方
 ```
@@ -204,7 +219,7 @@ host/main.cpp                                                   ← 唯一 new �
 | 把耗时工作投递到 `ITaskQueue` | 在 Handler 里 `sleep`、同步等 IO 超过 5ms |
 | 返回 `Result<T>`，用错误码枚举表达失败 | 每个 Handler 自己造一套错误字符串 |
 
-**Handler 的硬性时间预算：5ms**。这是 UI 线程同步调用命令的上限。超了就必须投递到执行器并立刻返回"已受理"。超过 5ms 的 Handler 会在 `M2` 上线前被一个 debug 断言抓出来（`MAMBA_ASSERT_SLOW_COMMAND`）。
+**Handler 的硬性时间预算：5ms**。这是 UI 线程同步调用命令的上限。超了就必须投递到执行器并立刻返回"已受理"。超过 5ms 的 Handler 会在 `M2` 上线前被一个 debug 断言抓出来（`SONORA_ASSERT_SLOW_COMMAND`）。
 
 ### 3.3 Adapters（Infrastructure）
 
@@ -312,8 +327,8 @@ QML 侧只认四个注入的单例：`Player`、`Library`、`Settings`、`Sfx`�
 ### 5.2 契约
 
 ```cpp
-// modules/kernel/include/mamba/kernel/messaging.h
-namespace mamba::kernel {
+// modules/kernel/include/sonora/kernel/messaging.h
+namespace sonora::kernel {
 
 struct ICommand { virtual ~ICommand() = default; };
 struct IQuery   { virtual ~IQuery()   = default; };
@@ -344,7 +359,7 @@ public:
 一条命令长这样（模块自己定义，放在 `X.Contracts`）：
 
 ```cpp
-// modules/catalog/contracts/include/mamba/catalog/commands.h
+// modules/catalog/contracts/include/sonora/catalog/commands.h
 struct ImportFolderCommand final : kernel::ICommand {
     std::wstring folder;
     bool recursive = true;
@@ -432,20 +447,20 @@ ViewModel 侧 `TrackListModel` 按页（200 条）拉取并做窗口缓存：`da
 
 ```
 modules/catalog/
-├── contracts/include/mamba/catalog/
+├── contracts/include/sonora/catalog/
 │   ├── commands.h        # ImportFolderCommand / RescanCommand
 │   ├── queries.h         # ListTrackRowsQuery / GetTrackDetailQuery
 │   ├── dtos.h            # TrackRowDto / TrackDetailDto / TrackRowPageDto
 │   ├── events.h          # CatalogIntegrationEvents（跨模块，原始字段）
 │   └── ports.h           # ICatalogQuery / 供其他模块用的只读端口
 ├── core/                 # 纯 C++，不链接 Qt
-│   ├── include/mamba/catalog/core/
+│   ├── include/sonora/catalog/core/
 │   │   ├── domain/       # Track.h Album.h Artist.h 值对象 领域事件 领域服务
 │   │   ├── ports/        # ITrackRepository.h IAlbumRepository.h IMetadataReader.h
 │   │   └── app/          # ImportFolderHandler.h ListTrackRowsHandler.h IUnitOfWork.h
 │   └── src/
 └── adapters/
-    ├── include/mamba/catalog/adapters/
+    ├── include/sonora/catalog/adapters/
     └── src/              # SqliteTrackRepository.cpp TagLibMetadataReader.cpp TrackRowMapper.cpp
 ```
 
@@ -464,23 +479,23 @@ modules/catalog/
 ### 6.3 每个模块的 target（构建级强制）
 
 ```
-Mamba.Kernel              (static, 无外部依赖)
-Mamba.Contracts           (static, 无外部依赖)
-Mamba.Catalog.Contracts   (static, deps: Kernel, Mamba.Contracts)
-Mamba.Catalog.Core        (static, deps: 上述三者；**不链接 Qt**)
-Mamba.Catalog.Adapters    (static, deps: Core, Contracts, Platform.Storage, QtCore, sqlite3, taglib)
+Sonora.Kernel              (static, 无外部依赖)
+Sonora.Contracts           (static, 无外部依赖)
+Sonora.Catalog.Contracts   (static, deps: Kernel, Sonora.Contracts)
+Sonora.Catalog.Core        (static, deps: 上述三者；**不链接 Qt**)
+Sonora.Catalog.Adapters    (static, deps: Core, Contracts, Platform.Storage, QtCore, sqlite3, taglib)
 ... playback / playlists / lyrics / preferences 同构 ...
-Mamba.Platform.Storage    (static, QtCore + sqlite3)
-Mamba.Platform.Audio      (static, QtCore + QtMultimedia + ffmpeg)
-Mamba.Presentation        (static, QtCore/Gui/Quick + 所有 *.Contracts；**不依赖任何 *.Core**)
-MambaMusic                (binary, qt.quickapp, deps: 全部 Adapters + Presentation + Host)
+Sonora.Platform.Storage    (static, QtCore + sqlite3)
+Sonora.Platform.Audio      (static, QtCore + QtMultimedia + ffmpeg)
+Sonora.Presentation        (static, QtCore/Gui/Quick + 所有 *.Contracts；**不依赖任何 *.Core**)
+Sonora                (binary, qt.quickapp, deps: 全部 Adapters + Presentation + Host)
 ```
 
 共 23 个 target（22 静态库 + 1 可执行）。xmake 处理这个规模毫无压力（并行编译），首次配置约多半天。
 
 ### 6.4 数据库：schema per module
 
-单文件 `mamba.db`，但**每个模块拥有自己的表，且不跨模块 JOIN / 不跨模块外键**。
+单文件 `sonora.db`，但**每个模块拥有自己的表，且不跨模块 JOIN / 不跨模块外键**。
 
 ```sql
 -- 迁移版本按模块独立，互不阻塞
@@ -610,23 +625,23 @@ UI 线程: 订阅进度读模型 → 每 200ms 刷一次进度条（不是每首
 ## 8. 目录结构
 
 ```
-MambaMusic/
+Sonora/
 ├── xmake.lua                       # 项目定义 + includes
 ├── xmake/
 │   ├── targets.lua                 # 全部 target 的生成（唯一的依赖声明处）
 │   ├── rules/qsb.lua
 │   └── checks/boundaries.py
 ├── modules/
-│   ├── kernel/                     # Mamba.Kernel
-│   ├── contracts/                  # Mamba.Contracts（跨模块集成事件、共享 DTO）
+│   ├── kernel/                     # Sonora.Kernel
+│   ├── contracts/                  # Sonora.Contracts（跨模块集成事件、共享 DTO）
 │   ├── catalog/     {contracts/, core/, adapters/}
 │   ├── playback/    {contracts/, core/, adapters/}
 │   ├── playlists/   {contracts/, core/, adapters/}
 │   ├── lyrics/      {contracts/, core/, adapters/}
 │   └── preferences/ {contracts/, core/, adapters/}
 ├── platform/
-│   ├── storage/                    # Mamba.Platform.Storage：SqliteConnection、UnitOfWork、Migrator
-│   ├── audio/                      # Mamba.Platform.Audio：QtMultimediaOutput、FfmpegOutput、AudioRing
+│   ├── storage/                    # Sonora.Platform.Storage：SqliteConnection、UnitOfWork、Migrator
+│   ├── audio/                      # Sonora.Platform.Audio：QtMultimediaOutput、FfmpegOutput、AudioRing
 │   ├── filesystem/                 # 路径规范化、目录遍历（长路径 / UNC）
 │   └── win/                        # 高 DPI、托盘、SMTC、单实例锁、DWM
 ├── presentation/
@@ -680,7 +695,7 @@ MambaMusic/
 ### 9.3 主 `xmake.lua`
 
 ```lua
-set_project("MambaMusic")
+set_project("Sonora")
 set_version("0.1.0")
 set_xmakever("2.9.5")
 set_encodings("utf-8")
@@ -704,33 +719,33 @@ includes("xmake/targets.lua")
 
 ```lua
 -- ── 0. Kernel / Contracts：纯 C++，一个 Qt 目标都不依赖 ──────────────
-target("Mamba.Kernel")
+target("Sonora.Kernel")
     set_kind("static")
     add_files("modules/kernel/src/**.cpp")
     add_headerfiles("modules/kernel/include/**.h")
     add_includedirs("modules/kernel/include", {public = true})
 
-target("Mamba.Contracts")
+target("Sonora.Contracts")
     set_kind("static")
     add_files("modules/contracts/src/**.cpp")
     add_headerfiles("modules/contracts/include/**.h")
     add_includedirs("modules/contracts/include", {public = true})
-    add_deps("Mamba.Kernel")
+    add_deps("Sonora.Kernel")
 
 -- ── 1. 平台适配器 ──────────────────────────────────────────────────
-target("Mamba.Platform.Storage")
+target("Sonora.Platform.Storage")
     add_rules("qt.static")
     add_files("platform/storage/src/**.cpp")
     add_includedirs("platform/storage/include", {public = true})
-    add_deps("Mamba.Kernel")
+    add_deps("Sonora.Kernel")
     add_frameworks("QtCore")
     add_packages("sqlite3")
 
-target("Mamba.Platform.Audio")
+target("Sonora.Platform.Audio")
     add_rules("qt.static")
     add_files("platform/audio/src/**.cpp")
     add_includedirs("platform/audio/include", {public = true})
-    add_deps("Mamba.Kernel", "Mamba.Contracts")
+    add_deps("Sonora.Kernel", "Sonora.Contracts")
     add_frameworks("QtCore", "QtMultimedia")
     add_packages("ffmpeg")
 
@@ -738,7 +753,7 @@ target("Mamba.Platform.Audio")
 local modules = { "catalog", "playback", "playlists", "lyrics", "preferences" }
 
 for _, name in ipairs(modules) do
-    local M  = "Mamba." .. name:sub(1,1):upper() .. name:sub(2)
+    local M  = "Sonora." .. name:sub(1,1):upper() .. name:sub(2)
     local d  = "modules/" .. name
 
     target(M .. ".Contracts")
@@ -746,7 +761,7 @@ for _, name in ipairs(modules) do
         add_files(d .. "/contracts/src/**.cpp")
         add_includedirs(d .. "/contracts/include", {public = true})
         add_headerfiles(d .. "/contracts/include/**.h")
-        add_deps("Mamba.Kernel", "Mamba.Contracts")
+        add_deps("Sonora.Kernel", "Sonora.Contracts")
 
     -- ★ 注意：不 add_rules("qt.static")，不 add_frameworks。
     --   后果：Qt 头不在 include 路径上，Domain 层污染 = 编译错误。
@@ -755,46 +770,46 @@ for _, name in ipairs(modules) do
         add_files(d .. "/core/src/**.cpp")
         add_includedirs(d .. "/core/include", {public = true})
         add_headerfiles(d .. "/core/include/**.h")
-        add_deps("Mamba.Kernel", "Mamba.Contracts", M .. ".Contracts")
+        add_deps("Sonora.Kernel", "Sonora.Contracts", M .. ".Contracts")
 
     target(M .. ".Adapters")
         add_rules("qt.static")
         add_files(d .. "/adapters/src/**.cpp")
         add_includedirs(d .. "/adapters/include", {public = true})
-        add_deps(M .. ".Core", M .. ".Contracts", "Mamba.Platform.Storage")
+        add_deps(M .. ".Core", M .. ".Contracts", "Sonora.Platform.Storage")
         add_frameworks("QtCore")
         add_packages("sqlite3", "taglib")
 end
 
 -- ── 3. 表现层：只依赖 Contracts，故意不依赖任何 *.Core ──────────────
-target("Mamba.Presentation")
+target("Sonora.Presentation")
     add_rules("qt.static")
     add_files("presentation/viewmodels/**.cpp")
     add_includedirs("presentation/viewmodels", {public = true})
-    add_deps("Mamba.Kernel", "Mamba.Contracts")
-    add_deps("Mamba.Catalog.Contracts", "Mamba.Playback.Contracts",
-             "Mamba.Playlists.Contracts", "Mamba.Lyrics.Contracts",
-             "Mamba.Preferences.Contracts")
+    add_deps("Sonora.Kernel", "Sonora.Contracts")
+    add_deps("Sonora.Catalog.Contracts", "Sonora.Playback.Contracts",
+             "Sonora.Playlists.Contracts", "Sonora.Lyrics.Contracts",
+             "Sonora.Preferences.Contracts")
     add_frameworks("QtCore", "QtGui", "QtQuick")
 
 -- ── 4. 可执行文件 ──────────────────────────────────────────────────
-target("MambaMusic")
+target("sonora")
     add_rules("qt.quickapp")
     add_files("host/*.cpp")
     add_files("assets/resources.qrc")
     add_includedirs("host")
-    add_deps("Mamba.Presentation",
-             "Mamba.Catalog.Adapters", "Mamba.Playback.Adapters",
-             "Mamba.Playlists.Adapters", "Mamba.Lyrics.Adapters",
-             "Mamba.Preferences.Adapters",
-             "Mamba.Platform.Audio")
+    add_deps("Sonora.Presentation",
+             "Sonora.Catalog.Adapters", "Sonora.Playback.Adapters",
+             "Sonora.Playlists.Adapters", "Sonora.Lyrics.Adapters",
+             "Sonora.Preferences.Adapters",
+             "Sonora.Platform.Audio")
     add_frameworks("QtSql", "QtConcurrent", "QtSvg")
     if is_plat("windows") then
         add_files("assets/win/app.rc")
         add_syslinks("ole32", "shell32", "dwmapi", "shlwapi", "user32")
     end
     if is_mode("debug") then
-        add_defines("MAMBA_QML_FROM_SOURCE")     -- 开发期从磁盘读 QML，改完不重编
+        add_defines("SONORA_QML_FROM_SOURCE")     -- 开发期从磁盘读 QML，改完不重编
     else
         set_strip("all")
         add_defines("QT_NO_DEBUG_OUTPUT")
@@ -826,7 +841,7 @@ xmake -j
 xmake run
 
 # 单个模块快速编译
-xmake build Mamba.Catalog.Core
+xmake build Sonora.Catalog.Core
 
 # 边界检查
 python xmake/checks/boundaries.py
@@ -837,7 +852,7 @@ xmake build tests.catalog && xmake run tests.catalog
 # 发行
 xmake f -m release && xmake -j
 xmake qsb
-windeployqt --qmldir presentation/qml build/windows/x64/release/MambaMusic.exe
+windeployqt --qmldir presentation/qml build/windows/x64/release/sonora.exe
 ```
 
 ### 9.7 `task("qsb")`
@@ -868,7 +883,7 @@ task("qsb")
 3. **FFmpeg ABI**：见 §9.5，是本次变更引入的新坑。
 4. **`add_frameworks` 名字**：写 `"QtMultimedia"`，xmake 的 `load.lua` 会自动拼成 `Qt6Multimedia` 并处理 MSVC 的 `d` 后缀。
 5. **静态库链接顺序**：xmake 的 `add_deps` 拓扑排序通常够用；出现 `LNK2019` 找不到自己的符号，多半是某个符号只在一个没被依赖的 target 里。
-6. **改了 QML 要全量重编**：QML 在 qrc 里。`MAMBA_QML_FROM_SOURCE` 就是为这个存在——debug 下 `engine.load(QUrl::fromLocalFile("presentation/qml/main.qml"))`。
+6. **改了 QML 要全量重编**：QML 在 qrc 里。`SONORA_QML_FROM_SOURCE` 就是为这个存在——debug 下 `engine.load(QUrl::fromLocalFile("presentation/qml/main.qml"))`。
 7. **`windeployqt` 漏 QML 依赖**：必须带 `--qmldir presentation/qml`，否则发行版启动白屏。
 
 ---
@@ -992,7 +1007,7 @@ QtObject {
 ### 11.1 Kernel 的五个原语
 
 ```cpp
-// modules/kernel/include/mamba/kernel/
+// modules/kernel/include/sonora/kernel/
 // types.h
 template <class Tag, class T = std::int64_t>
 class TypedId {
@@ -1031,7 +1046,7 @@ public:
 ### 11.2 一个聚合长什么样
 
 ```cpp
-// modules/catalog/core/include/mamba/catalog/core/domain/Track.h
+// modules/catalog/core/include/sonora/catalog/core/domain/Track.h
 class Track {
 public:
     static Result<Track> create(TrackPath path, const TrackFileFacts& facts, IClock& clock);

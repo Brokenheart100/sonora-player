@@ -10,22 +10,22 @@
 
 #include "fake_audio_output.h"
 
-#include "mamba/kernel/Error.h"
-#include "mamba/playback/contracts/Commands.h"
-#include "mamba/playback/contracts/PlaybackMode.h"
-#include "mamba/playback/core/app/PlaybackService.h"
-#include "mamba/playback/core/domain/PlayQueue.h"
-#include "mamba/playback/core/domain/ShufflePlanner.h"
+#include "sonora/kernel/Error.h"
+#include "sonora/playback/contracts/Commands.h"
+#include "sonora/playback/contracts/PlaybackMode.h"
+#include "sonora/playback/core/app/PlaybackService.h"
+#include "sonora/playback/core/domain/PlayQueue.h"
+#include "sonora/playback/core/domain/ShufflePlanner.h"
 
 namespace {
 
-using mamba::playback::contracts::PlaybackMode;
-using mamba::playback::contracts::PlayTracks;
-using mamba::playback::contracts::QueueEntry;
-using mamba::playback::core::AdvanceReason;
-using mamba::playback::core::PlayQueue;
-using mamba::playback::core::ShufflePlanner;
-using mambatest::FakeAudioOutput;
+using sonora::playback::contracts::PlaybackMode;
+using sonora::playback::contracts::PlayTracks;
+using sonora::playback::contracts::QueueEntry;
+using sonora::playback::core::AdvanceReason;
+using sonora::playback::core::PlayQueue;
+using sonora::playback::core::ShufflePlanner;
+using sonoratest::FakeAudioOutput;
 
 QueueEntry entry(std::uint64_t id, std::string title) {
     QueueEntry e;
@@ -163,7 +163,7 @@ TEST_CASE("队列面板点某一项：随机模式下也能跳过去") {
 }
 
 TEST_CASE("菜单顺序：顺序 → 循环 → 单曲 → 随机 → 顺序") {
-    using mamba::playback::contracts::nextMode;
+    using sonora::playback::contracts::nextMode;
     CHECK(nextMode(PlaybackMode::Sequential) == PlaybackMode::RepeatAll);
     CHECK(nextMode(PlaybackMode::RepeatAll) == PlaybackMode::RepeatOne);
     CHECK(nextMode(PlaybackMode::RepeatOne) == PlaybackMode::Shuffle);
@@ -172,7 +172,7 @@ TEST_CASE("菜单顺序：顺序 → 循环 → 单曲 → 随机 → 顺序") {
 
 TEST_CASE("服务：切模式会写进快照，队列视图按播放顺序给") {
     FakeAudioOutput output;
-    mamba::playback::core::PlaybackService service{output};
+    sonora::playback::core::PlaybackService service{output};
 
     PlayTracks command;
     command.entries = makeTracks(4);
@@ -191,7 +191,7 @@ TEST_CASE("服务：切模式会写进快照，队列视图按播放顺序给") 
 
 TEST_CASE("服务：单曲循环下播完重放同一首，不换曲") {
     FakeAudioOutput output;
-    mamba::playback::core::PlaybackService service{output};
+    sonora::playback::core::PlaybackService service{output};
 
     PlayTracks command;
     command.entries = makeTracks(3);
@@ -205,7 +205,7 @@ TEST_CASE("服务：单曲循环下播完重放同一首，不换曲") {
 
 TEST_CASE("服务：跳到队列里的某一首") {
     FakeAudioOutput output;
-    mamba::playback::core::PlaybackService service{output};
+    sonora::playback::core::PlaybackService service{output};
 
     PlayTracks command;
     command.entries = makeTracks(3);
@@ -220,7 +220,7 @@ TEST_CASE("服务：跳到队列里的某一首") {
 
 TEST_CASE("服务：播过 3 秒后上一首先回开头") {
     FakeAudioOutput output;
-    mamba::playback::core::PlaybackService service{output, nullptr, &output};
+    sonora::playback::core::PlaybackService service{output, nullptr, &output};
 
     PlayTracks command;
     command.entries = makeTracks(3);

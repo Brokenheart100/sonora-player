@@ -1,10 +1,10 @@
-#include "mamba/catalog/core/domain/Credit.h"
+#include "sonora/catalog/core/domain/Credit.h"
 
 #include <utility>
 
-#include "mamba/catalog/core/domain/Track.h"   // trimTitle
+#include "sonora/catalog/core/domain/Track.h"   // trimTitle
 
-namespace mamba::catalog::core {
+namespace sonora::catalog::core {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -91,4 +91,4 @@ Result<void> Artist::rename(std::string_view newName)
     return Result<void>::ok();
 }
 
-}  // namespace mamba::catalog::core
+}  // namespace sonora::catalog::core

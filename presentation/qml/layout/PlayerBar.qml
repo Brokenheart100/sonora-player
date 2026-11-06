@@ -1,7 +1,7 @@
 import QtQuick
 import "../comic"
 import "../theme"
-import MambaMusic 1.0
+import Sonora.Presentation 1.0
 
 // 底部播放条（M3）。它是一个纯粹的"看板"：所有状态都来自注入的 Player 单例，
 // 所有操作都变成对 Player 的调用。这里不许出现任何领域概念。

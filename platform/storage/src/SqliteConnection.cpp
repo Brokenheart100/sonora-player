@@ -1,11 +1,11 @@
-#include "mamba/platform/storage/SqliteConnection.h"
+#include "sonora/platform/storage/SqliteConnection.h"
 
 #include <limits>
 #include <utility>
 
-#include "mamba/platform/storage/SqliteError.h"
+#include "sonora/platform/storage/SqliteError.h"
 
-namespace mamba::platform::storage {
+namespace sonora::platform::storage {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -209,4 +209,4 @@ int SqliteConnection::changes() const noexcept
     return db_ != nullptr ? sqlite3_changes(db_) : 0;
 }
 
-}  // namespace mamba::platform::storage
+}  // namespace sonora::platform::storage

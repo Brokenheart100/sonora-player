@@ -1,4 +1,4 @@
-#include <mamba/platform/audio/QtMultimediaOutput.h>
+#include <sonora/platform/audio/QtMultimediaOutput.h>
 
 #include <algorithm>
 #include <utility>
@@ -9,9 +9,9 @@
 #include <QString>
 #include <QUrl>
 
-#include <mamba/kernel/Error.h>
+#include <sonora/kernel/Error.h>
 
-namespace mamba::platform::audio {
+namespace sonora::platform::audio {
 
 // ── Impl：Qt 的地盘 ────────────────────────────────────────────────────────
 // 一个文件里放两个"实体"：外壳管状态机与监听者，Impl 管 QMediaPlayer 的生老病死。
@@ -204,4 +204,4 @@ void QtMultimediaOutput::setState(playback::contracts::PlaybackState state) {
     }
 }
 
-}  // namespace mamba::platform::audio
+}  // namespace sonora::platform::audio

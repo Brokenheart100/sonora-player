@@ -1,4 +1,4 @@
-// MambaMusic 组合根（composition root）。
+// Sonora 组合根（composition root）。
 //
 // 整个工程里，只有这一个文件同时看得见 Adapters 和 Presentation ——
 // 具体实现在这里被构造、注入，然后表现层才拿到它需要的接口。
@@ -13,6 +13,7 @@
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QStandardPaths>
 #include <QString>
@@ -27,49 +28,49 @@
 #include <string_view>
 #include <vector>
 
-#include "mamba/catalog/adapters/CatalogSchema.h"
-#include "mamba/catalog/adapters/FileCoverStore.h"
-#include "mamba/catalog/adapters/FileSystemScanner.h"
-#include "mamba/catalog/adapters/SqliteCreditDirectory.h"
-#include "mamba/catalog/adapters/SqlitePlaybackRecorder.h"
-#include "mamba/catalog/adapters/SqliteTrackListReader.h"
-#include "mamba/catalog/adapters/SqliteTrackRepository.h"
-#include "mamba/catalog/adapters/TagLibMetadataReader.h"
-#include "mamba/catalog/contracts/Commands.h"
-#include "mamba/catalog/contracts/Queries.h"
-#include "mamba/catalog/core/app/ImportFolderHandler.h"
-#include "mamba/catalog/core/app/ListTracksHandler.h"
-#include "mamba/contracts/PlaybackEvents.h"
-#include "mamba/kernel/CommandBus.h"
-#include "mamba/kernel/EventBus.h"
-#include "mamba/kernel/IClock.h"
-#include "mamba/kernel/ILogger.h"
-#include "mamba/kernel/QueryBus.h"
-#include "mamba/platform/storage/Migrator.h"
-#include "mamba/platform/storage/SqliteConnection.h"
-#include "mamba/platform/storage/SqliteUnitOfWork.h"
-#include "mamba/platform/audio/FfmpegOutput.h"
-#include "mamba/playback/core/app/PlaybackHandlers.h"
-#include "mamba/playback/core/app/PlaybackService.h"
-#include "mamba/lyrics/adapters/LyricsSourceChain.h"
-#include "mamba/lyrics/adapters/SidecarLyricsSource.h"
-#include "mamba/lyrics/adapters/TagLibLyricsSource.h"
-#include "mamba/lyrics/core/app/GetLyricsHandler.h"
-#include "mamba/presentation/LyricsModel.h"
-#include "mamba/presentation/PlayerViewModel.h"
-#include "mamba/presentation/TrackListModel.h"
+#include "sonora/catalog/adapters/CatalogSchema.h"
+#include "sonora/catalog/adapters/FileCoverStore.h"
+#include "sonora/catalog/adapters/FileSystemScanner.h"
+#include "sonora/catalog/adapters/SqliteCreditDirectory.h"
+#include "sonora/catalog/adapters/SqlitePlaybackRecorder.h"
+#include "sonora/catalog/adapters/SqliteTrackListReader.h"
+#include "sonora/catalog/adapters/SqliteTrackRepository.h"
+#include "sonora/catalog/adapters/TagLibMetadataReader.h"
+#include "sonora/catalog/contracts/Commands.h"
+#include "sonora/catalog/contracts/Queries.h"
+#include "sonora/catalog/core/app/ImportFolderHandler.h"
+#include "sonora/catalog/core/app/ListTracksHandler.h"
+#include "sonora/contracts/PlaybackEvents.h"
+#include "sonora/kernel/CommandBus.h"
+#include "sonora/kernel/EventBus.h"
+#include "sonora/kernel/IClock.h"
+#include "sonora/kernel/ILogger.h"
+#include "sonora/kernel/QueryBus.h"
+#include "sonora/platform/storage/Migrator.h"
+#include "sonora/platform/storage/SqliteConnection.h"
+#include "sonora/platform/storage/SqliteUnitOfWork.h"
+#include "sonora/platform/audio/FfmpegOutput.h"
+#include "sonora/playback/core/app/PlaybackHandlers.h"
+#include "sonora/playback/core/app/PlaybackService.h"
+#include "sonora/lyrics/adapters/LyricsSourceChain.h"
+#include "sonora/lyrics/adapters/SidecarLyricsSource.h"
+#include "sonora/lyrics/adapters/TagLibLyricsSource.h"
+#include "sonora/lyrics/core/app/GetLyricsHandler.h"
+#include "sonora/presentation/LyricsModel.h"
+#include "sonora/presentation/PlayerViewModel.h"
+#include "sonora/presentation/TrackListModel.h"
 
 namespace
 {
 
-    namespace catalog = mamba::catalog;
-    namespace kernel = mamba::kernel;
-    namespace storage = mamba::platform::storage;
-    namespace playback = mamba::playback;
-    namespace audio = mamba::platform::audio;
-    namespace presentation = mamba::presentation;
-    namespace lyrics = mamba::lyrics;
-    namespace contracts = mamba::contracts;
+    namespace catalog = sonora::catalog;
+    namespace kernel = sonora::kernel;
+    namespace storage = sonora::platform::storage;
+    namespace playback = sonora::playback;
+    namespace audio = sonora::platform::audio;
+    namespace presentation = sonora::presentation;
+    namespace lyrics = sonora::lyrics;
+    namespace contracts = sonora::contracts;
 
     // 临时的控制台日志。M4 之前没有真正的日志后端，但"命令慢于 5ms 要有人喊一声"
     // 这件事从第一天就得成立，否则性能预算是一句废话。
@@ -124,7 +125,7 @@ namespace
             {
                 continue;
             }
-            const auto path = dir + QStringLiteral("/mamba.sqlite");
+            const auto path = dir + QStringLiteral("/sonora.sqlite");
             std::fprintf(stderr, "[info] 曲库位置：%s\n", path.toUtf8().constData());
             return path.toUtf8().toStdString();
         }
@@ -140,9 +141,14 @@ int main(int argc, char *argv[])
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
     QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName(QStringLiteral("MambaMusic"));
-    QGuiApplication::setOrganizationName(QStringLiteral("MambaMusic"));
+    QGuiApplication::setApplicationName(QStringLiteral("Sonora"));
+    QGuiApplication::setOrganizationName(QStringLiteral("Sonora"));
     QGuiApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    // Windows 显示名称（任务栏悬停、Alt+Tab 列表）。可执行文件自己的图标在
+    // assets/app.rc 里，这个是运行期窗口图标——两者都要有，缺一个就会出现
+    // "exe 有图标但任务栏是白纸"或反过来的情况。
+    QGuiApplication::setApplicationDisplayName(QStringLiteral("Sonora Music"));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/icons/sonora.png")));
 
     ConsoleLogger logger;
 
@@ -170,7 +176,7 @@ int main(int argc, char *argv[])
     }
 
     // ---- 封面目录 ----
-    // 与库文件同级：库在 <data>/mamba.sqlite，封面在 <data>/covers。
+    // 与库文件同级：库在 <data>/sonora.sqlite，封面在 <data>/covers。
     // 放一起的理由是"要搬就一起搬"——把封面挪到临时目录，清一次缓存整个封面墙就空了；
     // 反过来把库也算进去，用户搬曲库时不会丢封面。
     const std::string coverRoot = [&dbPath]
@@ -272,17 +278,17 @@ int main(int argc, char *argv[])
     playback::core::registerPlayback(commands, queries, playbackService);
 
     // ---- 表现层 ----
-    mamba::presentation::TrackListModel library{commands, queries};
-    mamba::presentation::LyricsModel lyricsModel{queries};
-    mamba::presentation::PlayerViewModel player{commands, queries, audioOutput};
+    sonora::presentation::TrackListModel library{commands, queries};
+    sonora::presentation::LyricsModel lyricsModel{queries};
+    sonora::presentation::PlayerViewModel player{commands, queries, audioOutput};
     player.attachLyrics(&lyricsModel);
     // 双击列表项后立刻刷新一次播放器条，否则要等下一个 500ms 轮询周期。
     QObject::connect(&library, &presentation::TrackListModel::playbackStarted, &player,
                      &presentation::PlayerViewModel::refresh);
     // 组合根是唯一知道"有哪些单例"的地方，QML 侧只认这两个名字。
-    qmlRegisterSingletonInstance("MambaMusic", 1, 0, "Library", &library);
-    qmlRegisterSingletonInstance("MambaMusic", 1, 0, "Player", &player);
-    qmlRegisterSingletonInstance("MambaMusic", 1, 0, "Lyrics", &lyricsModel);
+    qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Library", &library);
+    qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Player", &player);
+    qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Lyrics", &lyricsModel);
 
     const auto arguments = QCoreApplication::arguments();
     // 只认第一个**不以 - 开头**的参数当文件夹。

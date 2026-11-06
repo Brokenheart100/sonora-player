@@ -1,0 +1,295 @@
+# Sonora · 持续集成
+#
+# 这份流水线只做一件事：把 AGENTS.md §3「改完必须做的事」搬进每次推送，
+# 让「能编过 / 单测绿 / 边界干净 / shader 与字体产物没有忘记重新烘焙」变成
+# 机器给出的事实，而不是提交者的人品。
+#
+# 为什么只有 Windows：xmake.lua 里 set_allowedplats("windows")。跨平台不是
+# 可选项 —— 放开会在两周内让 #ifdef _WIN32 漏进 core/，那正是要防的东西。
+#
+# 时间构成（缓存全命中时）：
+#   Qt 安装 ~1min · vcpkg ffmpeg 0s（否则 25–40min）· taglib 源码构建 ~1min
+#   全量构建 debug 3–5min / release 4–6min · 单测 ~10s · 产物核对 ~15s
+#
+# 本地复现同一套检查（不跑 CI 也能得到同样的结论）：
+#   xmake f -m debug -a x64 -y --qt="$QT_ROOT"
+#   xmake -y && xmake build -y sonora_tests && ./build/windows/x64/debug/sonora_tests.exe
+#   python xmake/checks/boundaries.py
+#   PATH="$QT_ROOT/bin:$PATH" xmake qsb && git diff --exit-code -- assets/shaders
+#   python tools/subset_fonts.py --verify
+#
+# 唯一需要人维护的两处版本号：QT_VERSION / XMAKE_VERSION。它们必须与本机一致，
+# 否则「本地能编、CI 编不过」会变成日常困扰。升级时改这里，并在
+# docs/DEPENDENCIES.md §6「获取渠道与一致性」记一笔。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+      - ".demo/**"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支连推多次时只保留最后一次：中间那些提交的构建结果没有人在等。
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: "6.12.0"
+  XMAKE_VERSION: "3.1.2"
+  VCPKG_TRIPLET: "x64-windows"
+  # vcpkg 的 ffmpeg 默认 features 里没有 gpl/nonfree，但带了 avdevice/avfilter/
+  # swscale 这些我们用不到的。做减法：编得快、DLL 小、链接面窄。
+  # 与 docs/DEPENDENCIES.md §3 的命令保持逐字一致。
+  VCPKG_FEATURES: "avcodec,avformat,swresample"
+
+jobs:
+  # ── 1. 边界检查 ────────────────────────────────────────────────────────────
+  # 纯 Python、十秒级，没有理由排在编译后面。它拦的是 target 图管不到的腐化：
+  # 纯 C++ 层里冒出 Qt 类型名、表现层 include 了 core、跨 target 用 "../" 偷头文件。
+  boundaries:
+    name: 边界检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: python xmake/checks/boundaries.py
+        run: python xmake/checks/boundaries.py
+
+  # ── 2. 构建 + 单测 ─────────────────────────────────────────────────────────
+  # debug 与 release 都编：debug 是日常形态（Qt 的 debug DLL 是 /MDd，我们自己
+  # 按模式给运行库），release 才是交付形态。只编 debug 的流水线会漏掉
+  # 「release 下 xmake 给了 /MD、某个第三方库却是 /MDd」这类只在交付时炸的问题。
+  build:
+    name: 构建与测试（${{ matrix.mode }}）
+    needs: boundaries
+    runs-on: windows-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [debug, release]
+    steps:
+      - uses: actions/checkout@v4
+
+      # cl.exe 进 PATH。xmake 自己能靠 vswhere 找到 VS，但显式进环境后，
+      # 随手插进去的诊断命令（cl /Bv、link /?) 不用再绕 developer prompt。
+      - name: 准备 MSVC 环境
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: 安装 Qt（${{ env.QT_VERSION }} · win64_msvc2022_64）
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: 安装 xmake（${{ env.XMAKE_VERSION }}）
+        uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: ${{ env.XMAKE_VERSION }}
+          # 把 xmake 的包缓存（taglib 的源码构建产物）留在 GitHub 缓存里，
+          # 否则每个 job 都要重编一遍 taglib。
+          actions-cache-folder: ".xmake-action-cache"
+
+      # ── FFmpeg：vcpkg ──────────────────────────────────────────────────────
+      # 没有预编译包可用：gyan.dev / BtbN 那两家 Windows 包都是 MinGW 建的
+      # （.dll.a），和 MSVC 链接会得到 LNK2019: __imp_av_* 这种"函数不存在"的假象。
+      # 所以 CI 里老老实实从源码编。25–40 分钟太贵，用 actions/cache 存整个
+      # installed/ 目录（release + debug 两套 lib 都在里面，一次装两用）。
+      - name: 定位 vcpkg
+        id: vcpkg
+        shell: pwsh
+        run: |
+          # windows-latest 自带 vcpkg 克隆；不同镜像的变量名不统一，两处都试。
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root -or -not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            $root = 'C:\vcpkg'
+          }
+          if (-not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            throw "找不到 vcpkg.exe（试过 VCPKG_INSTALLATION_ROOT 与 C:\vcpkg）"
+          }
+          "root=$root" >> $env:GITHUB_OUTPUT
+          # xmake/targets.lua 读的就是这个变量；写进 GITHUB_ENV 让后续步骤都能看见。
+          "VCPKG_ROOT=$root" >> $env:GITHUB_ENV
+          & (Join-Path $root 'vcpkg.exe') version
+
+      - name: 缓存 vcpkg 已装二进制
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.vcpkg.outputs.root }}/installed
+          # key 里带 features 与三元组：改了 features 就必然重编，不能复用旧缓存。
+          # ffmpeg9 是端口大版本标记 —— ffmpeg 升到 10.x 时手动改，强制一次全量。
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-avcodec-avformat-swresample
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-
+
+      - name: 安装 FFmpeg（${{ env.VCPKG_TRIPLET }}）
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        
+        shell: pwsh
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install "ffmpeg:$env:VCPKG_TRIPLET" `
+            --no-default-features `
+            --features "$env:VCPKG_FEATURES" `
+            --clean-after-build
+          if ($LASTEXITCODE -ne 0) { throw "vcpkg 安装 ffmpeg 失败（exit $LASTEXITCODE）" }
+
+      # ── 构建 ───────────────────────────────────────────────────────────────
+      - name: 配置
+        shell: pwsh
+        env:
+          QTDIR: ${{ env.QT_ROOT_DIR }}
+        run: |
+          xmake f -m ${{ matrix.mode }} -a x64 -y --qt="$env:QT_ROOT_DIR"
+          if ($LASTEXITCODE -ne 0) { throw "xmake f 失败（exit $LASTEXITCODE）" }
+
+      - name: 构建全部 target
+        shell: pwsh
+        run: |
+          xmake -y
+          if ($LASTEXITCODE -ne 0) { throw "xmake 构建失败（exit $LASTEXITCODE）" }
+
+      - name: 核对 ffmpeg DLL 已拷到 exe 旁边
+        shell: pwsh
+        run: |
+          # xmake/targets.lua 的 after_build 负责这一步。少了的症状是：编译全绿、
+          # 双击 exe 立刻退出且零输出（系统找不到 avcodec-*.dll）。
+          $dir = "build/windows/x64/${{ matrix.mode }}"
+          $dlls = Get-ChildItem "$dir/av*.dll", "$dir/sw*.dll" -ErrorAction SilentlyContinue
+          if (-not $dlls -or $dlls.Count -lt 4) {
+            throw "期望至少 4 个 ffmpeg DLL 在 $dir，实际 $($dlls.Count) 个；检查 after_build 与 VCPKG_ROOT"
+          }
+          $dlls | ForEach-Object { "  $($_.Name)" }
+
+      # ── 单测 ───────────────────────────────────────────────────────────────
+      - name: 构建单测
+        shell: pwsh
+        run: |
+          # sonora_tests 是 set_default(false)，xmake 全量不会编它。
+          # 注意选项位置：`-y` 要在 target 名之前（写成 `build sonora_tests -y`
+          # 会被当成叫 "-y" 的 target，报 "not a valid target name"）。
+          xmake build -y sonora_tests
+          if ($LASTEXITCODE -ne 0) { throw "sonora_tests 构建失败（exit $LASTEXITCODE）" }
+
+      - name: 跑单测
+        shell: pwsh
+        run: |
+          # 它不链任何 Qt target，也不加载 Qt DLL：领域层测不干净就说明领域层被污染了。
+          $exe = "build/windows/x64/${{ matrix.mode }}/sonora_tests.exe"
+          if (-not (Test-Path $exe)) { throw "找不到 $exe" }
+          & $exe
+          if ($LASTEXITCODE -ne 0) { throw "单测失败（exit $LASTEXITCODE）" }
+
+      # ── 生成物核对（只在 debug 跑一遍就够）─────────────────────────────────
+      - name: 核对 shader 已重新烘焙并提交
+        if: matrix.mode == 'debug'
+        shell: pwsh
+        run: |
+          # 「改了 .frag、忘了跑 xmake qsb」的典型：跑一遍生成器，仓库里那份必须
+          # 一个字节都不差。.gitattributes 里 *.qsb 标了 binary、其余 text=auto
+          # eol=lf，否则 Windows runner 的 core.autocrlf 会把 .frag 改成 CRLF，
+          # 每次 diff 都是满屏假阳性。
+          #
+          # QTDIR 必须在脚本里补：install-qt-action 用 GITHUB_ENV 导出 QT_ROOT_DIR，
+          # 而步骤 env: 块里的 ${{ env.* }} 读不到这类变量（拿到的会是空串），
+          # 于是 qsb.lua 退回 PATH 找 qsb.exe —— 找不到就失败。
+          $env:QTDIR = $env:QT_ROOT_DIR
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          if (-not (Test-Path "$env:QTDIR\bin\qsb.exe")) { throw "QTDIR 无效：'$env:QTDIR'；install-qt-action 是否成功？" }
+          xmake qsb
+          if ($LASTEXITCODE -ne 0) { throw "xmake qsb 失败（exit $LASTEXITCODE）" }
+
+          $drift = git status --porcelain -- assets/shaders
+          if ($drift) {
+            Write-Host $drift
+            throw "shader 产物与提交内容不一致：改了 .frag 请跑 xmake qsb 并提交"
+          }
+
+      - name: 准备 Python
+        if: matrix.mode == 'debug'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 核对字体子集覆盖全部界面文字
+        if: matrix.mode == 'debug'
+        shell: pwsh
+        run: |
+          # 这里**不**比字节：字体子集的字节取决于 fontTools 版本，CI 的 Python
+          # 与本机不同就会出现"内容一样、字节不同"的假失败。要守的不变量是
+          # 「界面上的每个字都在字体里」，--verify 只查这个。
+          python -m pip install --quiet fonttools
+          python tools/subset_fonts.py --verify
+          if ($LASTEXITCODE -ne 0) { throw "字体子集缺失字符（见上面的清单），跑 python tools/subset_fonts.py 后提交" }
+
+      - name: qmllint（信息性，不阻断）
+        if: matrix.mode == 'debug'
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          # QML 的类型错误大多只在运行时现形（见 AGENTS.md「调试」）。qmllint 挡不住
+          # 绑定语义问题，但能抓拼写与导入错误；先当报告用，稳定后再改成阻断。
+          $qmllint = Join-Path $env:QT_ROOT_DIR 'bin/qmllint.exe'
+          $failed = 0
+          Get-ChildItem -Recurse presentation/qml -Filter *.qml | ForEach-Object {
+            & $qmllint -I presentation/qml $_.FullName 2>&1 | Where-Object { $_ -match 'Warning|Error' }
+            if ($LASTEXITCODE -ne 0) { $failed++ }
+          }
+          "qmllint 有非零退出的文件数：$failed"
+
+      # ── 可分发产物（手动触发时才做）───────────────────────────────────────
+      # 流水线平时只证明"能编能测"。手动跑一次 workflow_dispatch 才打包一个
+      # 双击即开的 zip：windeployqt 把 Qt 插件与 DLL 摊平，再补上 ffmpeg 那几个。
+      - name: 打包可分发的 debug 版（仅手动触发）
+        if: matrix.mode == 'debug' && github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        run: |
+          $dir = "build/windows/x64/debug"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item "$dir/sonora.exe" dist
+          Copy-Item "$dir/av*.dll", "$dir/sw*.dll" dist
+          & (Join-Path $env:QT_ROOT_DIR 'bin/windeployqt.exe') `
+            --debug `
+            --no-translations `
+            --qmldir presentation/qml `
+            (Join-Path (Resolve-Path dist) 'sonora.exe')
+          if ($LASTEXITCODE -ne 0) { throw "windeployqt 失败（exit $LASTEXITCODE）" }
+          Compress-Archive -Path dist/* -DestinationPath sonora-win64-debug.zip -Force
+
+      - name: 上传分发包
+        if: matrix.mode == 'debug' && github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonora-win64-debug
+          path: sonora-win64-debug.zip
+          if-no-files-found: error
+
+      # 失败时才收日志：成功构建没有什么可看的，失败的现场错过就没有了。
+      - name: 收集失败现场
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-${{ matrix.mode }}
+          path: |
+            build/**/*.log
+            .xmake/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7

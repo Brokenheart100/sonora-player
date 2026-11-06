@@ -11,21 +11,21 @@
 #include <string>
 #include <system_error>
 
-#include "mamba/lyrics/adapters/LyricsSourceChain.h"
-#include "mamba/lyrics/adapters/SidecarLyricsSource.h"
-#include "mamba/lyrics/contracts/Queries.h"
-#include "mamba/lyrics/core/app/GetLyricsHandler.h"
-#include "mamba/lyrics/core/ports/Ports.h"
+#include "sonora/lyrics/adapters/LyricsSourceChain.h"
+#include "sonora/lyrics/adapters/SidecarLyricsSource.h"
+#include "sonora/lyrics/contracts/Queries.h"
+#include "sonora/lyrics/core/app/GetLyricsHandler.h"
+#include "sonora/lyrics/core/ports/Ports.h"
 
 namespace {
 
 namespace fs = std::filesystem;
-using mamba::lyrics::adapters::LyricsSourceChain;
-using mamba::lyrics::adapters::SidecarLyricsSource;
-using mamba::lyrics::contracts::LyricsStatus;
-using mamba::lyrics::core::GetLyricsHandler;
-using mamba::lyrics::core::ILyricsSource;
-using mamba::lyrics::core::LyricsDocument;
+using sonora::lyrics::adapters::LyricsSourceChain;
+using sonora::lyrics::adapters::SidecarLyricsSource;
+using sonora::lyrics::contracts::LyricsStatus;
+using sonora::lyrics::core::GetLyricsHandler;
+using sonora::lyrics::core::ILyricsSource;
+using sonora::lyrics::core::LyricsDocument;
 
 fs::path u8Path(const std::string &utf8)
 {
@@ -80,11 +80,11 @@ struct FakeSource final : ILyricsSource {
     std::optional<LyricsDocument> document;
     mutable int calls = 0;
 
-    [[nodiscard]] mamba::kernel::Result<std::optional<LyricsDocument>>
+    [[nodiscard]] sonora::kernel::Result<std::optional<LyricsDocument>>
     load(std::string_view) const override
     {
         ++calls;
-        return mamba::kernel::Result<std::optional<LyricsDocument>>::ok(document);
+        return sonora::kernel::Result<std::optional<LyricsDocument>>::ok(document);
     }
 };
 
@@ -139,7 +139,7 @@ TEST_CASE("同名 .lrc：GBK 文件被明确拒绝，不把乱码画上屏幕")
     const SidecarLyricsSource source;
     const auto document = source.load(u8String(audio));
     REQUIRE(document.hasValue() == false);
-    CHECK(document.error().code() == mamba::kernel::ErrorCode::Unavailable);
+    CHECK(document.error().code() == sonora::kernel::ErrorCode::Unavailable);
     CHECK(document.error().message().find("UTF-8") != std::string::npos);
 }
 
@@ -184,7 +184,7 @@ TEST_CASE("GetLyricsHandler：真文件 → Found，行数与时间都对")
 
     const SidecarLyricsSource source;
     const GetLyricsHandler handler{source};
-    const auto view = handler.handle(mamba::lyrics::contracts::GetLyrics{u8String(audio)});
+    const auto view = handler.handle(sonora::lyrics::contracts::GetLyrics{u8String(audio)});
     REQUIRE(view.hasValue());
     CHECK(view.value().status == LyricsStatus::Found);
     REQUIRE(view.value().lines.size() == 2);
@@ -200,7 +200,7 @@ TEST_CASE("GetLyricsHandler：没有歌词源 → NotFound，零行")
 
     const SidecarLyricsSource source;
     const GetLyricsHandler handler{source};
-    const auto view = handler.handle(mamba::lyrics::contracts::GetLyrics{u8String(audio)});
+    const auto view = handler.handle(sonora::lyrics::contracts::GetLyrics{u8String(audio)});
     REQUIRE(view.hasValue());
     CHECK(view.value().status == LyricsStatus::NotFound);
     CHECK(view.value().lines.empty());
@@ -214,7 +214,7 @@ TEST_CASE("GetLyricsHandler：有文件但没有时间标签 → 纯音乐占位
 
     const SidecarLyricsSource source;
     const GetLyricsHandler handler{source};
-    const auto view = handler.handle(mamba::lyrics::contracts::GetLyrics{u8String(audio)});
+    const auto view = handler.handle(sonora::lyrics::contracts::GetLyrics{u8String(audio)});
     REQUIRE(view.hasValue());
     CHECK(view.value().status == LyricsStatus::Instrumental);
     REQUIRE(view.value().lines.size() == 1);
@@ -225,7 +225,7 @@ TEST_CASE("GetLyricsHandler：空路径是参数错误")
 {
     const SidecarLyricsSource source;
     const GetLyricsHandler handler{source};
-    const auto view = handler.handle(mamba::lyrics::contracts::GetLyrics{});
+    const auto view = handler.handle(sonora::lyrics::contracts::GetLyrics{});
     REQUIRE(view.hasValue() == false);
-    CHECK(view.error().code() == mamba::kernel::ErrorCode::InvalidArgument);
+    CHECK(view.error().code() == sonora::kernel::ErrorCode::InvalidArgument);
 }

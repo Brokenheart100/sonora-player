@@ -1,7 +1,7 @@
-#include <mamba/playlists/contracts/probe.h>
+#include <sonora/playlists/contracts/probe.h>
 
-namespace mamba::playlists::contracts {
+namespace sonora::playlists::contracts {
 
 int probe() noexcept { return 9; }
 
-}  // namespace mamba::playlists::contracts
+}  // namespace sonora::playlists::contracts

@@ -1,11 +1,11 @@
-#include <mamba/playback/core/domain/PlayQueue.h>
+#include <sonora/playback/core/domain/PlayQueue.h>
 
 #include <algorithm>
 #include <numeric>
 
-#include <mamba/playback/core/domain/ShufflePlanner.h>
+#include <sonora/playback/core/domain/ShufflePlanner.h>
 
-namespace mamba::playback::core {
+namespace sonora::playback::core {
 
 void PlayQueue::setEntries(std::vector<contracts::QueueEntry> entries, std::int32_t startIndex) {
     entries_ = std::move(entries);
@@ -115,4 +115,4 @@ bool PlayQueue::jumpTo(std::int32_t entryIndex) {
     return true;
 }
 
-} // namespace mamba::playback::core
+} // namespace sonora::playback::core

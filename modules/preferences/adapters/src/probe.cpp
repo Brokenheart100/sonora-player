@@ -1,7 +1,7 @@
-#include <mamba/preferences/adapters/probe.h>
+#include <sonora/preferences/adapters/probe.h>
 
-namespace mamba::preferences::adapters {
+namespace sonora::preferences::adapters {
 
 int probe() noexcept { return 17; }
 
-}  // namespace mamba::preferences::adapters
+}  // namespace sonora::preferences::adapters

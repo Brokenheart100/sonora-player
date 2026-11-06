@@ -33,6 +33,9 @@
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>
         <file alias="qml/layout/PageTurner.qml">presentation/qml/layout/PageTurner.qml</file>
 
+        <!-- 应用图标：运行期窗口图标用；.exe 的图标在 assets/app.rc 里 -->
+        <file alias="icons/sonora.png">assets/icons/sonora.png</file>
+
         <!-- 字体与 shader -->
         <file alias="fonts/ZCOOLKuaiLe-Subset.ttf">assets/fonts/ZCOOLKuaiLe-Subset.ttf</file>
         <file alias="shaders/dot.frag.qsb">assets/shaders/dot.frag.qsb</file>

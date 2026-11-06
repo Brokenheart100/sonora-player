@@ -1,8 +1,8 @@
-#include "mamba/catalog/adapters/CatalogSchema.h"
+#include "sonora/catalog/adapters/CatalogSchema.h"
 
 #include <array>
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 namespace {
 
 using platform::storage::Migration;
@@ -117,4 +117,4 @@ std::span<const Migration> migrations()
     return kMigrations;
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

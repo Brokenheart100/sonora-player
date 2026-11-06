@@ -1,11 +1,11 @@
-#include "mamba/lyrics/core/domain/Lyrics.h"
+#include "sonora/lyrics/core/domain/Lyrics.h"
 
 #include <algorithm>
 #include <utility>
 
-#include "mamba/lyrics/core/domain/LyricTimeline.h"
+#include "sonora/lyrics/core/domain/LyricTimeline.h"
 
-namespace mamba::lyrics::core {
+namespace sonora::lyrics::core {
 
 Lyrics Lyrics::create(std::vector<LyricEntry> entries)
 {
@@ -51,4 +51,4 @@ std::int64_t Lyrics::lastTimeMs() const noexcept
     return times_.empty() ? 0 : times_.back();
 }
 
-}  // namespace mamba::lyrics::core
+}  // namespace sonora::lyrics::core

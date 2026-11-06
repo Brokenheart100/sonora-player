@@ -6,11 +6,11 @@
 // 集成测试里那条"中文子串能搜到"才会跟着挂。
 #include "doctest_support.h"
 
-#include "mamba/catalog/adapters/SearchText.h"
+#include "sonora/catalog/adapters/SearchText.h"
 
-using mamba::catalog::adapters::isIdeograph;
-using mamba::catalog::adapters::matchQuery;
-using mamba::catalog::adapters::searchBody;
+using sonora::catalog::adapters::isIdeograph;
+using sonora::catalog::adapters::matchQuery;
+using sonora::catalog::adapters::searchBody;
 
 TEST_CASE("汉字被逐字拆开，ASCII 转小写")
 {

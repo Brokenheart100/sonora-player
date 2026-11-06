@@ -21,25 +21,25 @@
 
 #include <doctest/doctest.h>
 
-#include <mamba/kernel/Error.h>
-#include <mamba/kernel/ILogger.h>
+#include <sonora/kernel/Error.h>
+#include <sonora/kernel/ILogger.h>
 
 namespace doctest {
 
 template <>
-struct StringMaker<mamba::kernel::ErrorCode> {
-    static String convert(const mamba::kernel::ErrorCode &value)
+struct StringMaker<sonora::kernel::ErrorCode> {
+    static String convert(const sonora::kernel::ErrorCode &value)
     {
-        const std::string_view text = mamba::kernel::toName(value);
+        const std::string_view text = sonora::kernel::toName(value);
         return String(text.data(), static_cast<unsigned>(text.size()));
     }
 };
 
 template <>
-struct StringMaker<mamba::kernel::LogLevel> {
-    static String convert(const mamba::kernel::LogLevel &value)
+struct StringMaker<sonora::kernel::LogLevel> {
+    static String convert(const sonora::kernel::LogLevel &value)
     {
-        return String(mamba::kernel::toName(value));
+        return String(sonora::kernel::toName(value));
     }
 };
 

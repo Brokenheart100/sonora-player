@@ -10,20 +10,20 @@
 #include <vector>
 
 
-#include <mamba/kernel/Error.h>
-#include <mamba/platform/storage/Migrator.h>
-#include <mamba/platform/storage/SqliteConnection.h>
-#include <mamba/platform/storage/SqliteStatement.h>
-#include <mamba/platform/storage/SqliteTransaction.h>
-#include <mamba/platform/storage/SqliteUnitOfWork.h>
+#include <sonora/kernel/Error.h>
+#include <sonora/platform/storage/Migrator.h>
+#include <sonora/platform/storage/SqliteConnection.h>
+#include <sonora/platform/storage/SqliteStatement.h>
+#include <sonora/platform/storage/SqliteTransaction.h>
+#include <sonora/platform/storage/SqliteUnitOfWork.h>
 
-using mamba::kernel::ErrorCode;
-using mamba::platform::storage::Migration;
-using mamba::platform::storage::Migrator;
-using mamba::platform::storage::SqliteConnection;
-using mamba::platform::storage::SqliteOpenMode;
-using mamba::platform::storage::SqliteTransaction;
-using mamba::platform::storage::SqliteUnitOfWork;
+using sonora::kernel::ErrorCode;
+using sonora::platform::storage::Migration;
+using sonora::platform::storage::Migrator;
+using sonora::platform::storage::SqliteConnection;
+using sonora::platform::storage::SqliteOpenMode;
+using sonora::platform::storage::SqliteTransaction;
+using sonora::platform::storage::SqliteUnitOfWork;
 
 namespace {
 
@@ -52,7 +52,7 @@ TEST_CASE("SQLite：FTS5 编译开关真的生效了（中文搜索的地基）"
     auto created = connection.exec(
         "CREATE VIRTUAL TABLE search USING fts5(title, tokenize = 'unicode61');");
     REQUIRE_MESSAGE(created.hasValue(),
-                    "FTS5 不可用：检查 Mamba.ThirdParty.Sqlite 是否定义了 SQLITE_ENABLE_FTS5");
+                    "FTS5 不可用：检查 Sonora.ThirdParty.Sqlite 是否定义了 SQLITE_ENABLE_FTS5");
 
     REQUIRE(connection.exec("INSERT INTO search(title) VALUES('夜航西飞');").hasValue());
     REQUIRE(connection.exec("INSERT INTO search(title) VALUES('Night Flight');").hasValue());

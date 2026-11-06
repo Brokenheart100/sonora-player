@@ -1,4 +1,4 @@
-#include "mamba/catalog/core/app/ImportFolderHandler.h"
+#include "sonora/catalog/core/app/ImportFolderHandler.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,9 +6,9 @@
 #include <utility>
 #include <vector>
 
-#include "mamba/catalog/core/domain/Track.h"
+#include "sonora/catalog/core/domain/Track.h"
 
-namespace mamba::catalog::core {
+namespace sonora::catalog::core {
 namespace {
 
 constexpr std::string_view kNoArtist = "未知艺术家";
@@ -237,4 +237,4 @@ ImportProgress ImportFolderHandler::progress() const noexcept
     return snapshot;
 }
 
-}  // namespace mamba::catalog::core
+}  // namespace sonora::catalog::core

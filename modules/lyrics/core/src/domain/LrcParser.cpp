@@ -1,11 +1,11 @@
-#include "mamba/lyrics/core/domain/LrcParser.h"
+#include "sonora/lyrics/core/domain/LrcParser.h"
 
 #include <algorithm>
 #include <charconv>
 #include <string>
 #include <vector>
 
-namespace mamba::lyrics::core {
+namespace sonora::lyrics::core {
 namespace {
 
 constexpr std::string_view kUtf8Bom = "\xEF\xBB\xBF";
@@ -262,4 +262,4 @@ ParsedLyrics LrcParser::parse(std::string_view text)
     return parsed;
 }
 
-}  // namespace mamba::lyrics::core
+}  // namespace sonora::lyrics::core

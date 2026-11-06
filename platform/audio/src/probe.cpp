@@ -1,7 +1,7 @@
-#include <mamba/platform/audio/probe.h>
+#include <sonora/platform/audio/probe.h>
 
-namespace mamba::platform::audio {
+namespace sonora::platform::audio {
 
 int probe() noexcept { return 19; }
 
-}  // namespace mamba::platform::audio
+}  // namespace sonora::platform::audio

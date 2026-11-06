@@ -1,7 +1,7 @@
-#include <mamba/playlists/core/probe.h>
+#include <sonora/playlists/core/probe.h>
 
-namespace mamba::playlists::core {
+namespace sonora::playlists::core {
 
 int probe() noexcept { return 10; }
 
-}  // namespace mamba::playlists::core
+}  // namespace sonora::playlists::core

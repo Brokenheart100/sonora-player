@@ -1,4 +1,4 @@
--- MambaMusic · 顶层构建入口
+-- Sonora · 顶层构建入口
 --
 -- 这里只管「项目级策略」。所有 target 集中定义在 xmake/targets.lua 里，
 -- 因为 target 图本身就是架构边界（见 docs/ARCHITECTURE.md §9）。
@@ -10,7 +10,7 @@
 
 set_xmakever("2.9.5")
 
-set_project("MambaMusic")
+set_project("Sonora")
 set_version("0.1.0")
 
 -- 平台与架构是架构决定，不是可选项。

@@ -1,7 +1,7 @@
-#include <mamba/platform/filesystem/probe.h>
+#include <sonora/platform/filesystem/probe.h>
 
-namespace mamba::platform::filesystem {
+namespace sonora::platform::filesystem {
 
 int probe() noexcept { return 20; }
 
-}  // namespace mamba::platform::filesystem
+}  // namespace sonora::platform::filesystem

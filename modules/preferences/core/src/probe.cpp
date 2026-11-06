@@ -1,7 +1,7 @@
-#include <mamba/preferences/core/probe.h>
+#include <sonora/preferences/core/probe.h>
 
-namespace mamba::preferences::core {
+namespace sonora::preferences::core {
 
 int probe() noexcept { return 16; }
 
-}  // namespace mamba::preferences::core
+}  // namespace sonora::preferences::core

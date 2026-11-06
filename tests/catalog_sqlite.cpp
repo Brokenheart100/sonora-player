@@ -14,28 +14,28 @@
 #include <utility>
 #include <vector>
 
-#include "mamba/catalog/adapters/BasicMetadataReader.h"
-#include "mamba/catalog/adapters/CatalogSchema.h"
-#include "mamba/catalog/adapters/FileSystemScanner.h"
-#include "mamba/catalog/adapters/SqliteCreditDirectory.h"
-#include "mamba/catalog/adapters/SqlitePlaybackRecorder.h"
-#include "mamba/catalog/adapters/SqliteTrackListReader.h"
-#include "mamba/catalog/adapters/SqliteTrackRepository.h"
-#include "mamba/catalog/contracts/Commands.h"
-#include "mamba/catalog/contracts/Queries.h"
-#include "mamba/catalog/core/app/ImportFolderHandler.h"
-#include "mamba/contracts/PlaybackEvents.h"
-#include "mamba/kernel/EventBus.h"
-#include "mamba/kernel/IClock.h"
-#include "mamba/platform/storage/Migrator.h"
-#include "mamba/platform/storage/SqliteConnection.h"
-#include "mamba/platform/storage/SqliteUnitOfWork.h"
+#include "sonora/catalog/adapters/BasicMetadataReader.h"
+#include "sonora/catalog/adapters/CatalogSchema.h"
+#include "sonora/catalog/adapters/FileSystemScanner.h"
+#include "sonora/catalog/adapters/SqliteCreditDirectory.h"
+#include "sonora/catalog/adapters/SqlitePlaybackRecorder.h"
+#include "sonora/catalog/adapters/SqliteTrackListReader.h"
+#include "sonora/catalog/adapters/SqliteTrackRepository.h"
+#include "sonora/catalog/contracts/Commands.h"
+#include "sonora/catalog/contracts/Queries.h"
+#include "sonora/catalog/core/app/ImportFolderHandler.h"
+#include "sonora/contracts/PlaybackEvents.h"
+#include "sonora/kernel/EventBus.h"
+#include "sonora/kernel/IClock.h"
+#include "sonora/platform/storage/Migrator.h"
+#include "sonora/platform/storage/SqliteConnection.h"
+#include "sonora/platform/storage/SqliteUnitOfWork.h"
 
 namespace {
 
 namespace fs = std::filesystem;
-using namespace mamba;
-using namespace mamba::catalog;
+using namespace sonora;
+using namespace sonora::catalog;
 
 // Windows 上最贵的一课：fs::path 从 std::string 构造时按**当前 ANSI 代码页**
 // 解释这些字节，不是按 UTF-8。于是"夜航西飞"（6 个字节的 UTF-8）会被当成 GBK
@@ -61,7 +61,7 @@ public:
         // 直接 Access is denied（沙箱限制），而把测试数据写在仓库里还有个好处
         // ——失败之后能直接去看那个库文件到底长什么样。
         std::error_code ec;
-        root_ = fs::current_path(ec) / ".test_tmp" / "mamba_m1_it";
+        root_ = fs::current_path(ec) / ".test_tmp" / "sonora_m1_it";
         fs::remove_all(root_, ec);
         fs::create_directories(root_ / "music", ec);
         dbPath_ = u8String(root_ / "library.sqlite");
@@ -303,8 +303,8 @@ TEST_CASE("播放次数：TrackFinished 事件累计进 play_count，重启后�
     kernel::EventBus events;
     int stored = 0;
     int missing = 0;
-    events.subscribe<::mamba::contracts::TrackFinished>(
-        [&recorder, &stored, &missing](const ::mamba::contracts::TrackFinished &event)
+    events.subscribe<::sonora::contracts::TrackFinished>(
+        [&recorder, &stored, &missing](const ::sonora::contracts::TrackFinished &event)
         {
             if (recorder.record(event.trackId, event.playedAtUnix))
             {
@@ -317,10 +317,10 @@ TEST_CASE("播放次数：TrackFinished 事件累计进 play_count，重启后�
         });
 
     // 同一首放两次。事件是"已经发生的事实"，订阅者只负责记账。
-    events.publish(::mamba::contracts::TrackFinished{1, 1700000000});
-    events.publish(::mamba::contracts::TrackFinished{1, 1700000500});
+    events.publish(::sonora::contracts::TrackFinished{1, 1700000000});
+    events.publish(::sonora::contracts::TrackFinished{1, 1700000500});
     // 不存在的曲目：记不上，但不许抛、不许崩（边放边删是允许的）。
-    events.publish(::mamba::contracts::TrackFinished{999, 1700000900});
+    events.publish(::sonora::contracts::TrackFinished{999, 1700000900});
 
     CHECK(stored == 2);
     CHECK(missing == 1);

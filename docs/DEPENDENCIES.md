@@ -1,4 +1,4 @@
-# MambaMusic 依赖清单
+# Sonora 依赖清单
 
 > 这份文档只回答三个问题：**用什么库、允许出现在哪一层、为什么不用别的**。
 > 架构见 [ARCHITECTURE.md](ARCHITECTURE.md)，进度见 [IMPLEMENTATION.md](IMPLEMENTATION.md)。
@@ -9,7 +9,7 @@
 
 这套架构（严格 DDD + Clean Architecture）最容易被自己毁掉的方式，不是写错代码，是**在领域层里加了一个"很方便"的库**。所以先定三条硬规矩：
 
-1. **领域层零第三方依赖**。`Mamba.Kernel`、`Mamba.Contracts`、所有 `*.Core` 只许用 C++ 标准库。这条不是洁癖——[xmake/targets.lua](../xmake/targets.lua) 里这些 target 没有 Qt、没有 `add_requires`，物理上就链不到，编译器会替你执行。
+1. **领域层零第三方依赖**。`Sonora.Kernel`、`Sonora.Contracts`、所有 `*.Core` 只许用 C++ 标准库。这条不是洁癖——[xmake/targets.lua](../xmake/targets.lua) 里这些 target 没有 Qt、没有 `add_requires`，物理上就链不到，编译器会替你执行。
 2. **一个库只能出现在它被批准的那一层**（见 §1 矩阵）。要用到上层去，先改文档再改构建。
 3. **新依赖必须过五问**（见文末清单）。过不了就不加——标准库或者 200 行手写，通常比一个新依赖便宜。
 

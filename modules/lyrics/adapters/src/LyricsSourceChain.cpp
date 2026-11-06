@@ -1,6 +1,6 @@
-#include "mamba/lyrics/adapters/LyricsSourceChain.h"
+#include "sonora/lyrics/adapters/LyricsSourceChain.h"
 
-namespace mamba::lyrics::adapters {
+namespace sonora::lyrics::adapters {
 
 kernel::Result<std::optional<core::LyricsDocument>>
 LyricsSourceChain::load(std::string_view audioFilePath) const
@@ -17,4 +17,4 @@ LyricsSourceChain::load(std::string_view audioFilePath) const
     return kernel::Result<std::optional<core::LyricsDocument>>::ok(std::nullopt);
 }
 
-}  // namespace mamba::lyrics::adapters
+}  // namespace sonora::lyrics::adapters

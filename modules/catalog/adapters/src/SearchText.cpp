@@ -1,9 +1,9 @@
-#include "mamba/catalog/adapters/SearchText.h"
+#include "sonora/catalog/adapters/SearchText.h"
 
 #include <cstddef>
 #include <cstdint>
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 namespace {
 
 // 最小可用的 UTF-8 解码：合法序列返回码点，非法字节返回 0 并把 index 前移 1。
@@ -217,4 +217,4 @@ std::string matchQuery(std::string_view text)
     return query;
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

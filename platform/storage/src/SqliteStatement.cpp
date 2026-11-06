@@ -1,10 +1,10 @@
-#include "mamba/platform/storage/SqliteStatement.h"
+#include "sonora/platform/storage/SqliteStatement.h"
 
 #include <limits>
 
-#include "mamba/platform/storage/SqliteError.h"
+#include "sonora/platform/storage/SqliteError.h"
 
-namespace mamba::platform::storage {
+namespace sonora::platform::storage {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -187,4 +187,4 @@ std::string_view SqliteStatement::columnName(int index) const
     return name != nullptr ? std::string_view{name} : std::string_view{};
 }
 
-}  // namespace mamba::platform::storage
+}  // namespace sonora::platform::storage

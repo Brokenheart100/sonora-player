@@ -1,7 +1,7 @@
-#include <mamba/presentation/probe.h>
+#include <sonora/presentation/probe.h>
 
-namespace mamba::presentation {
+namespace sonora::presentation {
 
 int probe() noexcept { return 22; }
 
-}  // namespace mamba::presentation
+}  // namespace sonora::presentation

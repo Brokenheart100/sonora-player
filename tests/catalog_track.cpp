@@ -7,19 +7,19 @@
 #include <string>
 
 
-#include <mamba/catalog/core/domain/Credit.h>
-#include <mamba/catalog/core/domain/Events.h>
-#include <mamba/catalog/core/domain/Track.h>
-#include <mamba/kernel/Error.h>
+#include <sonora/catalog/core/domain/Credit.h>
+#include <sonora/catalog/core/domain/Events.h>
+#include <sonora/catalog/core/domain/Track.h>
+#include <sonora/kernel/Error.h>
 
-using mamba::catalog::core::Album;
-using mamba::catalog::core::Artist;
-using mamba::catalog::core::Track;
-using mamba::catalog::core::TrackAdded;
-using mamba::catalog::core::TrackDetails;
-using mamba::catalog::core::TrackId;
-using mamba::catalog::core::trimTitle;
-using mamba::kernel::ErrorCode;
+using sonora::catalog::core::Album;
+using sonora::catalog::core::Artist;
+using sonora::catalog::core::Track;
+using sonora::catalog::core::TrackAdded;
+using sonora::catalog::core::TrackDetails;
+using sonora::catalog::core::TrackId;
+using sonora::catalog::core::trimTitle;
+using sonora::kernel::ErrorCode;
 
 namespace {
 
@@ -122,7 +122,7 @@ TEST_CASE("Album / Artist：名字非空，重建要 id")
     CHECK_FALSE(album.value().isPersisted());
 
     CHECK_FALSE(Album::add("   ").hasValue());
-    CHECK_FALSE(Album::rehydrate(mamba::catalog::core::AlbumId{}, "x").hasValue());
+    CHECK_FALSE(Album::rehydrate(sonora::catalog::core::AlbumId{}, "x").hasValue());
 
     auto artist = Artist::add("  坂本龙一 ");
     REQUIRE(artist.hasValue());

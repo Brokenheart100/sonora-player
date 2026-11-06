@@ -14,18 +14,18 @@
 #include <utility>
 #include <vector>
 
-#include "mamba/catalog/contracts/Commands.h"
-#include "mamba/catalog/contracts/Queries.h"
-#include "mamba/catalog/core/app/ImportFolderHandler.h"
-#include "mamba/catalog/core/app/ListTracksHandler.h"
-#include "mamba/catalog/core/domain/Track.h"
-#include "mamba/catalog/core/ports/Ports.h"
-#include "mamba/kernel/CommandBus.h"
-#include "mamba/kernel/QueryBus.h"
+#include "sonora/catalog/contracts/Commands.h"
+#include "sonora/catalog/contracts/Queries.h"
+#include "sonora/catalog/core/app/ImportFolderHandler.h"
+#include "sonora/catalog/core/app/ListTracksHandler.h"
+#include "sonora/catalog/core/domain/Track.h"
+#include "sonora/catalog/core/ports/Ports.h"
+#include "sonora/kernel/CommandBus.h"
+#include "sonora/kernel/QueryBus.h"
 
-using namespace mamba;
-using namespace mamba::catalog;
-using namespace mamba::catalog::core;
+using namespace sonora;
+using namespace sonora::catalog;
+using namespace sonora::catalog::core;
 
 namespace
 {

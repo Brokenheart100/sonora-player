@@ -19,10 +19,10 @@ export PATH="/c/Users/123/AppData/Local/Temp/xmake-test/xmake:$PATH"
 
 xmake f -m debug -a x64 -y     # Qt 自动识别，不需要 --qt
 xmake                          # 编全部 target
-xmake r MambaMusic             # xmake 会补 Qt 的 runenv
+xmake r sonora             # xmake 会补 Qt 的 runenv
 ```
 
-直接跑 `build/windows/x64/debug/MambaMusic.exe` 会静默退出（找不到 Qt DLL），要先把 `D:/Software/Qt/6.12.0/msvc2022_64/bin` 放进 PATH。
+直接跑 `build/windows/x64/debug/sonora.exe` 会静默退出（找不到 Qt DLL），要先把 `D:/Software/Qt/6.12.0/msvc2022_64/bin` 放进 PATH。
 
 ---
 
@@ -30,9 +30,9 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 
 带 ● 的有机器兜底，破了会编译失败或脚本报错；没带 ● 的靠自觉，破了不会立刻出事，但会慢慢烂掉。
 
-1. ● `modules/*/core/`、`modules/*/contracts/`、`platform/*`（除 `win`）、`Mamba.Kernel` 里**不许出现 Qt / SQLite / FFmpeg / Win32 / pthread**。想用说明放错了层。
+1. ● `modules/*/core/`、`modules/*/contracts/`、`platform/*`（除 `win`）、`Sonora.Kernel` 里**不许出现 Qt / SQLite / FFmpeg / Win32 / pthread**。想用说明放错了层。
 2. ● 不许 `#include "../..."` 跨 target 偷头文件——可见性由 target 依赖决定，不是由相对路径决定。
-3. ● `Mamba.Presentation` 只依赖各模块的 `*.Contracts`，**永不依赖任何 `*.Core`**。这是"表现层看不见领域模型"的物理保证。
+3. ● `Sonora.Presentation` 只依赖各模块的 `*.Contracts`，**永不依赖任何 `*.Core`**。这是"表现层看不见领域模型"的物理保证。
 4. ● **依赖倒置 = 抽象归高层**。端口（接口）声明在 `core/.../ports/` 或 `Kernel` 里，`adapters/` 去实现它。**`adapters/` 里不许定义被 `core/` 依赖的接口**——包括"为了方便"而转发的纯虚基类。一句话判据：**把 `adapters/` 和 `platform/` 删掉，`X.Core` 还编译得过吗**。生产代码里只有 `host/` 能 `new` 具体适配器。（include 方向已由 `boundaries.py` 拦；**接口住在哪一侧机器拦不住，只能靠人守**。这是唯一一条破了还能编译通过的规矩。）
 5. 模块之间只认对方的 `*.Contracts`；跨模块**不建外键、不 JOIN**（模块内可以）。
 6. Handler 同步耗时 **< 5ms**；更慢的活投 `ITaskQueue::post()`，不要就地等。
@@ -58,7 +58,7 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 
 - FFmpeg 走 vcpkg（`D:/vcpkg`），`xmake/targets.lua` 顶部有 `VCPKG_ROOT` / `VCPKG_TRIPLET` 常量。**debug 构建必须链 `installed/x64-windows/debug/lib`**，链 release 那套是跨 CRT 堆损坏，只会在 `av_malloc` 里炸。
 - 装 feature 要写进方括号：`ffmpeg[core,avcodec,avformat,swresample]:x64-windows`。这一版 vcpkg 的 classic 模式**不认** `--features` / `--no-default-features`（`error: unexpected switch`）。
-- `MambaMusic` 的 `after_build` 会把 `av*.dll` / `sw*.dll` 拷到 exe 旁边。缺这一步的症状是"双击立刻退出、没有任何输出"（不是崩溃，是 DLL 找不到）。
+- `Sonora` 的 `after_build` 会把 `av*.dll` / `sw*.dll` 拷到 exe 旁边。缺这一步的症状是"双击立刻退出、没有任何输出"（不是崩溃，是 DLL 找不到）。
 - **`load()` 里不许同步 open 文件**：`avformat_open_input` + 建 `QAudioSink` 实测 225ms，会撞上 5ms 的命令延迟断言。现在 `FfmpegOutput::load()` 只登记路径并起线程，解码线程 open、GUI 线程建 sink。
 - 位置一律"样本记账"：`(seekStartSamples + written - ring.availableToRead()) * 1000 / rate`，最后 clamp 到 `durationMs`。**别把样本和毫秒分开写**——写成两段会让跳转后位置显示成 `45:28 / 2:02`。
 - 跳转精度：`av_seek_frame(..., AVSEEK_FLAG_BACKWARD)` 只落到关键帧附近，能早几十秒。用 `avformat_seek_file(fmt, stream, INT64_MIN, ts, INT64_MAX, 0)`，再按首帧 `pts` 把多出来的样本丢掉。
@@ -80,7 +80,7 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 
 - **跨模块只能用事件，不许直接调别人的仓储**。`Playback` 不知道 `Catalog` 存在；`TrackFinished` 由 `host/main.cpp` 订阅后转给 `Catalog.Adapters` 的 `SqlitePlaybackRecorder`。想加"播放次数"之外的联动，也走这条路。
 - **事件要在状态推进之前发**。`handleFinished()` 里先 `publish(TrackFinished{queue_.current()->trackId})` 再 `queue_.advance()`；反过来 `current()` 已经指向下一首，播放次数会记到别人头上。
-- 模块内裸写 `contracts::` 会解析到**本模块自己的** `*.Contracts`（`Playback` 里就是 `mamba::playback::contracts`），跨模块类型必须写全 `mamba::contracts::…`，否则 `C2039: 不是 …contracts 的成员`。
+- 模块内裸写 `contracts::` 会解析到**本模块自己的** `*.Contracts`（`Playback` 里就是 `sonora::playback::contracts`），跨模块类型必须写全 `sonora::contracts::…`，否则 `C2039: 不是 …contracts 的成员`。
 - `EventBus` 是**同步**分发，没有退订、没有队列、没有优先级。订阅者里不要再 publish（会递归），慢活投 `ITaskQueue`。
 - `Result<A>` **不能**隐式转 `Result<void>`：逐层 `Result<void>::fail(x.error())`，和仓储里的写法保持一致。
 - 注释里写 Qt 类名会被 `boundaries.py` 判成"Qt 侵入 core 层"——它扫的是文本，注释也算。写"队列化调用"这种描述，别写 `QMetaObject::invokeMethod`。
@@ -106,16 +106,17 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 
 **QML / shader**
 
-- QML 要用注入的单例，文件头必须有 **`import MambaMusic 1.0`**，否则 `Library` 是 `undefined` 且**不报任何错**，绑定静静变成空串。
+- QML 要用注入的单例，文件头必须有 **`import Sonora.Presentation 1.0`**，否则 `Library` 是 `undefined` 且**不报任何错**，绑定静静变成空串。
 - `ShaderEffect` 的 uniform 成员名与 QML 属性名**必须逐字相同**。不同名不报错，只是整个 UBO 为 0——表现为整片纯黑。
 - `ShaderEffect` **没有 `live` 属性**（那是 `ShaderEffectSource` 的），写上去整个组件加载失败。
 - 改完 `.frag` 要重烘焙：`PATH=".../Qt/6.12.0/msvc2022_64/bin:$PATH" xmake qsb`。xmake 的 task 沙箱里**没有 `pcall` / `import` / `catch`**，`qsb.exe` 只能从 `QTDIR` 或 PATH 找。
-- 加了新的界面文案，要重跑 `python tools/subset_fonts.py`，否则新字掉回系统字体（视觉上很明显）。
+- **应用图标是生成物，不是手绘资产**：改图标 = 改 `tools/make_icon.py` + 重跑它；`.ico` 由 `assets/app.rc` 嵌进 exe（`rc.exe` 的相对路径以 `.rc` 所在目录为基准），运行期任务栏图标来自 qrc 里的 `:/icons/sonora.png`（`setWindowIcon`）——**两处都有才完整**，只做前者任务栏会是白纸。
+- 加了新的界面文案（**C++ 里 `QStringLiteral("…")` 的状态文案也算**），要重跑 `python tools/subset_fonts.py`，否则新字掉回系统字体（视觉上很明显）。CI 用 `python tools/subset_fonts.py --verify` 拦这个——它只查"每个字都在子集里"，不比字节（子集字节依赖 fontTools 版本）。
 - **动画不要作用在会被绑定的属性上**。`NumberAnimation { target: x; property: "opacity" }` 一旦跑过，`opacity` 上的绑定就被打断，动画结束值留在最后一帧——症状是"第一次闪了一下，之后再也没出现过"。动画只动一个中间量（`flash`），`opacity: flash` 保持绑定。
 - **自定义 UBO 里的 `vec2` 不可信**：`float` 成员能到 shader，`vector2d` 实测到不了（现象是坐标全错、射线变成一团同心光晕）。要么拆成两个 `float`，要么别用 shader——集中线最后是 `Canvas` 画的。
 - **`Canvas` 会裁剪到自身矩形**，画到边界外的部分被平切。射线、扩散、投影这类"要往外走"的图形，长度要按"还能走多远"收笔，末端收成针尖，末端落在哪都不像被切断。
 - delegate 内部的 `id` **在外面看不见**（`item.pop.restart()` → `TypeError: Cannot call method 'restart' of undefined`）。给 delegate 加一个 `function start()` 当门面。
-- `comic/`、`layout/` 这些子目录里的组件**也要** `import MambaMusic 1.0`，否则 `ReferenceError: Player is not defined`——而且只在运行时炸。
+- `comic/`、`layout/` 这些子目录里的组件**也要** `import Sonora.Presentation 1.0`，否则 `ReferenceError: Player is not defined`——而且只在运行时炸。
 
 **调试**
 
@@ -137,7 +138,7 @@ xmake r MambaMusic             # xmake 会补 Qt 的 runenv
 ## 3. 改完必须做的事
 
 ```bash
-xmake build mamba_tests && ./build/windows/x64/debug/mamba_tests.exe   # mamba_tests 默认不编
+xmake build sonora_tests && ./build/windows/x64/debug/sonora_tests.exe   # sonora_tests 默认不编
 python xmake/checks/boundaries.py
 ```
 
@@ -150,17 +151,17 @@ python xmake/checks/boundaries.py
 
 | 路径 | 是什么 | target |
 | --- | --- | --- |
-| `modules/kernel/` | TypedId / Result / 总线 / 端口原语，零外部依赖 | `Mamba.Kernel` |
-| `modules/contracts/` | 跨模块集成事件与共享 DTO | `Mamba.Contracts` |
-| `modules/<m>/contracts/` | 本模块对外的命令 / 查询 / DTO | `Mamba.<M>.Contracts` |
-| `modules/<m>/core/` | 领域 + 应用层，**不链 Qt** | `Mamba.<M>.Core` |
-| `modules/<m>/adapters/` | SQLite / 文件系统等实现，默认也不链 Qt | `Mamba.<M>.Adapters` |
-| `platform/storage/` | SQLite 封装 + Migrator + 工作单元 | `Mamba.Platform.Storage` |
-| `platform/{audio,filesystem,win}/` | 平台能力 | `Mamba.Platform.*` |
-| `presentation/` | ViewModel（C++）+ QML | `Mamba.Presentation` |
-| `host/main.cpp` | **组合根**：唯一一处把实现 new 出来并接线的地方 | `MambaMusic` |
-| `tests/` | doctest；只链纯 C++ target | `mamba_tests` |
-| `third_party/sqlite3/` | amalgamation，编译开关见 `xmake/targets.lua` | `Mamba.ThirdParty.Sqlite` |
+| `modules/kernel/` | TypedId / Result / 总线 / 端口原语，零外部依赖 | `Sonora.Kernel` |
+| `modules/contracts/` | 跨模块集成事件与共享 DTO | `Sonora.Contracts` |
+| `modules/<m>/contracts/` | 本模块对外的命令 / 查询 / DTO | `Sonora.<M>.Contracts` |
+| `modules/<m>/core/` | 领域 + 应用层，**不链 Qt** | `Sonora.<M>.Core` |
+| `modules/<m>/adapters/` | SQLite / 文件系统等实现，默认也不链 Qt | `Sonora.<M>.Adapters` |
+| `platform/storage/` | SQLite 封装 + Migrator + 工作单元 | `Sonora.Platform.Storage` |
+| `platform/{audio,filesystem,win}/` | 平台能力 | `Sonora.Platform.*` |
+| `presentation/` | ViewModel（C++）+ QML | `Sonora.Presentation` |
+| `host/main.cpp` | **组合根**：唯一一处把实现 new 出来并接线的地方 | `sonora` |
+| `tests/` | doctest；只链纯 C++ target | `sonora_tests` |
+| `third_party/sqlite3/` | amalgamation，编译开关见 `xmake/targets.lua` | `Sonora.ThirdParty.Sqlite` |
 
 业务模块：`catalog` / `playback` / `playlists` / `lyrics` / `preferences`。新增模块 = 三个 target（Contracts / Core / Adapters）+ 在 `xmake/targets.lua` 的 `BUSINESS` 表里加一个名字。
 

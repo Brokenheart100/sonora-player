@@ -1,4 +1,4 @@
-#include "mamba/presentation/PlayerViewModel.h"
+#include "sonora/presentation/PlayerViewModel.h"
 
 #include <algorithm>
 #include <functional>
@@ -7,10 +7,10 @@
 #include <QUrl>
 #include <QVariantMap>
 
-#include "mamba/playback/contracts/Queries.h"
-#include "mamba/presentation/LyricsModel.h"
+#include "sonora/playback/contracts/Queries.h"
+#include "sonora/presentation/LyricsModel.h"
 
-namespace mamba::presentation
+namespace sonora::presentation
 {
     namespace
     {
@@ -282,4 +282,4 @@ namespace mamba::presentation
         }
     }
 
-} // namespace mamba::presentation
+} // namespace sonora::presentation

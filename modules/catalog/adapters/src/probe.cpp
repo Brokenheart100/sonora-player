@@ -1,7 +1,7 @@
-#include <mamba/catalog/adapters/probe.h>
+#include <sonora/catalog/adapters/probe.h>
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 
 int probe() noexcept { return 5; }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

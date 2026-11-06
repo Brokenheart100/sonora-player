@@ -1,8 +1,8 @@
-#include "mamba/catalog/adapters/SqliteCreditDirectory.h"
+#include "sonora/catalog/adapters/SqliteCreditDirectory.h"
 
 #include <string>
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -75,4 +75,4 @@ Result<core::AlbumId> SqliteCreditDirectory::resolveAlbum(std::string_view title
         core::AlbumId::fromValue(static_cast<std::uint64_t>(id.value())));
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

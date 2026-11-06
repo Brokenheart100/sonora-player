@@ -7,12 +7,12 @@
 #include <string>
 #include <string_view>
 
-#include <mamba/kernel/Result.h>
+#include <sonora/kernel/Result.h>
 
 
-using mamba::kernel::Error;
-using mamba::kernel::ErrorCode;
-using mamba::kernel::Result;
+using sonora::kernel::Error;
+using sonora::kernel::ErrorCode;
+using sonora::kernel::Result;
 
 namespace {
 

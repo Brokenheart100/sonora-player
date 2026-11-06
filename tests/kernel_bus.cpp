@@ -12,20 +12,20 @@
 #include <thread>
 #include <vector>
 
-#include <mamba/kernel/CommandBus.h>
-#include <mamba/kernel/ILogger.h>
-#include <mamba/kernel/QueryBus.h>
+#include <sonora/kernel/CommandBus.h>
+#include <sonora/kernel/ILogger.h>
+#include <sonora/kernel/QueryBus.h>
 
 
-using mamba::kernel::CommandBus;
-using mamba::kernel::ErrorCode;
-using mamba::kernel::LogLevel;
-using mamba::kernel::QueryBus;
+using sonora::kernel::CommandBus;
+using sonora::kernel::ErrorCode;
+using sonora::kernel::LogLevel;
+using sonora::kernel::QueryBus;
 
 namespace {
 
 // 把日志收进 vector 的 logger：测试里断言「该 warn 的确实 warn 了」。
-class RecordingLogger final : public mamba::kernel::ILogger {
+class RecordingLogger final : public sonora::kernel::ILogger {
 public:
     [[nodiscard]] bool enabled(LogLevel level) const noexcept override
     {
@@ -58,15 +58,15 @@ class RenameTrackHandler {
 public:
     explicit RenameTrackHandler(bool shouldFail) : shouldFail_(shouldFail) {}
 
-    mamba::kernel::Result<void> handle(const RenameTrack &command) const
+    sonora::kernel::Result<void> handle(const RenameTrack &command) const
     {
         lastId = command.id;
         lastTitle = command.title;
         if (shouldFail_) {
-            return mamba::kernel::Result<void>::fail(
-                mamba::kernel::Error{mamba::kernel::ErrorCode::NotFound, "没有这首曲子"});
+            return sonora::kernel::Result<void>::fail(
+                sonora::kernel::Error{sonora::kernel::ErrorCode::NotFound, "没有这首曲子"});
         }
-        return mamba::kernel::Result<void>::ok();
+        return sonora::kernel::Result<void>::ok();
     }
 
     bool shouldFail_ = false;
@@ -118,7 +118,7 @@ TEST_CASE("CommandBus：慢命令会被记一条 warn（5ms 预算的唯一自�
 
     bus.on<ImportFolder>([](const ImportFolder &) {
         std::this_thread::sleep_for(std::chrono::milliseconds(8));
-        return mamba::kernel::Result<void>::ok();
+        return sonora::kernel::Result<void>::ok();
     });
 
     const auto result = bus.dispatch(ImportFolder{.path = R"(C:\慢)"});
@@ -136,11 +136,11 @@ TEST_CASE("CommandBus：同一条命令再注册一次会覆盖（而不是重�
 
     bus.on<ImportFolder>([&calls](const ImportFolder &) {
         ++calls;
-        return mamba::kernel::Result<void>::ok();
+        return sonora::kernel::Result<void>::ok();
     });
     bus.on<ImportFolder>([&calls](const ImportFolder &) {
         calls += 100;
-        return mamba::kernel::Result<void>::ok();
+        return sonora::kernel::Result<void>::ok();
     });
 
     const auto result = bus.dispatch(ImportFolder{.path = "x"});
@@ -153,7 +153,7 @@ TEST_CASE("QueryBus：拿得到查询结果")
 {
     QueryBus bus;
     bus.on<GetTrackCount, int>([](const GetTrackCount &query) {
-        return mamba::kernel::Result<int>::ok(static_cast<int>(query.albumId) * 3);
+        return sonora::kernel::Result<int>::ok(static_cast<int>(query.albumId) * 3);
     });
 
     const auto result = bus.ask<int>(GetTrackCount{.albumId = 5});
@@ -174,7 +174,7 @@ TEST_CASE("QueryBus：handler 返回类型与 ask<T> 不一致时给 Internal")
 {
     QueryBus bus;
     bus.on<GetTrackCount, int>([](const GetTrackCount &) {
-        return mamba::kernel::Result<int>::ok(1);
+        return sonora::kernel::Result<int>::ok(1);
     });
 
     // 注册的是 Result<int>，这里却按 std::string 去取。
@@ -187,8 +187,8 @@ TEST_CASE("QueryBus：handler 的业务失败也能回去")
 {
     QueryBus bus;
     bus.on<GetTrackCount, int>([](const GetTrackCount &) {
-        return mamba::kernel::Result<int>::fail(
-            mamba::kernel::Error{mamba::kernel::ErrorCode::Unavailable, "数据库被锁"});
+        return sonora::kernel::Result<int>::fail(
+            sonora::kernel::Error{sonora::kernel::ErrorCode::Unavailable, "数据库被锁"});
     });
 
     const auto result = bus.ask<int>(GetTrackCount{});

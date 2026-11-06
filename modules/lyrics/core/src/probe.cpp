@@ -1,7 +1,7 @@
-#include <mamba/lyrics/core/probe.h>
+#include <sonora/lyrics/core/probe.h>
 
-namespace mamba::lyrics::core {
+namespace sonora::lyrics::core {
 
 int probe() noexcept { return 13; }
 
-}  // namespace mamba::lyrics::core
+}  // namespace sonora::lyrics::core

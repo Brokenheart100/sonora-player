@@ -1,4 +1,4 @@
-#include "mamba/catalog/adapters/FileSystemScanner.h"
+#include "sonora/catalog/adapters/FileSystemScanner.h"
 
 #include <algorithm>
 #include <chrono>
@@ -8,7 +8,7 @@
 #include <system_error>
 #include <utility>
 
-namespace mamba::catalog::adapters
+namespace sonora::catalog::adapters
 {
     namespace
     {
@@ -140,4 +140,4 @@ namespace mamba::catalog::adapters
         return kernel::Result<std::vector<core::ScannedFile>>::ok(std::move(files));
     }
 
-} // namespace mamba::catalog::adapters
+} // namespace sonora::catalog::adapters

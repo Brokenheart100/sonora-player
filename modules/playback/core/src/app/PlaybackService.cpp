@@ -1,12 +1,12 @@
-#include <mamba/playback/core/app/PlaybackService.h>
+#include <sonora/playback/core/app/PlaybackService.h>
 
 #include <algorithm>
 #include <chrono>
 
-#include <mamba/contracts/PlaybackEvents.h>
-#include <mamba/kernel/Error.h>
+#include <sonora/contracts/PlaybackEvents.h>
+#include <sonora/kernel/Error.h>
 
-namespace mamba::playback::core {
+namespace sonora::playback::core {
 namespace {
 
 std::int32_t clampVolume(std::int32_t value) noexcept {
@@ -200,9 +200,9 @@ void PlaybackService::handleFinished() {
         const auto now = std::chrono::duration_cast<std::chrono::seconds>(
                              std::chrono::system_clock::now().time_since_epoch())
                              .count();
-        // 注意这里的 mamba:: 前缀：本文件在 mamba::playback::core 里，
+        // 注意这里的 sonora:: 前缀：本文件在 sonora::playback::core 里，
         // 裸写 contracts:: 会解析到 playback 自己的契约，而不是跨模块的那份。
-        const mamba::contracts::TrackFinished finished{queue_.current()->trackId, now};
+        const sonora::contracts::TrackFinished finished{queue_.current()->trackId, now};
         events_->publish(finished);
     }
 
@@ -240,4 +240,4 @@ void PlaybackService::handleFinished() {
     }
 }
 
-} // namespace mamba::playback::core
+} // namespace sonora::playback::core

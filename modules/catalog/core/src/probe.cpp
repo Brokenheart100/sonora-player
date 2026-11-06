@@ -1,7 +1,7 @@
-#include <mamba/catalog/core/probe.h>
+#include <sonora/catalog/core/probe.h>
 
-namespace mamba::catalog::core {
+namespace sonora::catalog::core {
 
 int probe() noexcept { return 4; }
 
-}  // namespace mamba::catalog::core
+}  // namespace sonora::catalog::core

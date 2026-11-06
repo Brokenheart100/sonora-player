@@ -1,4 +1,4 @@
-#include "mamba/platform/audio/FfmpegDecoder.h"
+#include "sonora/platform/audio/FfmpegDecoder.h"
 
 #include <algorithm>
 #include <cstring>
@@ -15,9 +15,9 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
-#include "mamba/platform/audio/AudioRing.h"
+#include "sonora/platform/audio/AudioRing.h"
 
-namespace mamba::platform::audio {
+namespace sonora::platform::audio {
 namespace {
 
 kernel::Error makeError(kernel::ErrorCode code, std::string message)
@@ -384,4 +384,4 @@ kernel::Result<std::int64_t> FfmpegDecoder::seekTo(std::int64_t ms)
     return kernel::Result<std::int64_t>::ok(target);
 }
 
-}  // namespace mamba::platform::audio
+}  // namespace sonora::platform::audio

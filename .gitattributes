@@ -1,0 +1,17 @@
+# 换行与二进制判定。
+#
+# 存在的唯一理由：CI 里要「重跑生成器 → git diff --exit-code」来证明 .qsb 和字体
+# 子集没有忘记重新烘焙。Windows runner 默认 core.autocrlf=true，会把 .frag 之类
+# 的文本文件在工作区改成 CRLF，于是每次 diff 都是满屏假阳性。
+* text=auto eol=lf
+
+# 生成物：字节必须原样进出，不做任何换行转换。
+*.qsb   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary

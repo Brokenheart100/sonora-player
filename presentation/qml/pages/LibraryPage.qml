@@ -2,7 +2,7 @@ import QtQuick
 import QtQml.Models
 import "../comic"
 import "../theme"
-import MambaMusic 1.0
+import Sonora.Presentation 1.0
 
 // 曲库页：M1 那张"能看见数据"的列表，M2 换成漫画分格。
 //

@@ -1,7 +1,7 @@
-#include <mamba/platform/win/probe.h>
+#include <sonora/platform/win/probe.h>
 
-namespace mamba::platform::win {
+namespace sonora::platform::win {
 
 int probe() noexcept { return 21; }
 
-}  // namespace mamba::platform::win
+}  // namespace sonora::platform::win

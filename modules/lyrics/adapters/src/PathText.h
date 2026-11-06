@@ -14,7 +14,7 @@
 #include <string>
 #include <string_view>
 
-namespace mamba::lyrics::adapters::detail {
+namespace sonora::lyrics::adapters::detail {
 
 inline std::filesystem::path u8Path(const std::string &utf8)
 {
@@ -121,4 +121,4 @@ inline std::string utf16ToUtf8(std::string_view bytes, bool bigEndian)
     return out;
 }
 
-}  // namespace mamba::lyrics::adapters::detail
+}  // namespace sonora::lyrics::adapters::detail

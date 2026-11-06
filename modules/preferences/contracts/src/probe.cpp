@@ -1,7 +1,7 @@
-#include <mamba/preferences/contracts/probe.h>
+#include <sonora/preferences/contracts/probe.h>
 
-namespace mamba::preferences::contracts {
+namespace sonora::preferences::contracts {
 
 int probe() noexcept { return 15; }
 
-}  // namespace mamba::preferences::contracts
+}  // namespace sonora::preferences::contracts

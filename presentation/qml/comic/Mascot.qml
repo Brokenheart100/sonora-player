@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Shapes
 import "../theme"
 // 注入的单例在这里也要显式 import：缺了不会编译失败，只会让 Player 变 undefined
-import MambaMusic 1.0
+import Sonora.Presentation 1.0
 
 // 会看戏的小猫（ARCHITECTURE.md §10.6 的"角色立绘"落地版）。
 //

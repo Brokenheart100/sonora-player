@@ -1,8 +1,8 @@
-#include <mamba/kernel/probe.h>
+#include <sonora/kernel/probe.h>
 
-namespace mamba::kernel
+namespace sonora::kernel
 {
 
     int probe() noexcept { return 1; }
 
-} // namespace mamba::kernel
+} // namespace sonora::kernel

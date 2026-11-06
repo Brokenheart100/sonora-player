@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import "../comic"
 import "../theme"
-import MambaMusic 1.0
+import Sonora.Presentation 1.0
 
 // 「正在播放」页（M6）。
 //

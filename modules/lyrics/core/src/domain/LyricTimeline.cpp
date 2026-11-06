@@ -1,8 +1,8 @@
-#include "mamba/lyrics/core/domain/LyricTimeline.h"
+#include "sonora/lyrics/core/domain/LyricTimeline.h"
 
 #include <algorithm>
 
-namespace mamba::lyrics::core {
+namespace sonora::lyrics::core {
 
 std::int32_t LyricTimeline::indexAt(std::span<const std::int64_t> times,
                                     std::int64_t nowMs) noexcept
@@ -17,4 +17,4 @@ std::int32_t LyricTimeline::indexAt(std::span<const std::int64_t> times,
     return static_cast<std::int32_t>(it - times.begin()) - 1;
 }
 
-}  // namespace mamba::lyrics::core
+}  // namespace sonora::lyrics::core

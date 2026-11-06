@@ -1,7 +1,7 @@
-#include <mamba/catalog/contracts/probe.h>
+#include <sonora/catalog/contracts/probe.h>
 
-namespace mamba::catalog::contracts {
+namespace sonora::catalog::contracts {
 
 int probe() noexcept { return 3; }
 
-}  // namespace mamba::catalog::contracts
+}  // namespace sonora::catalog::contracts

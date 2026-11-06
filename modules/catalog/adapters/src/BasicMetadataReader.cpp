@@ -1,4 +1,4 @@
-#include "mamba/catalog/adapters/BasicMetadataReader.h"
+#include "sonora/catalog/adapters/BasicMetadataReader.h"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <string>
 #include <system_error>
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 namespace {
 
 namespace fs = std::filesystem;
@@ -63,4 +63,4 @@ kernel::Result<core::TrackMetadata> BasicMetadataReader::read(std::string_view f
     return kernel::Result<core::TrackMetadata>::ok(std::move(metadata));
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

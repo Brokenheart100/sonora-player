@@ -29,8 +29,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_SUFFIXES = {".h", ".hpp", ".hh", ".hxx", ".inl", ".cpp", ".cc", ".cxx"}
 # third_party 不入检查：里面有 9MB 的 sqlite3.c，扫它既慢又没意义（它是外部代码，
-# 不适用本项目的分层规矩）。
-SKIP_DIRS = {"build", ".xmake", ".git", ".vscode", "docs", "node_modules", "out", "third_party"}
+# 不适用本项目的分层规矩）。.test_tmp 是测试临时目录（已在 .gitignore 里），
+# 里面常有手工贴进去的探针 .cpp，扫进来只会让"多少个文件通过"这个数字天天变。
+SKIP_DIRS = {"build", ".xmake", ".git", ".vscode", ".test_tmp", "docs", "node_modules", "out", "third_party"}
 
 INCLUDE_RE = re.compile(r'^\s*#\s*include\s*[<"]([^">]+)[">]')
 RELATIVE_ESCAPE_RE = re.compile(r'^\s*#\s*include\s*"\.\./')
@@ -89,9 +90,9 @@ def classify(rel: Path) -> tuple[str | None, str | None]:
 
 
 def include_allowed(module: str, layer: str, include_path: str) -> bool:
-    """判断某层的文件能否 include 这个 mamba 头文件。"""
+    """判断某层的文件能否 include 这个 sonora 头文件。"""
     segments = include_path.split("/")
-    if len(segments) < 2 or segments[0] != "mamba":
+    if len(segments) < 2 or segments[0] != "sonora":
         return True  # 项目外的头，别的规则不管
 
     area = segments[1]
@@ -121,7 +122,7 @@ def include_allowed(module: str, layer: str, include_path: str) -> bool:
         return True
 
     # 跨模块：只许看见对方的 contracts。
-    # platform 也在这一列：Mamba.Platform.Audio 实现的就是 Playback.Contracts 里的端口，
+    # platform 也在这一列：Sonora.Platform.Audio 实现的就是 Playback.Contracts 里的端口，
     # 实现方看得见抽象、看不见对方的领域模型，这正是依赖倒置要的方向。
     if sub == "contracts":
         return layer in ("core", "adapters", "platform", "presentation")
@@ -181,8 +182,8 @@ def main() -> int:
                             f"{where}: Win32 头 `{include_path}` 只许出现在 platform/win"
                         )
 
-                # 3. mamba 头文件的可见性
-                if module is not None and include_path.startswith("mamba/"):
+                # 3. sonora 头文件的可见性
+                if module is not None and include_path.startswith("sonora/"):
                     if not include_allowed(module, layer, include_path):
                         violations.append(
                             f"{where}: {layer} 层不许 include `{include_path}`"

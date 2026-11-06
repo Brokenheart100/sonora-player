@@ -1,11 +1,11 @@
--- MambaMusic target 图 —— 依赖关系的唯一真相源（docs/ARCHITECTURE.md §9.4）
+-- Sonora target 图 —— 依赖关系的唯一真相源（docs/ARCHITECTURE.md §9.4）
 --
 -- 这张图不是"文档化的依赖"，它**就是**边界强制机制本身。
 -- C++ 的 #include 搜索路径由构建系统授予，所以下面两件事不靠 code review：
 --
 --   1) 纯 C++ target（kernel / contracts / */core）不加 qt 规则、不 add_frameworks
 --      → 领域层里写 #include <QString> 直接编译失败（找不到头文件）
---   2) Mamba.Presentation 不 add_deps 任何 *.Core
+--   2) Sonora.Presentation 不 add_deps 任何 *.Core
 --      → ViewModel 想 include 聚合头，路径根本不存在
 --
 -- 机器管不到的那部分（语法痕迹、产物污染）交给 xmake/checks/boundaries.py。
@@ -79,19 +79,19 @@ local BUSINESS = {"catalog", "playback", "playlists", "lyrics", "preferences"}
 
 -- ── 共享内核 ────────────────────────────────────────────────────────────────
 -- 零外部依赖。所有模块都可以依赖它。
-lib({name = "Mamba.Kernel", dir = M .. "kernel"})
-lib({name = "Mamba.Contracts", dir = M .. "contracts"})
+lib({name = "Sonora.Kernel", dir = M .. "kernel"})
+lib({name = "Sonora.Contracts", dir = M .. "contracts"})
 
 -- ── 业务模块：contracts（纯数据，薄）/ core（全部业务）/ adapters（全部技术细节）
 for _, module in ipairs(BUSINESS) do
-    local name = "Mamba." .. capitalize(module) .. "."
+    local name = "Sonora." .. capitalize(module) .. "."
     local dir = M .. module .. "/"
 
     -- 契约：跨模块集成事件与共享 DTO。只许依赖 Kernel + 共享 Contracts。
     lib({
         name = name .. "Contracts",
         dir = dir .. "contracts",
-        deps = {"Mamba.Kernel", "Mamba.Contracts"},
+        deps = {"Sonora.Kernel", "Sonora.Contracts"},
     })
 
     -- 领域层与应用层。**故意没有 qt**：这里凡是出现 Q 开头的东西都是设计错误。
@@ -99,7 +99,7 @@ for _, module in ipairs(BUSINESS) do
     lib({
         name = name .. "Core",
         dir = dir .. "core",
-        deps = {"Mamba.Kernel", "Mamba.Contracts", name .. "Contracts"},
+        deps = {"Sonora.Kernel", "Sonora.Contracts", name .. "Contracts"},
     })
 
     -- 适配器：仓储实现、元数据读取、平台桥接。唯一允许看见基础设施的层。
@@ -114,9 +114,9 @@ for _, module in ipairs(BUSINESS) do
         deps = {
             name .. "Core",
             name .. "Contracts",
-            "Mamba.Platform.Storage",
-            "Mamba.Kernel",
-            "Mamba.Contracts",
+            "Sonora.Platform.Storage",
+            "Sonora.Kernel",
+            "Sonora.Contracts",
         },
     })
 end
@@ -130,14 +130,14 @@ end
 --
 -- Storage 已经落地（M1）：它**不链 Qt**。一个 SQLite 封装没有任何理由依赖 QtCore，
 -- 而一旦链上，所有要测它的二进制都得拖着 Qt DLL 跑——那会把"领域层测试纯 C++"
--- 这个性质弄丢。现在 mamba_tests 可以直接把它链进来。
+-- 这个性质弄丢。现在 sonora_tests 可以直接把它链进来。
 
 -- ── 第三方：SQLite amalgamation ──────────────────────────────────────────────
 -- 为什么不用 add_requires("sqlite3")：xmake-repo 的 sqlite3 包**没有任何 FTS5 开关**
 -- （它只有 rtree / math_functions / dbstat_vtab 之类），而 FTS5 是编译期特性，
 -- 装完才发现搜不了中文就只能重来（见 docs/DEPENDENCIES.md §3）。
 -- 自带 amalgamation 之后：开关归我们、没有第二套 runtime、版本随仓库走。
-target("Mamba.ThirdParty.Sqlite")
+target("Sonora.ThirdParty.Sqlite")
 set_kind("static")
 -- 故意不调 msvc()：这是 C 文件，/Zc:__cplusplus、/permissive-、set_languages("c++20")
 -- 都是 C++ 专用；把 sqlite3.c 当 C++ 编会直接爆掉。
@@ -155,44 +155,44 @@ add_files(rel("third_party", "sqlite3", "sqlite3.c"))
 add_includedirs(rel("third_party", "sqlite3"), {public = true})
 
 lib({
-    name = "Mamba.Platform.Storage",
+    name = "Sonora.Platform.Storage",
     dir = P .. "storage",
-    deps = {"Mamba.Kernel", "Mamba.ThirdParty.Sqlite"},
+    deps = {"Sonora.Kernel", "Sonora.ThirdParty.Sqlite"},
 })
 lib({
-    name = "Mamba.Platform.FileSystem",
+    name = "Sonora.Platform.FileSystem",
     dir = P .. "filesystem",
-    deps = {"Mamba.Kernel"},
+    deps = {"Sonora.Kernel"},
     qt = {"QtCore"},
 })
 lib({
-    name = "Mamba.Platform.AudioRing",
+    name = "Sonora.Platform.AudioRing",
     dir = P .. "audio/ring",
     -- 纯 C++、零 Qt：SPSC 环形缓冲是音频线程与解码线程之间唯一的数据通道，
-    -- 它必须能被 mamba_tests 直接链进来跑两线程压测（M4「单测先行」那一条）。
-    -- 一旦把它塞进 Mamba.Platform.Audio，想测它就得拖 Qt DLL，那条压测就写不成了。
-    deps = {"Mamba.Kernel"},
+    -- 它必须能被 sonora_tests 直接链进来跑两线程压测（M4「单测先行」那一条）。
+    -- 一旦把它塞进 Sonora.Platform.Audio，想测它就得拖 Qt DLL，那条压测就写不成了。
+    deps = {"Sonora.Kernel"},
 })
 lib({
-    name = "Mamba.Platform.Audio",
+    name = "Sonora.Platform.Audio",
     dir = P .. "audio",
     -- 只依赖播放模块的**契约**：音频输出是实现 IAudioOutput 端口的适配器，
     -- 它不该知道 PlayQueue 的存在。
     -- M3：加 QtMultimedia（QMediaPlayer 过渡引擎，见 docs/IMPLEMENTATION.md §M3）。
     -- M4：加 ffmpeg（vcpkg 构建，见 docs/DEPENDENCIES.md §3），换掉 QMediaPlayer。
-    deps = {"Mamba.Kernel", "Mamba.Playback.Contracts", "Mamba.Platform.AudioRing"},
+    deps = {"Sonora.Kernel", "Sonora.Playback.Contracts", "Sonora.Platform.AudioRing"},
     qt = {"QtCore", "QtMultimedia"},
 })
 lib({
-    name = "Mamba.Platform.Win",
+    name = "Sonora.Platform.Win",
     dir = P .. "win",
-    deps = {"Mamba.Kernel"},
+    deps = {"Sonora.Kernel"},
     qt = {"QtCore"},
 })
 
 -- FFmpeg 的 include/link 只挂在这一个 target 上：全项目只有它懂 FFmpeg。
 -- 注意 lib() 最后会把当前 target 设成别人，所以这里必须重新 target() 一次。
-target("Mamba.Platform.Audio")
+target("Sonora.Platform.Audio")
 add_includedirs(path.join(VCPKG_INSTALLED, "include"))
 add_links("avformat", "avcodec", "swresample", "avutil")
 -- vcpkg 的 x64-windows 是 release + debug 两套：lib/ 用 /MD 编，debug/lib/ 用 /MDd 编。
@@ -204,48 +204,51 @@ add_linkdirs(path.join(VCPKG_INSTALLED, is_mode("debug") and "debug/lib" or "lib
 -- 走 xmake-repo 源码构建（taglib 2.3.2），与项目同一个 /MD、同一个 C++20；
 -- 用 vcpkg 装它会引进第二套 CRT，debug 构建的症状是进程静默退出。
 -- 这里同样要重新 target() 一次，理由同上面的 FFmpeg 段。
-target("Mamba.Catalog.Adapters")
+target("Sonora.Catalog.Adapters")
 add_packages("taglib")
 
 -- 内嵌歌词也要读标签（M7 的第二来源），所以 Lyrics.Adapters 同样挂 taglib。
 -- 只读不写：我们从不 setProperties，MPL-1.1 那条"改动过的 TagLib 源文件继续开源"
 -- 对我们不适用（引用许可证的理由见 docs/DEPENDENCIES.md §3）。
-target("Mamba.Lyrics.Adapters")
+target("Sonora.Lyrics.Adapters")
 add_packages("taglib")
 
 -- ── 表现层（MVVM）───────────────────────────────────────────────────────────
 -- 只依赖各模块的 Contracts。**这一行下面不许出现任何 *.Core。**
-local presentation_deps = {"Mamba.Kernel", "Mamba.Contracts"}
+local presentation_deps = {"Sonora.Kernel", "Sonora.Contracts"}
 for _, module in ipairs(BUSINESS) do
-    table.insert(presentation_deps, "Mamba." .. capitalize(module) .. ".Contracts")
+    table.insert(presentation_deps, "Sonora." .. capitalize(module) .. ".Contracts")
 end
 lib({
-    name = "Mamba.Presentation",
+    name = "Sonora.Presentation",
     dir = "presentation",
     deps = presentation_deps,
     qt = {"QtCore", "QtGui", "QtQuick"},
 })
 
 -- ── 组合根：唯一同时看得见 Adapters 与 Presentation 的地方 ───────────────────
-target("MambaMusic")
+target("sonora")
 set_kind("binary")
 msvc()
 add_rules("qt.quickapp")
 add_rules("qt.qrc")
 add_files(rel("host", "*.cpp"))
 add_files(rel("resources.qrc"))
+-- Windows 资源：exe 图标 + 版本信息。rc.exe 的相对路径以 .rc 文件所在目录为基准，
+-- 所以 assets/app.rc 里写的是 "icons/sonora.ico"。
+add_files(rel("assets", "app.rc"))
 add_deps({
-    "Mamba.Presentation",
-    "Mamba.Catalog.Adapters",
-    "Mamba.Playback.Core",
-    "Mamba.Playback.Adapters",
-    "Mamba.Playlists.Adapters",
-    "Mamba.Lyrics.Adapters",
-    "Mamba.Preferences.Adapters",
-    "Mamba.Platform.Storage",
-    "Mamba.Platform.Audio",
-    "Mamba.Platform.FileSystem",
-    "Mamba.Platform.Win",
+    "Sonora.Presentation",
+    "Sonora.Catalog.Adapters",
+    "Sonora.Playback.Core",
+    "Sonora.Playback.Adapters",
+    "Sonora.Playlists.Adapters",
+    "Sonora.Lyrics.Adapters",
+    "Sonora.Preferences.Adapters",
+    "Sonora.Platform.Storage",
+    "Sonora.Platform.Audio",
+    "Sonora.Platform.FileSystem",
+    "Sonora.Platform.Win",
 })
 
 -- vcpkg 装出来的 DLL 不会自己走到 exe 旁边。少这一步的症状是：`xmake` 一切正常、
@@ -265,9 +268,9 @@ end)
 -- ── 测试二进制 ──────────────────────────────────────────────────────────────
 -- 只链纯 C++ target，所以它不初始化 Qt、不加载 Qt DLL、能当纯单测跑。
 -- 领域层测不干净，说明领域层已经被污染了。
-target("mamba_tests")
+target("sonora_tests")
 set_kind("binary")
-set_default(false)   -- 不参与默认构建：xmake build mamba_tests 显式构建
+set_default(false)   -- 不参与默认构建：xmake build sonora_tests 显式构建
 set_languages("c++20")
 set_encodings("utf-8")
 add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
@@ -276,26 +279,26 @@ add_files(rel("tests", "*.cpp"))
 add_includedirs(rel("tests"))
 add_packages("doctest")
 add_deps({
-    "Mamba.Kernel",
-    "Mamba.Contracts",
-    "Mamba.Catalog.Contracts",
-    "Mamba.Catalog.Core",
-    "Mamba.Playback.Contracts",
-    "Mamba.Playback.Core",
-    "Mamba.Playlists.Contracts",
-    "Mamba.Playlists.Core",
-    "Mamba.Lyrics.Contracts",
-    "Mamba.Lyrics.Core",
-    "Mamba.Preferences.Contracts",
-    "Mamba.Preferences.Core",
+    "Sonora.Kernel",
+    "Sonora.Contracts",
+    "Sonora.Catalog.Contracts",
+    "Sonora.Catalog.Core",
+    "Sonora.Playback.Contracts",
+    "Sonora.Playback.Core",
+    "Sonora.Playlists.Contracts",
+    "Sonora.Playlists.Core",
+    "Sonora.Lyrics.Contracts",
+    "Sonora.Lyrics.Core",
+    "Sonora.Preferences.Contracts",
+    "Sonora.Preferences.Core",
     -- Storage 与 Catalog.Adapters 都不链 Qt，所以可以进这个二进制。
     -- 有它们才能测真实的 SQL、迁移与导入链路——M1 的验收（导入 20 首 → 列表 20 行）
     -- 就是在这里被证明的，不是靠假端口。
-    "Mamba.Platform.Storage",
-    "Mamba.Catalog.Adapters",
+    "Sonora.Platform.Storage",
+    "Sonora.Catalog.Adapters",
     -- 环形缓冲同样是纯 C++：M4 的两线程压测（100 万样本，不丢不重不越界）跑在这里。
-    "Mamba.Platform.AudioRing",
+    "Sonora.Platform.AudioRing",
     -- 歌词的两个来源（同名 .lrc、内嵌标签）也不链 Qt，所以真适配器可以在这里测：
     -- M7 的"5 个真实 LRC 跑快照测试"就是靠它，而不是靠假端口。
-    "Mamba.Lyrics.Adapters",
+    "Sonora.Lyrics.Adapters",
 })

@@ -1,4 +1,4 @@
-#include "mamba/catalog/adapters/TagLibMetadataReader.h"
+#include "sonora/catalog/adapters/TagLibMetadataReader.h"
 
 #include <algorithm>
 #include <cctype>
@@ -18,7 +18,7 @@
 #include <taglib/tstringlist.h>
 #include <taglib/tvariant.h>
 
-namespace mamba::catalog::adapters {
+namespace sonora::catalog::adapters {
 namespace {
 
 namespace fs = std::filesystem;
@@ -126,4 +126,4 @@ kernel::Result<core::TrackMetadata> TagLibMetadataReader::read(std::string_view 
     return kernel::Result<core::TrackMetadata>::ok(std::move(metadata));
 }
 
-}  // namespace mamba::catalog::adapters
+}  // namespace sonora::catalog::adapters

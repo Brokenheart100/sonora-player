@@ -1,13 +1,13 @@
-#include "mamba/platform/storage/Migrator.h"
+#include "sonora/platform/storage/Migrator.h"
 
 #include <chrono>
 #include <ctime>
 
-#include "mamba/platform/storage/SqliteError.h"
-#include "mamba/platform/storage/SqliteStatement.h"
-#include "mamba/platform/storage/SqliteTransaction.h"
+#include "sonora/platform/storage/SqliteError.h"
+#include "sonora/platform/storage/SqliteStatement.h"
+#include "sonora/platform/storage/SqliteTransaction.h"
 
-namespace mamba::platform::storage {
+namespace sonora::platform::storage {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -148,4 +148,4 @@ Result<int> Migrator::apply(std::span<const Migration> migrations)
     return Result<int>::ok(version);
 }
 
-}  // namespace mamba::platform::storage
+}  // namespace sonora::platform::storage

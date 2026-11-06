@@ -1,9 +1,9 @@
-#include <mamba/playback/core/domain/ShufflePlanner.h>
+#include <sonora/playback/core/domain/ShufflePlanner.h>
 
 #include <algorithm>
 #include <numeric>
 
-namespace mamba::playback::core {
+namespace sonora::playback::core {
 
 std::vector<std::int32_t> ShufflePlanner::plan(std::int32_t size, std::int32_t first,
                                                std::uint64_t seed) {
@@ -33,4 +33,4 @@ std::uint64_t ShufflePlanner::freshSeed() {
     return (static_cast<std::uint64_t>(device()) << 32) ^ static_cast<std::uint64_t>(device());
 }
 
-} // namespace mamba::playback::core
+} // namespace sonora::playback::core

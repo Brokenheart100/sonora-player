@@ -1,9 +1,9 @@
-#include "mamba/catalog/core/domain/Track.h"
+#include "sonora/catalog/core/domain/Track.h"
 
 #include <string_view>
 #include <utility>
 
-namespace mamba::catalog::core {
+namespace sonora::catalog::core {
 
 using kernel::Error;
 using kernel::ErrorCode;
@@ -128,4 +128,4 @@ Result<void> Track::rename(std::string_view newTitle)
     return Result<void>::ok();
 }
 
-}  // namespace mamba::catalog::core
+}  // namespace sonora::catalog::core
