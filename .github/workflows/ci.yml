@@ -179,6 +179,16 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
+          # QtMultimedia 在官方仓里是独立 addons 归档，不随基础包一起装。项目
+          # platform/audio 有两条输出实现——QtMultimediaOutput.cpp（QAudioOutput）
+          # 与 FfmpegOutput.cpp（QAudioSink）——缺这个模块直接
+          # `fatal error C1083: Cannot open include file: 'QAudioDevice'`
+          # （run #6 的 debug / release 两个 job 都死在这里）。
+          # 归档名取自 https://download.qt.io/online/qtsdkrepository/windows_x86/
+          # desktop/qt6_6120/qt6_6120_msvc2022_64/ 下的
+          # qt.qt6.6120.addons.qtmultimedia.win64_msvc2022_64/。
+          # 不需要 qtshadertools：Qt6Multimedia.dll 不引用 Qt6ShaderTools。
+          modules: qtmultimedia
           # Qt 6.11 起官方仓库换了目录布局（现在是 qt6_6120/qt6_6120_msvc2022_64/，
           # 不再有嵌套的 qt6_6120/qt6_6120/），而 PyPI 上的 aqtinstall 3.3.0 仍按
           # 老布局拼 URL，直接报 "Failed to locate XML data for Qt version '6.12.0'"
