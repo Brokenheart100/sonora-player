@@ -70,13 +70,84 @@ jobs:
       - name: python xmake/checks/boundaries.py
         run: python xmake/checks/boundaries.py
 
+  # ── 1.5 依赖：FFmpeg 只编一次 ──────────────────────────────────────────────
+  # 为什么单开一个 job：actions/cache 只在 job 成功之后才保存。编 ffmpeg 要
+  # 15–20 分钟，如果把它放在 build job 里，后面任何一步失败，这 20 分钟就白扔，
+  # 下一次 push 又要从头编 —— run #5 的 debug / release 正是这样循环的
+  # （ffmpeg 编完、xmake 构建失败，缓存没存上）。拆出来之后这个 job 自己会成功，
+  # 缓存才存得住；build job 只做 restore，缓存命中时 ffmpeg 步骤 0 秒。
+  deps:
+    name: 依赖（FFmpeg）
+    needs: boundaries
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 定位 vcpkg
+        id: vcpkg
+        shell: pwsh
+        run: |
+          # windows-latest 自带 vcpkg 克隆；不同镜像的变量名不统一，两处都试。
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          if (-not $root -or -not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            $root = 'C:\vcpkg'
+          }
+          if (-not (Test-Path (Join-Path $root 'vcpkg.exe'))) {
+            throw "找不到 vcpkg.exe（试过 VCPKG_INSTALLATION_ROOT 与 C:\vcpkg）"
+          }
+          "root=$root" >> $env:GITHUB_OUTPUT
+          "VCPKG_ROOT=$root" >> $env:GITHUB_ENV
+          & (Join-Path $root 'vcpkg.exe') version
+
+      - name: 缓存 vcpkg 已装二进制
+        id: vcpkg-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.vcpkg.outputs.root }}/installed
+          # key 里带 features 与三元组：改了 features 就必然重编，不能复用旧缓存。
+          # ffmpeg9 是端口大版本标记 —— ffmpeg 升到 10.x 时手动改，强制一次全量。
+          key: vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-avcodec-avformat-swresample
+          restore-keys: |
+            vcpkg-${{ runner.os }}-${{ env.VCPKG_TRIPLET }}-ffmpeg9-
+
+      - name: 安装 FFmpeg（${{ env.VCPKG_TRIPLET }}）
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # classic 模式的 features 写在端口名后的方括号里（vcpkg 没有 --features
+          # 选项），带 core = 不要端口默认的 avdevice/avfilter/swscale。
+          # 失败原因写成 ::error:: 注解：job 日志要登录 GitHub 才看得到，
+          # 而公开的 run 页上注解是可见的。
+          $log = "$env:RUNNER_TEMP/vcpkg-ffmpeg.log"
+          & "$env:VCPKG_ROOT\vcpkg.exe" install "ffmpeg[core,$env:VCPKG_FEATURES]:$env:VCPKG_TRIPLET" `
+            --clean-after-build 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path $log -Pattern 'error|Error|ERROR' |
+              Select-Object -First 8 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 25 | ForEach-Object { "::warning::$_" }
+            throw "vcpkg 安装 ffmpeg 失败（exit $code）"
+          }
+
+      - name: 核对缓存里该有的东西都在
+        shell: pwsh
+        run: |
+          $root = $env:VCPKG_ROOT
+          foreach ($p in "$root\installed\x64-windows\include\libavcodec\avcodec.h",
+                         "$root\installed\x64-windows\lib\avcodec.lib",
+                         "$root\installed\x64-windows\debug\lib\avcodec.lib") {
+            if (-not (Test-Path $p)) { throw "缺少 $p；缓存内容不完整，不要往下传" }
+          }
+
   # ── 2. 构建 + 单测 ─────────────────────────────────────────────────────────
   # debug 与 release 都编：debug 是日常形态（Qt 的 debug DLL 是 /MDd，我们自己
   # 按模式给运行库），release 才是交付形态。只编 debug 的流水线会漏掉
   # 「release 下 xmake 给了 /MD、某个第三方库却是 /MDd」这类只在交付时炸的问题。
   build:
     name: 构建与测试（${{ matrix.mode }}）
-    needs: boundaries
+    needs: [boundaries, deps]
     runs-on: windows-latest
     timeout-minutes: 90
     strategy:
@@ -150,7 +221,7 @@ jobs:
 
       - name: 缓存 vcpkg 已装二进制
         id: vcpkg-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: ${{ steps.vcpkg.outputs.root }}/installed
           # key 里带 features 与三元组：改了 features 就必然重编，不能复用旧缓存。
@@ -188,17 +259,36 @@ jobs:
       # ── 构建 ───────────────────────────────────────────────────────────────
       - name: 配置
         shell: pwsh
-        env:
-          QTDIR: ${{ env.QT_ROOT_DIR }}
         run: |
-          xmake f -m ${{ matrix.mode }} -a x64 -y --qt="$env:QT_ROOT_DIR"
-          if ($LASTEXITCODE -ne 0) { throw "xmake f 失败（exit $LASTEXITCODE）" }
+          # QT_ROOT_DIR 由 install-qt-action 经 GITHUB_ENV 导出，步骤 env: 块里的
+          # ${{ env.* }} 读不到它（拿到的是空串），只能在脚本里取。
+          $env:QTDIR = $env:QT_ROOT_DIR
+          $log = "$env:RUNNER_TEMP/xmake-configure.log"
+          xmake f -m ${{ matrix.mode }} -a x64 -y --qt="$env:QT_ROOT_DIR" 2>&1 |
+            Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            Select-String -Path $log -Pattern 'error' | Select-Object -First 8 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 20 | ForEach-Object { "::warning::$_" }
+            throw "xmake f 失败（exit $code）"
+          }
 
       - name: 构建全部 target
         shell: pwsh
         run: |
-          xmake -y
-          if ($LASTEXITCODE -ne 0) { throw "xmake 构建失败（exit $LASTEXITCODE）" }
+          $env:QTDIR = $env:QT_ROOT_DIR
+          $log = "$env:RUNNER_TEMP/xmake-build.log"
+          xmake -y 2>&1 | Tee-Object -FilePath $log
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            # 只挑编译/链接的原话；进度行（[ 12%] ...）会淹没注解。
+            Select-String -Path $log -Pattern 'error C[0-9]|error LNK|error :|error:' |
+              Select-Object -First 6 |
+              ForEach-Object { "::error::$($_.Line.Trim())" }
+            Get-Content $log -Tail 30 | ForEach-Object { "::warning::$_" }
+            throw "xmake 构建失败（exit $code）"
+          }
 
       - name: 核对 ffmpeg DLL 已拷到 exe 旁边
         shell: pwsh
