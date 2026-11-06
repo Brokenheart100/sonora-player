@@ -108,7 +108,14 @@ jobs:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
-          # 上面已经装好 3.12；否则它自己挑最新 3.x（当前 runner 是 3.15）就又炸了。
+          # Qt 6.11 起官方仓库换了目录布局（现在是 qt6_6120/qt6_6120_msvc2022_64/，
+          # 不再有嵌套的 qt6_6120/qt6_6120/），而 PyPI 上的 aqtinstall 3.3.0 仍按
+          # 老布局拼 URL，直接报 "Failed to locate XML data for Qt version '6.12.0'"
+          # —— run #2 的 debug / release 两个 job 都是这么死的。
+          # 上游 main 已经跟上（本地实测 6.12.0 能枚举出 8 个 archive），钉到具体
+          # commit 免得 CI 随上游漂移；aqtsource 非空时 action 会用它替代 aqtversion。
+          aqtsource: "git+https://github.com/miurahr/aqtinstall.git@5a49f2b391ae8ee1d3c0dd87f8b33c1d49a4deb7"
+          # 上面已经装好 3.12；否则它自己挑最新 3.x（当前 runner 是 3.15）。
           setup-python: false
 
       - name: 安装 xmake（${{ env.XMAKE_VERSION }}）
