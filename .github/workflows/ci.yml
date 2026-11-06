@@ -93,12 +93,23 @@ jobs:
         with:
           arch: x64
 
+      # aqtinstall 靠 py7zr 解 7z，而 py7zr 的 C 扩展（pybcj / inflate64）在 runner
+      # 默认的 Python 3.15 上还没有 cp315 wheel，pip 只能退化成源码构建 —— 在 Actions
+      # 里的表现就是 "The process 'python.exe' failed with exit code 1"（run #1 的
+      # debug / release 两个 job 都死在这一步）。先钉住 3.12，再让 Qt action 用这个。
+      - name: 准备 Python（aqtinstall 需要 3.12）
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: 安装 Qt（${{ env.QT_VERSION }} · win64_msvc2022_64）
         uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           cache: true
+          # 上面已经装好 3.12；否则它自己挑最新 3.x（当前 runner 是 3.15）就又炸了。
+          setup-python: false
 
       - name: 安装 xmake（${{ env.XMAKE_VERSION }}）
         uses: xmake-io/github-action-setup-xmake@v1
