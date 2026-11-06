@@ -164,9 +164,11 @@ jobs:
         
         shell: pwsh
         run: |
-          & "$env:VCPKG_ROOT\vcpkg.exe" install "ffmpeg:$env:VCPKG_TRIPLET" `
-            --no-default-features `
-            --features "$env:VCPKG_FEATURES" `
+          # classic 模式的 features 写在端口名后的方括号里，vcpkg 根本没有
+          # --features / --no-default-features 这两个选项（那是 manifest 模式
+          # 的 --x-feature / --x-no-default-features），run #3 就是死在这。
+          # 带 core = 只要列出的 feature，不要端口默认的 avdevice/avfilter/swscale。
+          & "$env:VCPKG_ROOT\vcpkg.exe" install "ffmpeg[core,$env:VCPKG_FEATURES]:$env:VCPKG_TRIPLET" `
             --clean-after-build
           if ($LASTEXITCODE -ne 0) { throw "vcpkg 安装 ffmpeg 失败（exit $LASTEXITCODE）" }
 
