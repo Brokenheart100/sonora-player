@@ -26,6 +26,10 @@ Item {
     property var cols: [0.05, 0.42, 0.68, 0.85]
     property int rowHeight: 46
 
+    // 行尾小标签（"试听" / "无版权"）。空串 = 不占位：曲库的行永远是空串，
+    // 所以这一列对曲库页是零成本的。
+    property string badge: ""
+
     signal activated()
 
     width: parent ? parent.width : 0
@@ -150,7 +154,8 @@ Item {
         id: albumText
         anchors.left: parent.left
         anchors.leftMargin: row.cols[3] * row.width
-        anchors.right: durationText.left
+        // 有标签时让位给标签，没标签时仍然是"贴到时长列左边"。
+        anchors.right: badgeText.visible ? badgeText.left : durationText.left
         anchors.rightMargin: 12
         anchors.verticalCenter: parent.verticalCenter
         elide: Text.ElideRight
@@ -158,6 +163,18 @@ Item {
         color: Theme.inkSoft
         font.family: Theme.fontText
         font.pixelSize: Theme.textBody
+    }
+
+    Text {
+        id: badgeText
+        anchors.right: durationText.left
+        anchors.rightMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        visible: row.badge.length > 0
+        text: row.badge
+        color: Theme.accent
+        font.family: Theme.fontText
+        font.pixelSize: Theme.textSmall
     }
 
     Text {

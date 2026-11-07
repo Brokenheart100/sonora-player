@@ -21,6 +21,14 @@ namespace sonora::kernel
         Conflict,        // 状态冲突（重复导入、版本不匹配）
         Unavailable,     // 外部依赖暂时不可用（数据库被锁、设备没了）
         Internal,        // 不该发生的内部错误（bug）
+
+        // ── 在线音源追加的 4 个值（append-only）─────────────────────────────
+        // 既有值的顺序与含义一律不动。加在末尾的代价是要给 toName 补 case，
+        // 而它的 switch 故意没有 default，少一个 case 就是编译错误。
+        Unauthenticated, // 没登录 / 会话过期（cookie 失效、扫码超时）
+        RateLimited,     // 被限流（HTTP 429 或厂商错误码），可能带 retryAfterMs
+        Timeout,         // 传输超时（由 transport 的 transferTimeout 触发）
+        Upstream,        // 上游给了看不懂的东西（4xx/5xx、字段缺失、JSON 坏）
     };
 
     // 名字故意不叫 toString()：doctest 的 DOCTEST_STRINGIFY 会用无限定调用 toString(v)，
@@ -42,6 +50,14 @@ namespace sonora::kernel
             return "Unavailable";
         case ErrorCode::Internal:
             return "Internal";
+        case ErrorCode::Unauthenticated:
+            return "Unauthenticated";
+        case ErrorCode::RateLimited:
+            return "RateLimited";
+        case ErrorCode::Timeout:
+            return "Timeout";
+        case ErrorCode::Upstream:
+            return "Upstream";
         }
         return "Unknown";
     }

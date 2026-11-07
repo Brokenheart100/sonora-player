@@ -11,7 +11,7 @@ import Sonora.Presentation 1.0
 Item {
     id: shell
 
-    property int currentPage: 0        // 0 = 曲库，1 = 正在播放
+    property int currentPage: 0        // 0 = 曲库，1 = 正在播放，2 = 在线
     property bool queueOpen: false     // 右下角抽屉：当前播放队列
 
     // 焦点落在文本输入框里时（曲库页的搜索框），空格和方向键属于输入法，
@@ -98,6 +98,13 @@ Item {
             }
             NavItem {
                 width: sidebar.width
+                label: qsTr("在线")
+                hint: Online.results.count > 0 ? Online.results.count.toString() : "—"
+                active: shell.currentPage === 2
+                onClicked: shell.currentPage = 2
+            }
+            NavItem {
+                width: sidebar.width
                 label: qsTr("歌单")
                 hint: qsTr("M6")
                 enabled: false
@@ -136,7 +143,7 @@ Item {
         anchors.bottom: playerBar.top
         anchors.bottomMargin: 14
 
-        pages: [libraryPage, nowPlayingPage]
+        pages: [libraryPage, nowPlayingPage, onlinePage]
         index: shell.currentPage
     }
 
@@ -144,6 +151,7 @@ Item {
     // 同名组件会被单例遮住，加载时报 "Element is not creatable"。
     Component { id: libraryPage; LibraryPage { } }
     Component { id: nowPlayingPage; NowPlaying { } }
+    Component { id: onlinePage; OnlinePage { } }
 
 
     // ── 拟声字层 ────────────────────────────────────────────────────────

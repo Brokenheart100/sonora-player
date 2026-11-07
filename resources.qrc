@@ -28,6 +28,7 @@
         <!-- 页面 -->
         <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>
         <file alias="qml/pages/NowPlaying.qml">presentation/qml/pages/NowPlaying.qml</file>
+        <file alias="qml/pages/OnlinePage.qml">presentation/qml/pages/OnlinePage.qml</file>
 
         <!-- 布局部件 -->
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>

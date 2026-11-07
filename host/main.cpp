@@ -56,7 +56,10 @@
 #include "sonora/lyrics/adapters/SidecarLyricsSource.h"
 #include "sonora/lyrics/adapters/TagLibLyricsSource.h"
 #include "sonora/lyrics/core/app/GetLyricsHandler.h"
+#include "sonora/online/adapters/OnlineSchema.h"
+#include "sonora/online/adapters/OnlineService.h"
 #include "sonora/presentation/LyricsModel.h"
+#include "sonora/presentation/OnlineViewModel.h"
 #include "sonora/presentation/PlayerViewModel.h"
 #include "sonora/presentation/TrackListModel.h"
 
@@ -175,6 +178,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // 在线缓存是**独立模块的独立版本序列**：曲库升到 6 不影响它，反过来也一样。
+    // 这就是 per-module __module_version 存在的理由（platform/storage/Migrator.h 顶部）。
+    auto onlineMigrator = storage::Migrator{connection, sonora::online::adapters::kModuleName};
+    if (auto migrated = onlineMigrator.apply(sonora::online::adapters::migrations()); !migrated)
+    {
+        std::fprintf(stderr, "在线缓存迁移失败：%s\n", migrated.error().message().c_str());
+        return 1;
+    }
+
     // ---- 封面目录 ----
     // 与库文件同级：库在 <data>/sonora.sqlite，封面在 <data>/covers。
     // 放一起的理由是"要搬就一起搬"——把封面挪到临时目录，清一次缓存整个封面墙就空了；
@@ -273,6 +285,45 @@ int main(int argc, char *argv[])
         [&lyricsHandler](const lyrics::contracts::GetLyrics &query)
         { return lyricsHandler.handle(query); });
 
+    // ---- 在线音源 ----
+    // R1 只到骨架：命令与查询都同步返回，网络留给 R2 的 `platform/net`。
+    // 现在就接线的理由是**先让"命令 → 状态表 → 50ms 轮询 → 三态界面"这条链被真实走通**：
+    // R2 换进去的只是"谁来填行"，总线、ViewModel、QML 一行都不用改。
+    //
+    // 在线曲目**不进曲库**（docs/ONLINE.md §1.3）：它们有自己的 id 空间与生命周期，
+    // 混进 tracks 表会让"曲目必有本地路径"这条不变量永久失效。
+    sonora::online::adapters::OnlineService onlineService;
+    {
+        using namespace sonora::online::contracts;
+        commands.on<RequestOnlinePage>([&onlineService](const RequestOnlinePage &command)
+                                       { return onlineService.handle(command); });
+        commands.on<CancelOnlineJob>([&onlineService](const CancelOnlineJob &command)
+                                     { return onlineService.handle(command); });
+        commands.on<RetryOnlineJob>([&onlineService](const RetryOnlineJob &command)
+                                    { return onlineService.handle(command); });
+        commands.on<ResolveAndPlayOnline>([&onlineService](const ResolveAndPlayOnline &command)
+                                          { return onlineService.handle(command); });
+        commands.on<SignInWithCookie>([&onlineService](const SignInWithCookie &command)
+                                      { return onlineService.handle(command); });
+        commands.on<SignOut>([&onlineService](const SignOut &command)
+                             { return onlineService.handle(command); });
+        commands.on<StartQrLogin>([&onlineService](const StartQrLogin &command)
+                                  { return onlineService.handle(command); });
+        commands.on<CancelQrLogin>([&onlineService](const CancelQrLogin &command)
+                                   { return onlineService.handle(command); });
+
+        queries.on<GetOnlineJob, OnlineJobState>(
+            [&onlineService](const GetOnlineJob &query) { return onlineService.handle(query); });
+        queries.on<FetchOnlineRows, OnlinePageDto>(
+            [&onlineService](const FetchOnlineRows &query) { return onlineService.handle(query); });
+        queries.on<GetSourceStatus, SourceStatusDto>(
+            [&onlineService](const GetSourceStatus &query) { return onlineService.handle(query); });
+        queries.on<GetQrLoginState, QrLoginDto>(
+            [&onlineService](const GetQrLoginState &query) { return onlineService.handle(query); });
+        queries.on<GetMyPlaylists, std::vector<PlaylistDto>>(
+            [&onlineService](const GetMyPlaylists &query) { return onlineService.handle(query); });
+    }
+
     audio::FfmpegOutput audioOutput;
     playback::core::PlaybackService playbackService{audioOutput, &logger, &audioOutput, &events};
     playback::core::registerPlayback(commands, queries, playbackService);
@@ -282,6 +333,8 @@ int main(int argc, char *argv[])
     sonora::presentation::LyricsModel lyricsModel{queries};
     sonora::presentation::PlayerViewModel player{commands, queries, audioOutput};
     player.attachLyrics(&lyricsModel);
+    // 在线页：自己的 ViewModel，自己的轮询计时器（50ms），与播放器互不相干。
+    sonora::presentation::OnlineViewModel online{commands, queries};
     // 双击列表项后立刻刷新一次播放器条，否则要等下一个 500ms 轮询周期。
     QObject::connect(&library, &presentation::TrackListModel::playbackStarted, &player,
                      &presentation::PlayerViewModel::refresh);
@@ -289,6 +342,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Library", &library);
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Player", &player);
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Lyrics", &lyricsModel);
+    qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Online", &online);
 
     const auto arguments = QCoreApplication::arguments();
     // 只认第一个**不以 - 开头**的参数当文件夹。

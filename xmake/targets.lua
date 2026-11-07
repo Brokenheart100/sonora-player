@@ -75,7 +75,9 @@ local function capitalize(word)
     return word:sub(1, 1):upper() .. word:sub(2)
 end
 
-local BUSINESS = {"catalog", "playback", "playlists", "lyrics", "preferences"}
+-- online 是 M10 的在线音源（网易云）：三个 target 的依赖形态与其它模块完全一样，
+-- 唯一的额外一条是 Adapters 还要链 Sonora.Platform.Net（见下面 platform 段之后）。
+local BUSINESS = {"catalog", "playback", "playlists", "lyrics", "preferences", "online"}
 
 -- ── 共享内核 ────────────────────────────────────────────────────────────────
 -- 零外部依赖。所有模块都可以依赖它。
@@ -190,6 +192,22 @@ lib({
     qt = {"QtCore"},
 })
 
+-- 网络：全项目**唯一** link QtNetwork 的地方。别处只认 online/contracts/Transport.h
+-- （那个头文件零 Qt），所以 online/adapters 与 sonora_tests 都不必拖 Qt DLL。
+-- 想核实这条规矩：grep -rn "QtNetwork" xmake/ modules/  —— 只该命中这一处。
+lib({
+    name = "Sonora.Platform.Net",
+    dir = P .. "net",
+    deps = {"Sonora.Kernel", "Sonora.Online.Contracts"},
+    qt = {"QtCore", "QtNetwork"},
+})
+
+-- online 的适配器要多一条到平台网络的边：BUSINESS 循环给的是"标准三件套"依赖，
+-- 这条只有它需要。反向边（Platform.Net → Online.Contracts）是有意的：契约零 Qt，
+-- 平台层依赖契约不会把 Qt 带回上层（先例同 Platform.Audio → Playback.Contracts）。
+target("Sonora.Online.Adapters")
+add_deps("Sonora.Platform.Net")
+
 -- FFmpeg 的 include/link 只挂在这一个 target 上：全项目只有它懂 FFmpeg。
 -- 注意 lib() 最后会把当前 target 设成别人，所以这里必须重新 target() 一次。
 target("Sonora.Platform.Audio")
@@ -249,6 +267,8 @@ add_deps({
     "Sonora.Platform.Audio",
     "Sonora.Platform.FileSystem",
     "Sonora.Platform.Win",
+    "Sonora.Platform.Net",
+    "Sonora.Online.Adapters",
 })
 
 -- vcpkg 装出来的 DLL 不会自己走到 exe 旁边。少这一步的症状是：`xmake` 一切正常、
@@ -301,4 +321,8 @@ add_deps({
     -- 歌词的两个来源（同名 .lrc、内嵌标签）也不链 Qt，所以真适配器可以在这里测：
     -- M7 的"5 个真实 LRC 跑快照测试"就是靠它，而不是靠假端口。
     "Sonora.Lyrics.Adapters",
+    -- 在线：只链零 Qt 的两层。JSON 解析与策略纯函数都在 core，夹具单测才能跑在这里；
+    -- 适配器的 Qt 部分（transport、worker）由 Sonora.Platform.Net 提供，不进这个二进制。
+    "Sonora.Online.Contracts",
+    "Sonora.Online.Core",
 })
