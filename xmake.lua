@@ -34,6 +34,9 @@ add_rules("mode.debug", "mode.release")
 -- FFmpeg 走 vcpkg（xmake/targets.lua 顶部的 VCPKG_ROOT）。
 add_requires("doctest 2.5.3", {configs = {cmake = false}})
 add_requires("taglib 2.3.2")
+-- JSON 只给 online/core 用（解析网易云的响应）。header-only，走 cmake=false
+-- 是为了让 xmake 直接解压模板头文件，不额外拉一个 CMake 构建步骤。
+add_requires("nlohmann_json 3.12.0", {configs = {cmake = false}})
 
 -- TagLib 是 LGPL-2.1 / MPL-1.1 双授权。我们走 MPL-1.1：它只要求"改动过的
 -- TagLib 源文件"继续开源（我们一行没改），静态链接是允许的。xmake 只看包声明的

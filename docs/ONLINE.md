@@ -608,13 +608,15 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 
 #### R2 搜索闭环
 
-- [ ] **R2-1** `NeteaseProvider::search`：URL/header/参数构造集中在此文件，header 走白名单
-- [ ] **R2-2** JSON codec + ≥6 个 fixtures 单测：正常 / 空结果 / `-460` / 字段 `null` / 数字被序列化成字符串 / 超长标题
-- [ ] **R2-3** 280ms 防抖 + `token` 递增 + 旧 token 结果丢弃 + 新输入取消 in-flight
-- [ ] **R2-4** `OnlineViewModel` 分页模型（`loaded` / `hasMore` / `revision`），只在 `revision` 变化时 `FetchOnlineRows`；实现继承 [§8.2](#82-文件级清单) 抽出的 `RowsModel` 基类
-- [ ] **R2-5** 在线页四态（Loading/Empty/Error/Offline）复用 `comic/MangaPanel.qml` + `comic/SfxText.qml` 与 `LibraryPage.qml` 的空态排版，**不新建 `StateBlock.qml`**
-- [ ] **R2-6** 搜索缓存读写 + TTL 10 分钟 + 条数上限
-- [ ] **R2-7** 手测记录：连打 5 个字只发 1 次请求（日志取证），写进 PR
+- [x] **R2-1** `NeteaseProvider::search`：URL/header/参数构造集中在 `core/provider/NeteaseUrls.cpp`，header 走白名单（`Referer` + 桌面 `User-Agent` + 非空才加 `Cookie`）。**实测改走 `/api/cloudsearch/pc`**：`/api/search/get` 的 `album` 里只有 `picId`（算不出封面 URL），cloudsearch 才有 `al.picUrl` 与 `privilege`。
+- [x] **R2-2** JSON codec + 9 个用例（`tests/online_codec.cpp`）：legacy 形状 / cloudsearch 形状 / `result: null` 空结果 / `-460` / `301`+`400` / 数字被序列化成字符串 / 字段 `null` 降级 / 300 字超长标题 / 无 `hasMore` 按满 20 首推断。全仓测试 130 用例、4927 断言通过。
+- [x] **R2-3** 280ms 防抖 + `token` 递增 + 旧 token 结果丢弃（`JobRegistry::findWritable`，旧 token 只能读）+ 新输入 `CancelOnlineJob` 掐 in-flight（`cancel` 也投到 worker 线程，不能从主线程 `abort()`）。
+- [x] **R2-4** `OnlineViewModel` 分页模型：`loaded`/`hasMore`/`revision`，只在 `revision` 变化时 `FetchOnlineRows`；`OnlineListModel` 继承 `RowsModel`，role 名与 `TrackRow` 逐字对齐。
+- [x] **R2-5** 在线页四态（Loading/Empty/Error/Offline）复用 `comic/MangaPanel.qml` 与 `pages/LibraryPage.qml` 的空态排版，**不新建 `StateBlock.qml`**。空态文案用普通 `Text` + `Theme` 令牌，没套 `SfxText`：长句（"被网易云风控拦截（-460），稍后再试"）加描边特效后可读性反而下降。
+- [x] **R2-6** 搜索缓存：`online_search_cache`（PK `provider/keywords/offset`）+ TTL 10 分钟 + 最多 200 行（`trimSearch`）。**缓存里存原始 JSON**，解析器升级不用迁移；命中时不立刻解码，只把原文塞进待处理队列，由 50ms 轮询的 `drain()` 解码（命令 handler 有 5ms 预算）。
+- [x] **R2-7** 手测记录：模拟连打 5 个字（`j`/`ja`/`jay`/`jayc`/`jaych`，间隔 60ms）→ 证据文件只有 `edit ×5` + `commit jaych ×1`，**只发 1 次请求**；另用真实键盘在在线页输入 `qilixiang` 回车，列表出现 30 行（封面/标题/艺术家/专辑/时长齐全），侧栏计数 30，`加载更多` 出现。
+- 注：`R2-5`/`R2-7` 的截图与证据留在 `.test_tmp/`（已 gitignore），不进仓库。
+- 顺带修掉一个只有真跑才能发现的 bug：`RowsModel::rowCount()` 读的是 `count_`，而 `setRows()` 先 `endResetModel()` 后 `assignCount()`，视图在 reset 时拿到旧行数 0 → 表现为"侧栏计数 30、列表一片空白"。修法：`assignCount()` 必须在 `endResetModel()` 之前调用。
 
 #### R3 出声
 

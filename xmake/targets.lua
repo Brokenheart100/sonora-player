@@ -123,6 +123,12 @@ for _, module in ipairs(BUSINESS) do
     })
 end
 
+-- online/core 是唯一用到第三方 JSON 的地方。把解析器留在"零 Qt"这一层，
+-- 好处是 codec 的夹具单测能直接跑进 sonora_tests（那个二进制不许拖 Qt DLL）；
+-- 代价只是给这一层加一个 header-only 包。
+target("Sonora.Online.Core")
+add_packages("nlohmann_json")
+
 -- ── 平台层（横切）────────────────────────────────────────────────────────────
 -- 具体技术：SQLite、音频输出、文件系统、Win32。领域层永远看不见这四个。
 -- 里程碑推进时逐步加依赖（M0 刻意只留 QtCore，缩小首次编译的失败面）：

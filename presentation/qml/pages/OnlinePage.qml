@@ -18,7 +18,10 @@ Item {
 
     // 与 LibraryPage 同一套列宽分配方式：表头与数据行共用一个数组，
     // 各写一份就一定会漂。
-    readonly property var cols: [0.05, 0.42, 0.68, 0.85]
+    // 四列起点（占列表宽度比例）：序号 / 标题(含封面) / 艺术家 / 专辑，时长贴右边。
+    // 与曲库页同一套算法，但起点整体左移：在线结果的专辑名普遍更长
+    // （"七里香 (钢琴版) [...]"），0.85 起步的专辑列只剩几十像素。
+    readonly property var cols: [0.05, 0.36, 0.60, 0.76]
     readonly property int rowHeight: 46
     readonly property int headerHeight: 26
     readonly property int statusHeight: 34
@@ -61,8 +64,10 @@ Item {
                     font.family: Theme.fontText
                     font.pixelSize: Theme.textBody
                     clip: true
-                    // 回车才发请求。不给 focus:true：窗口级 Shortcut（空格/←/→）
+                    // 输入时走 280ms 防抖（连打 5 个字只发 1 次请求），回车立刻发。
+                    // 不给 focus:true：窗口级 Shortcut（空格/←/→）
                     // 会因为输入框抢焦点而收不到键，用户会以为快捷键坏了。
+                    onTextEdited: Online.queueSearch(text)
                     onAccepted: Online.search(text)
                 }
 
@@ -157,7 +162,7 @@ Item {
                         width: Math.min(parent.width * 0.7, 420)
                         horizontalAlignment: Text.AlignHCenter
                         wrapMode: Text.WordWrap
-                        visible: list.count === 0
+                        visible: Online.results.count === 0
                         text: Online.errorText.length > 0
                               ? Online.errorText
                               : (Online.busy ? qsTr("正在连网易云…") : Online.statusText)

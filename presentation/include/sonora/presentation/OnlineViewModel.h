@@ -86,8 +86,12 @@ namespace sonora::presentation
         [[nodiscard]] bool signedIn() const { return signedIn_; }
         [[nodiscard]] bool retryable() const { return retryable_; }
 
-        // 回车触发。词没变且已经有结果时不重发——省一次请求，也省一次列表闪烁。
+        // 回车触发：立刻搜（词没变且有结果时不重发）。
         Q_INVOKABLE void search(const QString &keywords);
+        // 输入框每变一次调用：280ms 内没有新输入才真的发请求。
+        // 防抖放在 ViewModel 而不是 QML，是因为"连打 5 个字只发 1 次请求"
+        // 要能用单测和日志证明（docs/ONLINE.md R2-3）。
+        Q_INVOKABLE void queueSearch(const QString &keywords);
         Q_INVOKABLE void loadMore();
         Q_INVOKABLE void retry();
         // 点某一行：把整页 id 一起交出去（下一首就是列表的下一行）。
@@ -101,6 +105,7 @@ namespace sonora::presentation
         void statusChanged();
 
     private:
+        void commitSearch(const QString &keywords);
         void onTick();
         void refreshStatus();
         void refreshRows();
@@ -109,6 +114,9 @@ namespace sonora::presentation
         kernel::ICommandBus &commands_;
         kernel::IQueryBus &queries_;
         QTimer timer_;
+        // 单发：输入停下来 280ms 才响。和 50ms 的轮询计时器是两回事，别混。
+        QTimer debounce_;
+        QString pendingKeywords_;
 
         std::uint64_t token_ = 0;
         std::uint64_t seenRevision_ = 0;

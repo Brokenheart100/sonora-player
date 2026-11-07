@@ -23,6 +23,7 @@
 #include <qqml.h>
 
 #include <cstdio>
+#include <future>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -58,6 +59,9 @@
 #include "sonora/lyrics/core/app/GetLyricsHandler.h"
 #include "sonora/online/adapters/OnlineSchema.h"
 #include "sonora/online/adapters/OnlineService.h"
+#include "sonora/platform/net/QtHttpTransport.h"
+#include "sonora/platform/net/SerialExecutor.h"
+#include "sonora/platform/net/SerialWorker.h"
 #include "sonora/presentation/LyricsModel.h"
 #include "sonora/presentation/OnlineViewModel.h"
 #include "sonora/presentation/PlayerViewModel.h"
@@ -292,7 +296,29 @@ int main(int argc, char *argv[])
     //
     // 在线曲目**不进曲库**（docs/ONLINE.md §1.3）：它们有自己的 id 空间与生命周期，
     // 混进 tracks 表会让"曲目必有本地路径"这条不变量永久失效。
-    sonora::online::adapters::OnlineService onlineService;
+    // ---- 在线：一条 worker 线程 + 一个传输 ----
+    //
+    // QNetworkAccessManager 只能在自己那条线程上构造和使用，所以传输对象由
+    // worker 线程自己 new；主线程手里只有基类指针，通过 IHttpTransport 说话。
+    // `netWorker` 必须比 `onlineService` 活得久（后者持有传输的引用），
+    // 所以它在这里先声明，退出时最后销毁。
+    sonora::platform::net::SerialWorker netWorker;
+    sonora::platform::net::SerialExecutor netExecutor{netWorker};
+
+    std::unique_ptr<sonora::online::contracts::IHttpTransport> httpTransport;
+    {
+        std::promise<void> created;
+        auto ready = created.get_future();
+        netWorker.post(
+            [&httpTransport, &created]
+            {
+                httpTransport = std::make_unique<sonora::platform::net::QtHttpTransport>();
+                created.set_value();
+            });
+        ready.wait();
+    }
+
+    sonora::online::adapters::OnlineService onlineService{*httpTransport, netExecutor, connection, clock};
     {
         using namespace sonora::online::contracts;
         commands.on<RequestOnlinePage>([&onlineService](const RequestOnlinePage &command)
@@ -400,5 +426,11 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    return app.exec();
+    const int exitCode = app.exec();
+
+    // transport 的析构也必须在它自己那条线程上：先投一个重置任务，再让 worker 排空并退出。
+    // 顺序反过来的话，QNetworkAccessManager 会在主线程被 delete，而它的孩子在 worker 线程。
+    netWorker.post([&httpTransport] { httpTransport.reset(); });
+    netWorker.stop();
+    return exitCode;
 }

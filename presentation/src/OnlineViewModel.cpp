@@ -1,5 +1,6 @@
 #include "sonora/presentation/OnlineViewModel.h"
 
+
 #include <algorithm>
 #include <string>
 #include <utility>
@@ -102,8 +103,12 @@ namespace sonora::presentation
     {
         beginResetModel();
         rows_ = rows;
-        endResetModel();
+        // 行数必须在 endResetModel() 之前落到 count_：视图在 reset 结束时会向
+        // rowCount() 要行数，而 RowsModel::rowCount() 读的就是 count_。先 end 后
+        // assignCount 会让视图拿到旧行数（0），列表就永远是空的——这个 bug 的表现
+        // 是"侧栏计数 30、列表一片空白"，很难从代码上直接看出来。
         assignCount(static_cast<int>(rows_.size()));
+        endResetModel();
     }
 
     void OnlineListModel::clearRows()
@@ -114,8 +119,8 @@ namespace sonora::presentation
         }
         beginResetModel();
         rows_.clear();
-        endResetModel();
         assignCount(0);
+        endResetModel();
     }
 
     // ---- OnlineViewModel ----
@@ -131,10 +136,33 @@ namespace sonora::presentation
         QObject::connect(&timer_, &QTimer::timeout, this, [this] { onTick(); });
         timer_.start();
 
+        // 防抖：280ms。这个数字是手感与请求量的折中——低于 150ms 等于没有防抖
+        // （中文输入法连续上屏的间隔就这么短），高于 500ms 又会觉得"卡住了"。
+        debounce_.setSingleShot(true);
+        debounce_.setInterval(280);
+        debounce_.setTimerType(Qt::CoarseTimer);
+        QObject::connect(&debounce_, &QTimer::timeout, this, [this] { commitSearch(pendingKeywords_); });
+
         refreshStatus();
+
+    }
+
+    void OnlineViewModel::queueSearch(const QString &keywords)
+    {
+        pendingKeywords_ = keywords;
+        // 重启而不是追加：连续输入只会剩下最后一次输入之后的那个计时器。
+        debounce_.start();
     }
 
     void OnlineViewModel::search(const QString &keywords)
+    {
+        // 回车是"我已经决定了"：不等防抖，直接发。
+        pendingKeywords_ = keywords;
+        debounce_.stop();
+        commitSearch(keywords);
+    }
+
+    void OnlineViewModel::commitSearch(const QString &keywords)
     {
         const auto trimmed = keywords.trimmed();
         if (trimmed.isEmpty())
@@ -143,6 +171,25 @@ namespace sonora::presentation
             errorText_.clear();
             emit statusChanged();
             return;
+        }
+
+        // 同一个词再来一次（回车重复按、或防抖与回车撞在一起）：不重发。
+        if (trimmed == keywords_ && token_ != 0)
+        {
+            return;
+        }
+
+        // 换词时把还在飞的那次请求掐掉：留着只是让它白跑一趟，回来也会被 token 丢弃。
+        if (busy_ && token_ != 0)
+        {
+            const auto stale = token_;
+            dispatchQuietly(
+                [this, stale]
+                {
+                    online::contracts::CancelOnlineJob command;
+                    command.token = stale;
+                    return commands_.dispatch(command);
+                });
         }
 
         // token 由界面递增：旧 token 的迟到结果会被服务端丢弃（JobRegistry 里唯一裁决）。
