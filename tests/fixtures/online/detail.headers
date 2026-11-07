@@ -1,0 +1,32 @@
+HTTP/1.1 200 OK
+Server: volc-dcdn
+Content-Type: text/plain;charset=UTF-8
+Transfer-Encoding: chunked
+Connection: keep-alive
+Date: Sat, 07 Nov 2026 04:37:09 GMT
+Vary: Accept-Encoding
+X-TraceId-V2: babf02a8d90096e9ffd0eae3ff199a1c^1791445055895^-12606911697
+x-cv: 1794026229070
+X-TraceId: 000001a1b44bcd37095e0ab0deb60007
+MConfig-Bucket: 999999
+Set-Cookie: NMTID=00OzF3FFOZAJA41HUChst8alTtd5nAAAAGhtEvNTg; Max-Age=315360000; Expires=Tue, 04 Nov 2036 04:37:09 GMT; Path=/; Domain=music.163.com
+cache-control: no-cache
+cache-control: no-store
+expires: Thu, 01 Jan 1970 00:00:00 GMT
+GW-Thread: -61982
+GW-Time: 1794026229051
+X-Via: MusicServer
+Access-Control-Allow-Origin: https://music.163.com
+Access-Control-Expose-Headers: Date,Content-Encoding,Vary,Server,Transfer-Encoding,Connection
+Access-Control-Allow-Credentials: true
+Content-Encoding: br
+via: n117-187-182-138.bdcdn-gycm02.ToB
+x-request-ip: 117.188.13.99
+x-tt-trace-tag: id=5
+x-dsa-trace-id: 17940262296a25f56073aa6a0437519129dd532359
+X-Dsa-Origin-Status: 200
+cdn-ip: 117.187.182.155
+server-timing: cdn-cache;desc=MISS, origin;dur=27, edge;dur=0
+cdn-source: volc
+cdn-user-ip: 117.188.13.99
+
