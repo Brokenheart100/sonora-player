@@ -45,6 +45,9 @@ namespace sonora::online::contracts
         std::string body;
         std::string contentType;
         std::chrono::milliseconds elapsed{};
+        // 响应头，键统一小写。扫码登录成功时 cookie 只在 Set-Cookie 里，
+        // body 里一句 `{"code":803}` 什么都不带——所以这一层必须透出响应头。
+        std::vector<std::pair<std::string, std::string>> headers;
     };
 
     using HttpCallback = std::function<void(kernel::Result<HttpResponse>)>;

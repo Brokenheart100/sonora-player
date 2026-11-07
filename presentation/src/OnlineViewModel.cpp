@@ -311,15 +311,64 @@ namespace sonora::presentation
         refreshStatus();
     }
 
-    void OnlineViewModel::signInHint()
+    void OnlineViewModel::signIn(const QString &cookie)
     {
-        errorText_ = QStringLiteral("登录还没接通（下一步 R4）");
-        retryable_ = false;
+        loginError_.clear();
+        signingIn_ = true;
+        online::contracts::SignInWithCookie command;
+        command.provider = "ncm";
+        command.cookie = cookie.toStdString();
+        const auto result = commands_.dispatch(command);
+        if (!result)
+        {
+            signingIn_ = false;
+            loginError_ = fromUtf8(result.error().message());
+        }
         emit statusChanged();
     }
 
     void OnlineViewModel::onTick()
     {
+        // 登录态与播放回包与"有没有搜索过"无关：没搜过也要能登录、也要能
+        // 知道直链过期了。所以先跑这两块，token_ 只挡搜索那条路。
+        refreshStatus();
+
+        const auto playbackNow = queries_.ask<online::contracts::OnlinePlaybackDto>(
+            online::contracts::GetOnlinePlayback{});
+        if (playbackNow && playbackNow.value().revision != seenPlaybackRevision_)
+        {
+            seenPlaybackRevision_ = playbackNow.value().revision;
+            applyPlayback(playbackNow.value());
+        }
+
+        // 扫码登录：面板开着时才问（问一次就会按 1.5s 节奏推一次网络轮询）。
+        if (qrActive_)
+        {
+            const auto qr = queries_.ask<online::contracts::QrLoginDto>(online::contracts::GetQrLoginState{});
+            if (qr)
+            {
+                const auto &state = qr.value();
+                if (state.session != qrSession_)
+                {
+                    qrSession_ = state.session;
+                    qrRows_ = state.rows;
+                    qrSize_ = static_cast<int>(qrRows_.size());
+                    emit qrChanged();
+                }
+                const QString message = QString::fromStdString(state.message);
+                if (qrMessage_ != message)
+                {
+                    qrMessage_ = message;
+                    emit qrChanged();
+                }
+                if (state.phase == online::contracts::AccountPhase::LoggedIn)
+                {
+                    qrActive_ = false;
+                    emit qrChanged();
+                }
+            }
+        }
+
         if (token_ == 0)
         {
             return;
@@ -385,14 +434,6 @@ namespace sonora::presentation
         if (changed)
         {
             emit statusChanged();
-        }
-
-        const auto playback = queries_.ask<online::contracts::OnlinePlaybackDto>(
-            online::contracts::GetOnlinePlayback{});
-        if (playback && playback.value().revision != seenPlaybackRevision_)
-        {
-            seenPlaybackRevision_ = playback.value().revision;
-            applyPlayback(playback.value());
         }
 
         rescanFailedPlayback();
@@ -514,12 +555,27 @@ namespace sonora::presentation
         auto nextAccount = value.signedIn && !value.nickname.empty()
                                ? fromUtf8(value.nickname)
                                : QStringLiteral("未登录");
-        if (nextSignedIn == signedIn_ && nextAccount == accountText_)
+        const auto nextLastError = fromUtf8(value.lastError.message);
+
+        // 校验中的状态只由这里收敛：成功 → 清错误；给了 lastError → 显示它。
+        // 这样"点登录 → 输错 cookie → 看到原因"不需要额外的信号。
+        auto nextSigning = signingIn_;
+        auto nextLoginError = loginError_;
+        if (signingIn_ && (nextSignedIn || !nextLastError.isEmpty()))
+        {
+            nextSigning = false;
+            nextLoginError = nextSignedIn ? QString() : nextLastError;
+        }
+
+        if (nextSignedIn == signedIn_ && nextAccount == accountText_ && nextSigning == signingIn_ &&
+            nextLoginError == loginError_)
         {
             return;
         }
         signedIn_ = nextSignedIn;
         accountText_ = nextAccount;
+        signingIn_ = nextSigning;
+        loginError_ = nextLoginError;
         emit statusChanged();
     }
 
@@ -547,6 +603,39 @@ namespace sonora::presentation
         errorText_ = fromUtf8(result.error().message());
         retryable_ = false;
         emit statusChanged();
+    }
+
+    bool OnlineViewModel::qrCell(int row, int col) const
+    {
+        if (row < 0 || col < 0 || row >= qrSize_ || col >= qrSize_)
+        {
+            return false;
+        }
+        const std::string &line = qrRows_[static_cast<std::size_t>(row)];
+        if (static_cast<std::size_t>(col) >= line.size())
+        {
+            return false;
+        }
+        return line[static_cast<std::size_t>(col)] == '1';
+    }
+
+    void OnlineViewModel::startQrLogin()
+    {
+        dispatchQuietly([this] { return commands_.dispatch(online::contracts::StartQrLogin{}); });
+        qrActive_ = true;
+        qrRows_.clear();
+        qrSize_ = 0;
+        qrSession_ = 0;
+        qrMessage_ = QStringLiteral("正在生成二维码…");
+        loginError_.clear();
+        emit qrChanged();
+    }
+
+    void OnlineViewModel::cancelQrLogin()
+    {
+        dispatchQuietly([this] { return commands_.dispatch(online::contracts::CancelQrLogin{}); });
+        qrActive_ = false;
+        emit qrChanged();
     }
 
 } // namespace sonora::presentation

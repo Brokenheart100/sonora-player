@@ -72,6 +72,12 @@ namespace sonora::presentation
         Q_PROPERTY(bool hasMore READ hasMore NOTIFY statusChanged)
         Q_PROPERTY(bool signedIn READ signedIn NOTIFY statusChanged)
         Q_PROPERTY(bool retryable READ retryable NOTIFY statusChanged)
+        Q_PROPERTY(bool signingIn READ signingIn NOTIFY statusChanged)
+        Q_PROPERTY(QString loginError READ loginError NOTIFY statusChanged)
+        // 扫码登录：矩阵按格问，省得把二维数组搬进 QVariantList。
+        Q_PROPERTY(bool qrActive READ qrActive NOTIFY qrChanged)
+        Q_PROPERTY(QString qrMessage READ qrMessage NOTIFY qrChanged)
+        Q_PROPERTY(int qrSize READ qrSize NOTIFY qrChanged)
 
     public:
         OnlineViewModel(kernel::ICommandBus &commands, kernel::IQueryBus &queries,
@@ -85,6 +91,12 @@ namespace sonora::presentation
         [[nodiscard]] bool hasMore() const { return hasMore_; }
         [[nodiscard]] bool signedIn() const { return signedIn_; }
         [[nodiscard]] bool retryable() const { return retryable_; }
+        [[nodiscard]] bool signingIn() const { return signingIn_; }
+        [[nodiscard]] QString loginError() const { return loginError_; }
+        [[nodiscard]] bool qrActive() const { return qrActive_; }
+        [[nodiscard]] QString qrMessage() const { return qrMessage_; }
+        [[nodiscard]] int qrSize() const { return qrSize_; }
+        Q_INVOKABLE [[nodiscard]] bool qrCell(int row, int col) const;
 
         // 回车触发：立刻搜（词没变且有结果时不重发）。
         Q_INVOKABLE void search(const QString &keywords);
@@ -97,12 +109,16 @@ namespace sonora::presentation
         // 点某一行：把整页 id 一起交出去（下一首就是列表的下一行）。
         Q_INVOKABLE void play(int index);
         Q_INVOKABLE void signOut();
-        // 点账号胶囊但还没登录时调用。R4 之前它只把"还没接通"写在错误行里，
-        // 而不是弹一个假的登录框。
-        Q_INVOKABLE void signInHint();
+        // 粘贴 cookie 登录。校验是异步的：这里只负责发命令，
+        // 成败由 refreshStatus() 从 SourceStatusDto 里读回来（signingIn/loginError）。
+        Q_INVOKABLE void signIn(const QString &cookie);
+        // 扫码登录：start 之后轮询在 onTick 里进行（1.5s 一次由 OnlineService 掌握）。
+        Q_INVOKABLE void startQrLogin();
+        Q_INVOKABLE void cancelQrLogin();
 
     signals:
         void statusChanged();
+        void qrChanged();
 
     private:
         void commitSearch(const QString &keywords);
@@ -139,6 +155,14 @@ namespace sonora::presentation
         bool hasMore_ = false;
         bool signedIn_ = false;
         bool retryable_ = false;
+        bool signingIn_ = false;
+        QString loginError_;
+        // 扫码登录的界面态。矩阵只在 session 变化时更新一次。
+        bool qrActive_ = false;
+        QString qrMessage_;
+        std::vector<std::string> qrRows_;
+        int qrSize_ = 0;
+        std::uint64_t qrSession_ = 0;
 
         OnlineListModel model_;
     };

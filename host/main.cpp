@@ -23,6 +23,7 @@
 #include <qqml.h>
 
 #include <cstdio>
+#include <filesystem>
 #include <future>
 #include <memory>
 #include <string>
@@ -59,6 +60,7 @@
 #include "sonora/lyrics/core/app/GetLyricsHandler.h"
 #include "sonora/online/adapters/OnlineSchema.h"
 #include "sonora/online/adapters/OnlineService.h"
+#include "sonora/platform/win/DpapiSecretStore.h"
 #include "sonora/platform/net/QtHttpTransport.h"
 #include "sonora/platform/net/SerialExecutor.h"
 #include "sonora/platform/net/SerialWorker.h"
@@ -318,7 +320,14 @@ int main(int argc, char *argv[])
         ready.wait();
     }
 
-    sonora::online::adapters::OnlineService onlineService{*httpTransport, netExecutor, connection, clock};
+    // 凭据目录放在曲库旁边（`<AppData>/Sonora/Sonora/secrets`）：与数据库同生命周期，
+    // 用户备份曲库时凭据跟着走，但密文只有本账户能解开（DPAPI）。
+    const auto secretsDir = std::filesystem::path(dbPath).parent_path() / "secrets";
+    sonora::platform::win::DpapiSecretStore secretStore{secretsDir};
+
+    sonora::online::adapters::OnlineService onlineService{*httpTransport,        netExecutor,
+                                                          connection,            secretStore,
+                                                          clock};
     {
         using namespace sonora::online::contracts;
         commands.on<RequestOnlinePage>([&onlineService](const RequestOnlinePage &command)
@@ -351,6 +360,10 @@ int main(int argc, char *argv[])
         queries.on<GetOnlinePlayback, OnlinePlaybackDto>(
             [&onlineService](const GetOnlinePlayback &query) { return onlineService.handle(query); });
     }
+
+    // 查询都注册好了再恢复会话：回包要靠 GetSourceStatus 才能被界面读到，
+    // 早于注册去问网易云，结果会落空。
+    onlineService.restoreSession();
 
     audio::FfmpegOutput audioOutput;
     playback::core::PlaybackService playbackService{audioOutput, &logger, &audioOutput, &events};

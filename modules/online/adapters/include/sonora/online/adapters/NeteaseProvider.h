@@ -28,6 +28,9 @@ namespace sonora::online::adapters
         using Callback = std::function<void(core::codec::DecodeResult)>;
         // 取播放地址：一批最多 kMaxSongIds 首，返回的是"能播的那些"。
         using UrlCallback = std::function<void(core::codec::UrlResult)>;
+        // 校验一个 cookie 是否有登录态。R4 的"粘贴 cookie"与"启动时恢复会话"
+        // 都走它：唯一权威判定就是网易云自己怎么说。
+        using AccountCallback = std::function<void(core::codec::AccountResult)>;
 
         NeteaseProvider(contracts::IHttpTransport &transport, contracts::IExecutor &executor,
                         std::string baseUrl = core::provider::kNeteaseBaseUrl);
@@ -40,6 +43,17 @@ namespace sonora::online::adapters
 
         // 取一批曲目的直链。调用方负责分批（≤ kMaxSongIds）与串行化。
         std::uint64_t startResolveUrls(const std::vector<std::string> &songIds, UrlCallback onDone);
+
+        // 用**传入的** cookie 校验登录态（不改 this->cookie_）：粘贴流程要先用
+        // 它验一遍，验过了才值得落盘。
+        std::uint64_t startValidateAccount(std::string cookie, AccountCallback onDone);
+
+        using QrKeyCallback = std::function<void(core::codec::QrKeyResult)>;
+        using QrPollCallback = std::function<void(core::codec::QrPollResult)>;
+
+        // 扫码登录：先要 unikey，再拿 unikey 轮询。两次都不带 cookie。
+        std::uint64_t startQrKey(QrKeyCallback onDone);
+        std::uint64_t startQrPoll(std::string unikey, QrPollCallback onDone);
 
         void cancel(std::uint64_t requestId);
 

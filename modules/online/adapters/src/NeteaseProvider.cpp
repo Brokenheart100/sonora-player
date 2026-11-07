@@ -85,6 +85,84 @@ namespace sonora::online::adapters
         return requestId;
     }
 
+    std::uint64_t NeteaseProvider::startQrKey(QrKeyCallback onDone)
+    {
+        const std::uint64_t requestId = nextId_.fetch_add(1);
+
+        executor_.post([this, requestId, onDone = std::move(onDone)] {
+            auto request = provider::makeQrKeyRequest(baseUrl_, std::chrono::milliseconds{8000});
+            transport_.send(requestId, request,
+                            [onDone = std::move(onDone)](kernel::Result<c::HttpResponse> response) {
+                                codec::QrKeyResult out;
+                                if (!response)
+                                {
+                                    const auto &failed = response.error();
+                                    out.error.code = failed.code();
+                                    out.error.message = failed.message();
+                                    out.error.retryable = failed.code() == kernel::ErrorCode::Timeout ||
+                                                          failed.code() == kernel::ErrorCode::Unavailable;
+                                }
+                                else
+                                {
+                                    const c::HttpResponse &http = response.value();
+                                    if (http.statusCode != 200)
+                                    {
+                                        out.error.code = http.statusCode >= 500 || http.statusCode == 429
+                                                             ? kernel::ErrorCode::Unavailable
+                                                             : kernel::ErrorCode::Upstream;
+                                        out.error.message = "网易云返回 HTTP " + std::to_string(http.statusCode);
+                                        out.error.retryable = out.error.code == kernel::ErrorCode::Unavailable;
+                                    }
+                                    else
+                                    {
+                                        out = codec::decodeQrKey(http.body);
+                                    }
+                                }
+                                onDone(out);
+                            });
+        });
+        return requestId;
+    }
+
+    std::uint64_t NeteaseProvider::startQrPoll(std::string unikey, QrPollCallback onDone)
+    {
+        const std::uint64_t requestId = nextId_.fetch_add(1);
+
+        executor_.post([this, requestId, unikey = std::move(unikey), onDone = std::move(onDone)] {
+            auto request = provider::makeQrPollRequest(baseUrl_, unikey, std::chrono::milliseconds{6000});
+            transport_.send(requestId, request,
+                            [onDone = std::move(onDone)](kernel::Result<c::HttpResponse> response) {
+                                codec::QrPollResult out;
+                                if (!response)
+                                {
+                                    const auto &failed = response.error();
+                                    out.error.code = failed.code();
+                                    out.error.message = failed.message();
+                                    out.error.retryable = failed.code() == kernel::ErrorCode::Timeout ||
+                                                          failed.code() == kernel::ErrorCode::Unavailable;
+                                }
+                                else
+                                {
+                                    const c::HttpResponse &http = response.value();
+                                    if (http.statusCode != 200)
+                                    {
+                                        out.error.code = http.statusCode >= 500 || http.statusCode == 429
+                                                             ? kernel::ErrorCode::Unavailable
+                                                             : kernel::ErrorCode::Upstream;
+                                        out.error.message = "网易云返回 HTTP " + std::to_string(http.statusCode);
+                                        out.error.retryable = out.error.code == kernel::ErrorCode::Unavailable;
+                                    }
+                                    else
+                                    {
+                                        out = codec::decodeQrPoll(http.body, http.headers);
+                                    }
+                                }
+                                onDone(out);
+                            });
+        });
+        return requestId;
+    }
+
     std::uint64_t NeteaseProvider::startResolveUrls(const std::vector<std::string> &songIds,
                                                     UrlCallback onDone)
     {
@@ -126,6 +204,51 @@ namespace sonora::online::adapters
                                 else
                                 {
                                     out = codec::decodeSongUrls(http.body);
+                                }
+                                if (onDone)
+                                {
+                                    onDone(std::move(out));
+                                }
+                            });
+        });
+
+        return requestId;
+    }
+
+    std::uint64_t NeteaseProvider::startValidateAccount(std::string cookie, AccountCallback onDone)
+    {
+        const std::uint64_t requestId = nextId_.fetch_add(1);
+
+        executor_.post([this, requestId, cookie = std::move(cookie), onDone = std::move(onDone)] {
+            auto request = provider::makeAccountRequest(baseUrl_, cookie, std::chrono::milliseconds{8000});
+            transport_.send(requestId, request,
+                            [onDone = std::move(onDone)](kernel::Result<contracts::HttpResponse> response) {
+                                codec::AccountResult out;
+                                if (!response)
+                                {
+                                    const auto &failed = response.error();
+                                    out.error.code = failed.code();
+                                    out.error.message = failed.message();
+                                    out.error.retryable = failed.code() == kernel::ErrorCode::Timeout ||
+                                                          failed.code() == kernel::ErrorCode::Unavailable;
+                                }
+                                else
+                                {
+                                    const c::HttpResponse &http = response.value();
+                                    if (http.statusCode != 200)
+                                    {
+                                        out.error.code = http.statusCode >= 500 || http.statusCode == 429
+                                                             ? kernel::ErrorCode::Unavailable
+                                                             : kernel::ErrorCode::Upstream;
+                                        out.error.message =
+                                            "网易云返回 HTTP " + std::to_string(http.statusCode);
+                                        out.error.retryable =
+                                            out.error.code == kernel::ErrorCode::Unavailable;
+                                    }
+                                    else
+                                    {
+                                        out = codec::decodeAccount(http.body);
+                                    }
                                 }
                                 if (onDone)
                                 {

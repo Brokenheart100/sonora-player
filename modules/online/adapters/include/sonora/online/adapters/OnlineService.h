@@ -22,6 +22,7 @@
 #include "sonora/online/contracts/Commands.h"
 #include "sonora/online/contracts/Executor.h"
 #include "sonora/online/contracts/Queries.h"
+#include "sonora/online/contracts/SecretStore.h"
 #include "sonora/online/contracts/Transport.h"
 #include "sonora/online/contracts/Types.h"
 #include "sonora/online/core/app/JobRegistry.h"
@@ -34,7 +35,12 @@ namespace sonora::online::adapters
     {
     public:
         OnlineService(contracts::IHttpTransport &transport, contracts::IExecutor &executor,
-                      platform::storage::SqliteConnection &db, const kernel::IClock &clock);
+                      platform::storage::SqliteConnection &db, contracts::ISecretStore &secrets,
+                      const kernel::IClock &clock);
+
+        // 启动时恢复会话：读密文 → 问网易云"这还认吗" → 结果落到 status_。
+        // 组合根在注册完命令/查询之后调一次；不调也能跑，只是每次启动都要重新登录。
+        void restoreSession();
 
         // ---- 命令：全部同步、< 5ms，只记账 ----
         kernel::Result<void> handle(const contracts::RequestOnlinePage &command);
@@ -52,8 +58,10 @@ namespace sonora::online::adapters
         [[nodiscard]] kernel::Result<contracts::OnlineJobState> handle(const contracts::GetOnlineJob &query);
         [[nodiscard]] kernel::Result<contracts::OnlinePageDto> handle(const contracts::FetchOnlineRows &query);
         [[nodiscard]] kernel::Result<contracts::OnlinePlaybackDto> handle(const contracts::GetOnlinePlayback &query);
-        [[nodiscard]] kernel::Result<contracts::SourceStatusDto> handle(const contracts::GetSourceStatus &query) const;
-        [[nodiscard]] kernel::Result<contracts::QrLoginDto> handle(const contracts::GetQrLoginState &query) const;
+        // 这个查询不再是 const：它顺带排空登录回调（同一个 50ms 轮询里完成）。
+        [[nodiscard]] kernel::Result<contracts::SourceStatusDto> handle(const contracts::GetSourceStatus &query);
+        // 也不再是 const：它顺带按 1.5 秒节奏发下一次扫码轮询。
+        [[nodiscard]] kernel::Result<contracts::QrLoginDto> handle(const contracts::GetQrLoginState &query);
         [[nodiscard]] kernel::Result<std::vector<contracts::PlaylistDto>> handle(
             const contracts::GetMyPlaylists &query) const;
 
@@ -85,10 +93,47 @@ namespace sonora::online::adapters
 
         void drain();
 
+        // 登录校验的回包（粘贴 cookie 与启动恢复共用一条通道）。
+        struct PendingAuth
+        {
+            std::string cookie;
+            core::codec::AccountResult result;
+        };
+        void drainAuth();
+
+        // 扫码登录：unikey 与轮询状态各走一条回包通道（worker 线程只入队）。
+        struct PendingQrKey
+        {
+            core::codec::QrKeyResult result;
+        };
+        struct PendingQrPoll
+        {
+            core::codec::QrPollResult result;
+        };
+        void drainQrLogin();
+        void applyQrKey(const core::codec::QrKeyResult &result);
+        void applyQrPoll(const core::codec::QrPollResult &result);
+        // 校验通过之后的落盘顺序：先密文、再会话行（docs/ONLINE.md §6 / R4-6）。
+        kernel::Result<void> persistSession(const std::string &cookie, const core::codec::AccountInfo &account);
+        void clearSession();
+        [[nodiscard]] std::string loadStoredNickname() const;
+
+        // ---- 扫码登录 ----（只在 GUI 线程改，回包用 qrMutex_ 保护）
+        std::mutex qrMutex_;
+        std::vector<PendingQrKey> qrKeyPending_;
+        std::vector<PendingQrPoll> qrPollPending_;
+        std::string qrKey_;
+        std::int64_t qrNextPollMs_{0};
+        bool qrPollInFlight_{false};
+        std::uint64_t qrSession_{0};
+
         core::app::JobRegistry jobs_;
         NeteaseProvider provider_;
         SqliteOnlineStore store_;
         const kernel::IClock &clock_;
+        contracts::ISecretStore &secrets_;
+        // 会话行的读写在 GUI 线程，与 store_ 共用同一条连接（不做连接池）。
+        platform::storage::SqliteConnection &db_;
 
         std::mutex pendingMutex_;
         std::vector<Pending> pending_;
@@ -104,6 +149,12 @@ namespace sonora::online::adapters
         // 表现层按 revision 去重：只有这个数变了才重装播放队列。
         contracts::OnlinePlaybackDto playback_{};
         std::uint64_t playbackRevision_{0};
+
+        std::mutex authMutex_;
+        std::vector<PendingAuth> authPending_;
+        std::uint64_t authRequestId_{0};
+        // 校验通过前暂存明文：只有确认可用才落盘，失败只进 lastError。
+        std::string pendingCookie_;
     };
 
 } // namespace sonora::online::adapters

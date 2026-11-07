@@ -94,4 +94,41 @@ namespace sonora::online::core::provider
         return headers;
     }
 
+    contracts::HttpRequest makeAccountRequest(const std::string &baseUrl, const std::string &cookie,
+                                              std::chrono::milliseconds timeout)
+    {
+        contracts::HttpRequest request;
+        request.method = contracts::HttpMethod::Get;
+        request.url = baseUrl + "/api/nuser/account/get";
+        request.headers = defaultHeaders(cookie);
+        request.transferTimeout = timeout;
+        return request;
+    }
+
+    contracts::HttpRequest makeQrKeyRequest(const std::string &baseUrl, std::chrono::milliseconds timeout)
+    {
+        contracts::HttpRequest request;
+        request.method = contracts::HttpMethod::Post;
+        request.url = baseUrl + "/api/login/qrcode/unikey?type=1";
+        request.headers = defaultHeaders({});
+        request.transferTimeout = timeout;
+        return request;
+    }
+
+    contracts::HttpRequest makeQrPollRequest(const std::string &baseUrl, const std::string &unikey,
+                                             std::chrono::milliseconds timeout)
+    {
+        contracts::HttpRequest request;
+        request.method = contracts::HttpMethod::Post;
+        request.url = baseUrl + "/api/login/qrcode/client/login?key=" + encodeUrlComponent(unikey) + "&type=1";
+        request.headers = defaultHeaders({});
+        request.transferTimeout = timeout;
+        return request;
+    }
+
+    std::string qrPayloadOf(const std::string &unikey)
+    {
+        return "https://music.163.com/login?codekey=" + unikey;
+    }
+
 } // namespace sonora::online::core::provider

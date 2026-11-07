@@ -126,8 +126,12 @@ namespace sonora::online::contracts
     {
         std::string provider{"ncm"};
         AccountPhase phase{AccountPhase::Guest};
-        std::string qrDataUrl; // "data:image/png;base64,..."，直接喂 Image.source
-        std::string message;   // 给人看的一句话（"二维码已过期，点这里刷新"）
+        // 二维码矩阵：每行一个 "0"/"1" 字符串，1 = 黑格，界面逐格画出来。
+        // 不走图片：明文接口不返回二维码图，自己编码成 PNG 又要引编码器与图片插件。
+        std::vector<std::string> rows;
+        // 每次「换一张码」+1：界面据此判断要不要重画，而不是每帧比对矩阵。
+        std::uint64_t session{0};
+        std::string message; // 给人看的一句话（"已过期，点刷新"）
     };
 
     struct PlaylistDto

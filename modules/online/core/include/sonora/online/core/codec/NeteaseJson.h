@@ -58,4 +58,54 @@ namespace sonora::online::core::codec
     // `/api/song/enhance/player/url/v1` 的响应。
     [[nodiscard]] UrlResult decodeSongUrls(const std::string &body);
 
+    struct AccountInfo
+    {
+        std::string userId;
+        std::string nickname;
+        std::int32_t vipType{0};
+    };
+
+    struct AccountResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        // `loggedIn == false` 且 `ok == true`：cookie 有效但网易云不认这个会话
+        // （`account` 为 null）。调用方据此把状态推回 Guest，而不是报一个
+        // 看起来像网络故障的错。
+        bool loggedIn{false};
+        AccountInfo account;
+    };
+
+    // `/api/nuser/account/get` 的响应。登录态的唯一权威判定：这条返回什么，
+    // 就决定 UI 上那个账号胶囊写"未登录"还是昵称。
+    [[nodiscard]] AccountResult decodeAccount(const std::string &body);
+
+    struct QrKeyResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        std::string unikey;
+    };
+
+    // `/api/login/qrcode/unikey` 的响应。
+    [[nodiscard]] QrKeyResult decodeQrKey(const std::string &body);
+
+    struct QrPollResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        // 800 过期 / 801 等扫码 / 802 已扫待确认 / 803 成功。
+        // 这四个不是 HTTP 错误，是业务进度，所以都不算 `error`。
+        int code{0};
+        std::string message;
+        // 803 时从响应头 `Set-Cookie` 里拼出来的 "MUSIC_U=…; __csrf=…"，
+        // 其余状态为空。
+        std::string cookie;
+    };
+
+    // `/api/login/qrcode/client/login` 的响应。成功时的 cookie 只在响应头里，
+    // 所以要连 headers 一起传进来（键统一小写）。
+    [[nodiscard]] QrPollResult decodeQrPoll(const std::string &body,
+                                           const std::vector<std::pair<std::string, std::string>> &headers);
+
 } // namespace sonora::online::core::codec

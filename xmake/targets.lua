@@ -127,7 +127,7 @@ end
 -- 好处是 codec 的夹具单测能直接跑进 sonora_tests（那个二进制不许拖 Qt DLL）；
 -- 代价只是给这一层加一个 header-only 包。
 target("Sonora.Online.Core")
-add_packages("nlohmann_json")
+add_packages("nlohmann_json", "qr-code-generator-cpp")
 
 -- ── 平台层（横切）────────────────────────────────────────────────────────────
 -- 具体技术：SQLite、音频输出、文件系统、Win32。领域层永远看不见这四个。
@@ -194,9 +194,15 @@ lib({
 lib({
     name = "Sonora.Platform.Win",
     dir = P .. "win",
-    deps = {"Sonora.Kernel"},
+    -- 凭据存储端口 online/contracts/SecretStore.h 的实现落在这里：DPAPI 要
+    -- <windows.h>/<dpapi.h>，而平台层依赖某个模块的**契约**不会把 Qt 带上去
+    -- （先例：Platform.Audio → Playback.Contracts）。
+    deps = {"Sonora.Kernel", "Sonora.Online.Contracts"},
     qt = {"QtCore"},
 })
+-- DPAPI 在 crypt32.lib 里（CryptProtectData / CryptUnprotectData）。
+target("Sonora.Platform.Win")
+add_links("crypt32")
 
 -- 网络：全项目**唯一** link QtNetwork 的地方。别处只认 online/contracts/Transport.h
 -- （那个头文件零 Qt），所以 online/adapters 与 sonora_tests 都不必拖 Qt DLL。

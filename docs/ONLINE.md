@@ -479,7 +479,7 @@ struct QueueEntry {
 | `presentation/qml/pages/OnlinePage.qml`（新） | 搜索框 + 结果列表 + 分页 + 三态 |
 | `presentation/qml/comic/TrackRow.qml`（改） | 加一个可选 `badge` 属性（"无版权"/"试听"），在线结果行直接复用它，不写第二个 delegate |
 | —— **不新建** `StateBlock.qml` | 三态复用现有 `comic/MangaPanel.qml`（纸面底 + 网点）+ `comic/SfxText.qml`（"翻…"）与 `pages/LibraryPage.qml` 的空态排版，只切 `visible` |
-| `presentation/qml/comic/LoginPanel.qml`（新） | 覆盖层：二维码（data URL 直接喂 `Image`）/ 粘贴 cookie / 失败重试 |
+| `presentation/qml/comic/LoginPanel.qml`（新） | 覆盖层：二维码 / 粘贴 cookie / 失败重试（**实测后改为 `Canvas` 画点阵**，见 [§17.1](#171-扫码登录能用的端点和不能用的端点)） |
 | `presentation/qml/layout/PlayerBar.qml` | 缓冲条；顺手修 `stateText.indexOf("失败") >= 0` 这个**永不成立**的既有缺陷（`stateLabel` 返回的是"出错"） |
 | `presentation/include/sonora/presentation/RowsModel.{h,cpp}`（新） | 先抽基类：`QAbstractListModel` + `count`/`status` + 异步填行（约 30 行），`TrackListModel` 与 `OnlineListModel` 都继承，避免复制第二份骨架 |
 | `presentation/src/OnlineViewModel.{h,cpp}`（新） | 上面的 `Q_PROPERTY` 与轮询（照 `PlayerViewModel` 的 `QTimer` 模式，不另发明） |
@@ -638,15 +638,17 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 
 #### R4 登录
 
-- [ ] **R4-1** `StartQrLogin` / `CancelQrLogin` / `GetQrLoginState` + `enum class NeteaseQrCode`（码值以 R0 实测为准）
-- [ ] **R4-2** `LoginPanel.qml`：二维码走 `data:image/png;base64,` 直接喂 `Image`，不引 `QQuickImageProvider`
-- [ ] **R4-3** 1.5 秒轮询；`QrExpired` / 取消 / 失败各有确定出口
-- [ ] **R4-4** `SignInWithCookie`：校验成功才落盘；失败只进 `lastError`
-- [ ] **R4-5** `platform/win/DpapiSecretStore`：`CryptProtectData` + `CRYPTPROTECT_UI_FORBIDDEN` + entropy + `SecureZeroMemory`
-- [ ] **R4-6** 会话表 + `secret_ref` + 顺序（先密文后行、登出先删密文）；`UnitOfWorkScope` 包裹
-- [ ] **R4-7** 侧栏账号胶囊 + 登出 + `Expiring` 提示
-- [ ] **R4-8** 审计：`grep -rn "cookie\|MUSIC_U\|__csrf"` 只允许出现在两个文件；`sqlite3 sonora.sqlite ".dump"` 里搜不到 `MUSIC_U`
+- [x] **R4-1** `StartQrLogin` / `CancelQrLogin` / `GetQrLoginState`（实测：`unikey` 端点 + `client/login` 的 800/801/802/803；没有单独的枚举，`QrPollResult.code` 直接带原始码值）
+- [x] **R4-2** 登录面板扫码/粘贴两个入口（**改了做法**：不生成 PNG，改传点阵给 `Canvas` 画格子——省掉图片编码器，也就没有 `data:` URL 和 `QQuickImageProvider` 两件事）
+- [x] **R4-3** 1.5 秒轮询由 `GetQrLoginState` 驱动（界面不持计时器）；取消/过期/失败各有出口
+- [x] **R4-4** `SignInWithCookie`：校验成功才落盘；失败只进 `lastError`（301 → 「这个 cookie 已经失效，请重新复制一次」）
+- [x] **R4-5** `platform/win/DpapiSecretStore`：`CryptProtectData` + `CRYPTPROTECT_UI_FORBIDDEN` + 固定熵 + `SecureZeroMemory`（`.test_tmp/dpapi` 独立验证 5 条全过）
+- [x] **R4-6** 会话表 + `secret_ref` + 顺序（登录先密文后行、登出先删密文；行写失败会把密文 `erase` 掉）；**未用 `UnitOfWorkScope`**——只有一条 `INSERT OR REPLACE`，包裹起来只多两次 begin/commit
+- [x] **R4-7** 账号胶囊 + 登录/登出 + 登录中的等待态（`Expiring` 还没触发源，留到 R5）
+- [x] **R4-8** 审计通过：`MUSIC_U`/`__csrf` 只出现在 5 个生产文件（`auth/CookieHeader.{h,cpp}`、`codec/NeteaseJson.{h,cpp}`、`adapters/OnlineService.cpp`）+ 2 个测试文件；`sonora.sqlite` 原始字节里 `MUSIC_U`/`__csrf` 计数都是 0（本机没装 `sqlite3`，用 Python 直接扫文件）
 - [ ] **R4-9** gate：重启仍登录 / 换号 / 服务端失效后提示重登
+  - 已实测：失效提示（假 cookie → 「这个 cookie 已经失效，请重新复制一次」）。
+  - **未实测**：重启仍登录、换号——需要一个真实网易云账号扫码成功一次，本机没有。代码路径（`restoreSession()` 先读库昵称渲染胶囊再异步校验；登出删密文再删行）已就绪，等有账号的人补一次。
 
 #### R5 收尾
 
@@ -818,3 +820,39 @@ R0-1 ─► R0-2 ─┬─► R0-3 ┐
 - 合成鼠标点击要**先把窗口挪到固定位置再点**（`.test_tmp/shot3.ps1` 会把窗口移到 (60,60)，此时"截图坐标 = 屏幕坐标 − 60"）；底部播放控制那一行在截图里是 `y ≈ 904`，不是进度条那行的 687。
 - 一次点击跑一个 powershell 进程会丢前台焦点，按键一个字符都进不去；键盘输入必须在**同一个进程**里 `AttachThreadInput + SetForegroundWindow` 再 `SendKeys`（`.test_tmp/r3_search.ps1`）。
 - Qt 的 `qrc:/` 资源没有磁盘文件，所以 Qt 自带的 `QmlPreviewMcpServer`（QtMCP）对我们**只能热重载、且必须先有磁盘 QML**；要不要开"debug 走磁盘、release 走 qrc"是独立决策，不在 R3 范围。
+
+## 17. R4 实测记录（2026-11-07）
+
+> 扫码登录这一轮把 [§11.2](#112-任务清单todolist) 的 R4-1…R4-9 全部走完（R4-2 改了做法、R4-6 少包一层事务，两条都在清单里写明）。
+
+### 17.1 扫码登录：能用的端点和不能用的端点
+
+| 调用 | 结果 |
+| --- | --- |
+| `POST /api/login/qr/key` | `{"code":404,"message":"接口未找到！"}` |
+| `POST /api/login/qr/key?type=3` | 同 404 |
+| `POST /api/login/qrcode/create?key=…&qrimg=true` | 同 404 |
+| `POST /api/login/qrcode/unikey?type=1` | `{"code":200,"unikey":"…"}` ✅ |
+| `POST /api/login/qrcode/client/login?key=<unikey>&type=1` | `{"code":801,"message":"等待扫码"}` ✅ |
+
+**服务端不返回二维码图片**（`qrimg=true` 也是 404），所以码必须本地画。这一条把 [§8](#8-界面落点) 的界面清单里"二维码（data URL 直接喂 `Image`）"这个假设推翻了，实现改成：`qr-code-generator-cpp`（xmake 包）编码成点阵 → 传给界面用 `Canvas` 画。
+
+### 17.2 三处只有真跑才会暴露的问题
+
+| 现象 | 根因 | 修法 |
+| --- | --- | --- |
+| 面板能开、二维码区域全白 | `qrSize()` / `qrCell()` 只是普通成员函数，QML 里 `Online.qrSize` 是 `undefined`，`for` 循环一次都不进 | 给 `qrSize` 加 `Q_PROPERTY`、给 `qrCell` 加 `Q_INVOKABLE` |
+| 新码不重画（一直是旧码） | 界面只按 `QrLoginDto.session` 决定重画，而拿到 unikey 时没有换 session | `applyQrKey` 里 `qr_.session = ++qrSession_` |
+| 扫码成功却没登录 | 803 回包把 cookie 放在 `Set-Cookie` 响应头里，而 `HttpResponse` 当时只有 body | `HttpResponse` 加 `headers`（键小写）+ `decodeQrPoll(body, headers)` 合成 `MUSIC_U=…; __csrf=…` |
+
+### 17.3 凭据落地的实测
+
+- DPAPI 往返（`.test_tmp/dpapi`，独立小程序）：28 字节明文 → 落盘 272 字节密文，`load()` 回读一致，密文里搜不到明文片段，`erase` 幂等，非法 provider（`../etc`）被拒。
+- 库里不存 cookie：`sonora.sqlite` 原始字节扫 `MUSIC_U`/`__csrf` 都是 0 次；cookie 只在 `secrets/ncm.bin` 的密文里。
+- 假 cookie 真跑：粘贴 `MUSIC_U=bogus-token-123` → 3 秒后红字「这个 cookie 已经失效，请重新复制一次」（服务端 301）。
+
+### 17.4 给下一轮的教训
+
+- **QML 只能看见 `Q_PROPERTY` / `Q_INVOKABLE` / `signal`**。写 C++ 侧的"给界面用的小方法"时忘了加宏，编译期一点提示都没有，运行期只是"什么都没有"。
+- 界面靠 `session`/`revision` 这类计数去重时，**凡是会改变内容的路径都要 ++**，漏一条就是"数据对了但界面不动"。
+- 登录态要"先渲染再校验"：`restoreSession()` 先读库里的昵称把胶囊点亮，再异步打 `/api/nuser/account/get`，否则网络慢的时候用户看到的是"未登录"，会以为掉登录了。

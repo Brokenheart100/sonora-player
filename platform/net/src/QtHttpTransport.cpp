@@ -152,6 +152,14 @@ namespace sonora::platform::net
                                  response.body = payload.toStdString();
                                  response.contentType =
                                      reply->rawHeader("Content-Type").toStdString();
+                                 const auto pairs = reply->rawHeaderPairs();
+                                 response.headers.reserve(static_cast<std::size_t>(pairs.size()));
+                                 for (const auto &pair : pairs)
+                                 {
+                                     response.headers.emplace_back(
+                                         pair.first.toLower().toStdString(),
+                                         pair.second.toStdString());
+                                 }
                                  response.elapsed =
                                      std::chrono::milliseconds{timer->elapsed()};
                                  std::move(callback)(kernel::Result<c::HttpResponse>::ok(std::move(response)));

@@ -51,6 +51,25 @@ namespace sonora::online::core::provider
                                                             const std::string &level,
                                                             std::chrono::milliseconds timeout);
 
+    // 登录态校验（`/api/nuser/account/get`）。它既是"粘贴的 cookie 能不能用"的
+    // 唯一判据，也是启动时恢复会话、以及运行中判断"是不是被踢下线"的同一根探针。
+    [[nodiscard]] contracts::HttpRequest makeAccountRequest(const std::string &baseUrl,
+                                                            const std::string &cookie,
+                                                            std::chrono::milliseconds timeout);
+
+    // 扫码登录：先要 unikey，再拿 unikey 轮询状态。
+    // 明文接口里**没有**返回二维码图片的那种（`/api/login/qrcode/create` 是 404），
+    // 二维码得我们自己按 unikey 画（见 §16.5）。
+    [[nodiscard]] contracts::HttpRequest makeQrKeyRequest(const std::string &baseUrl,
+                                                         std::chrono::milliseconds timeout);
+
+    [[nodiscard]] contracts::HttpRequest makeQrPollRequest(const std::string &baseUrl,
+                                                           const std::string &unikey,
+                                                           std::chrono::milliseconds timeout);
+
+    // 二维码里真正编码的文本：手机网易云扫到的就是这个链接。
+    [[nodiscard]] std::string qrPayloadOf(const std::string &unikey);
+
     inline constexpr int kMaxSearchLimit = 100;
     inline constexpr int kMaxSongIds = 200;
 
