@@ -109,9 +109,31 @@ namespace sonora::online::adapters
         return {};
     }
 
-    kernel::Result<void> OnlineService::handle(const c::ResolveAndPlayOnline &)
+    kernel::Result<void> OnlineService::handle(const c::ResolveAndPlayOnline &command)
     {
-        return kernel::Error{kernel::ErrorCode::Unavailable, "在线播放还没接通（下一步 R3）"};
+        if (command.songIds.empty())
+        {
+            return kernel::Error{kernel::ErrorCode::InvalidArgument, "没有可播放的曲目"};
+        }
+
+        // 单批上限 kMaxSongIds：一次取 200 首的地址是 R0 实测能跑通的形状，
+        // 超过的部分先不取（R3 只做"点一首放整页"，队列超长时后面的进队列再补）。
+        std::vector<std::string> ids;
+        const std::size_t count =
+            std::min<std::size_t>(command.songIds.size(), static_cast<std::size_t>(core::provider::kMaxSongIds));
+        ids.reserve(count);
+        for (std::size_t index = 0; index < count; ++index)
+        {
+            ids.push_back(command.songIds[index]);
+        }
+
+        const std::int32_t startIndex = command.startIndex;
+        provider_.startResolveUrls(ids, [this, startIndex](core::codec::UrlResult result) {
+            // worker 线程：只入队，不碰状态表（那唯一的 SQLite 连接在主线程）。
+            std::lock_guard<std::mutex> lock(playbackMutex_);
+            playbackPending_.push_back(PendingPlayback{std::move(result), startIndex});
+        });
+        return {};
     }
 
     kernel::Result<void> OnlineService::handle(const c::SignInWithCookie &command)
@@ -154,6 +176,53 @@ namespace sonora::online::adapters
     kernel::Result<c::OnlinePageDto> OnlineService::handle(const c::FetchOnlineRows &query)
     {
         return kernel::Result<c::OnlinePageDto>::ok(jobs_.page(query.token, query.offset, query.limit));
+    }
+
+    kernel::Result<c::OnlinePlaybackDto> OnlineService::handle(const c::GetOnlinePlayback &)
+    {
+        drainPlayback();
+        return kernel::Result<c::OnlinePlaybackDto>::ok(playback_);
+    }
+
+    void OnlineService::drainPlayback()
+    {
+        std::vector<PendingPlayback> incoming;
+        {
+            std::lock_guard<std::mutex> lock(playbackMutex_);
+            incoming.swap(playbackPending_);
+        }
+        if (incoming.empty())
+        {
+            return;
+        }
+
+        // 一次只认最后一份：用户可能连点了好几首，前面的结果已经没有意义。
+        PendingPlayback item = std::move(incoming.back());
+        ++playbackRevision_;
+
+        if (!item.result.ok)
+        {
+            c::OnlinePlaybackDto next;
+            next.revision = playbackRevision_;
+            next.error = item.result.error;
+            next.startIndex = item.startIndex;
+            playback_ = std::move(next);
+            return;
+        }
+
+        c::OnlinePlaybackDto next;
+        next.revision = playbackRevision_;
+        next.startIndex = item.startIndex;
+        next.entries.reserve(item.result.entries.size());
+        for (const auto &entry : item.result.entries)
+        {
+            c::OnlinePlaybackEntry out;
+            out.songId = entry.songId;
+            out.url = entry.url;
+            out.bitrateKbps = entry.bitrate;
+            next.entries.push_back(std::move(out));
+        }
+        playback_ = std::move(next);
     }
 
     kernel::Result<c::SourceStatusDto> OnlineService::handle(const c::GetSourceStatus &) const

@@ -321,8 +321,11 @@ TEST_CASE("播放次数：TrackFinished 事件累计进 play_count，重启后�
     events.publish(::sonora::contracts::TrackFinished{1, 1700000500});
     // 不存在的曲目：记不上，但不许抛、不许崩（边放边删是允许的）。
     events.publish(::sonora::contracts::TrackFinished{999, 1700000900});
+    // 在线直链（trackId == 0）：没有本地行可更新，但这不是错误。
+    // 早退在 recorder 里做，于是日志里不会每放一首在线歌就留一条 NotFound。
+    events.publish(::sonora::contracts::TrackFinished{0, 1700001200});
 
-    CHECK(stored == 2);
+    CHECK(stored == 3);
     CHECK(missing == 1);
 
     const auto plays = stack.connection.queryInt("SELECT play_count FROM tracks WHERE id = 1");

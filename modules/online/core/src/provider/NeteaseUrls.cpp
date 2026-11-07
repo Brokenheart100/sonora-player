@@ -52,6 +52,33 @@ namespace sonora::online::core::provider
         return request;
     }
 
+    contracts::HttpRequest makeSongUrlRequest(const std::string &baseUrl,
+                                              const std::vector<std::string> &songIds,
+                                              const std::string &level,
+                                              std::chrono::milliseconds timeout)
+    {
+        // ids 是 JSON 数组形状的参数：ids=[186016,108914]。用它而不是 ids=186016
+        // 是因为后者只能取一首，200 首要发 200 个请求。
+        std::string ids = "[";
+        const std::size_t limit = std::min<std::size_t>(songIds.size(), static_cast<std::size_t>(kMaxSongIds));
+        for (std::size_t index = 0; index < limit; ++index)
+        {
+            if (index != 0)
+            {
+                ids.push_back(',');
+            }
+            ids += songIds[index];
+        }
+        ids.push_back(']');
+
+        contracts::HttpRequest request;
+        request.method = contracts::HttpMethod::Get;
+        request.transferTimeout = timeout;
+        request.url = baseUrl + "/api/song/enhance/player/url/v1?ids=" + ids + "&level=" + level +
+                      "&encodeType=aac";
+        return request;
+    }
+
     std::vector<std::pair<std::string, std::string>> defaultHeaders(const std::string &cookie)
     {
         std::vector<std::pair<std::string, std::string>> headers;

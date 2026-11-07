@@ -348,6 +348,8 @@ int main(int argc, char *argv[])
             [&onlineService](const GetQrLoginState &query) { return onlineService.handle(query); });
         queries.on<GetMyPlaylists, std::vector<PlaylistDto>>(
             [&onlineService](const GetMyPlaylists &query) { return onlineService.handle(query); });
+        queries.on<GetOnlinePlayback, OnlinePlaybackDto>(
+            [&onlineService](const GetOnlinePlayback &query) { return onlineService.handle(query); });
     }
 
     audio::FfmpegOutput audioOutput;

@@ -233,4 +233,59 @@ namespace sonora::online::core::codec
         return out;
     }
 
+    UrlResult decodeSongUrls(const std::string &body)
+    {
+        UrlResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "取播放地址的响应不是 JSON"};
+            return out;
+        }
+
+        const json &codeNode = member(root, "code");
+        if (codeNode.is_number() || codeNode.is_string())
+        {
+            const auto code = static_cast<int>(asInt(codeNode));
+            if (code != 200)
+            {
+                out.error = mapApiCode(code);
+                return out;
+            }
+        }
+
+        const json &data = member(root, "data");
+        if (data.is_array())
+        {
+            out.entries.reserve(data.size());
+            for (const auto &item : data)
+            {
+                if (!item.is_object())
+                {
+                    continue;
+                }
+                // 每首自己有 code：200 才是真能播。404 是版权下架、-110 是会员曲，
+                // 整批里死一两首是常态，跳过而不是让整次播放失败。
+                const auto itemCode = static_cast<int>(asInt(member(item, "code")));
+                if (itemCode != 200)
+                {
+                    continue;
+                }
+                const auto url = asText(member(item, "url"));
+                if (url.empty())
+                {
+                    continue;
+                }
+                UrlEntry entry;
+                entry.songId = asText(member(item, "id"));
+                entry.url = url;
+                entry.bitrate = static_cast<std::int32_t>(asInt(member(item, "br")) / 1000);
+                out.entries.push_back(std::move(entry));
+            }
+        }
+
+        out.ok = true;
+        return out;
+    }
+
 } // namespace sonora::online::core::codec

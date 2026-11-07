@@ -48,6 +48,8 @@ namespace sonora::platform::audio
 
         // ── IPositionStream ─────────────────────────────────────────────────────
         std::int64_t positionMs() const noexcept override;
+        // 网络流才有意义：avio_size / avio_tell 算出来的已缓冲百分比。本地文件返回 -1。
+        std::int32_t bufferedPercent() const noexcept override;
 
     private:
         struct Impl;

@@ -107,6 +107,24 @@ Item {
             onCommitted: v => Player.seekFraction(v)
         }
 
+        // 缓冲条：只在网络流（Player.buffered >= 0）时压在进度条底下，
+        // 本地文件不画。故意细一档，不跟播放进度抢视觉。
+        // 外面套一个 0 高的 Item：Column 内部的子项不许用 anchors，
+        // 直接给 Rectangle 写 anchors.top 会让整条 Column 失效（QML 只在运行时报）。
+        Item {
+            width: parent.width
+            height: 0
+
+            Rectangle {
+                width: parent.width * (Player.buffered > 0 ? Math.min(Player.buffered, 100) / 100 : 0)
+                height: 2
+                y: -3
+                color: Theme.inkSoft
+                opacity: 0.45
+                visible: Player.buffered >= 0
+            }
+        }
+
         Row {
             spacing: 8
             Text {
@@ -122,8 +140,10 @@ Item {
                 font.pixelSize: Theme.textSmall
             }
             Text {
-                // 只在真出错时露出来，平时不占视觉
-                visible: Player.stateText.indexOf("失败") >= 0
+                // 只在真出错时露出来，平时不占视觉。
+                // 判断条件必须是 Player.failed（枚举派生的布尔），而不是
+                // stateText 里有没有"失败"两个字——标签写的是"出错"，旧条件永远 false。
+                visible: Player.failed
                 text: Player.stateText
                 color: Theme.accent
                 font.family: Theme.fontText

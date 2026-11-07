@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "sonora/online/contracts/Executor.h"
 #include "sonora/online/contracts/Transport.h"
@@ -25,6 +26,8 @@ namespace sonora::online::adapters
     {
     public:
         using Callback = std::function<void(core::codec::DecodeResult)>;
+        // 取播放地址：一批最多 kMaxSongIds 首，返回的是"能播的那些"。
+        using UrlCallback = std::function<void(core::codec::UrlResult)>;
 
         NeteaseProvider(contracts::IHttpTransport &transport, contracts::IExecutor &executor,
                         std::string baseUrl = core::provider::kNeteaseBaseUrl);
@@ -34,6 +37,9 @@ namespace sonora::online::adapters
 
         // 返回 requestId，取消时原样交回 `cancel()`。
         std::uint64_t startSearch(core::provider::SearchParams params, Callback onDone);
+
+        // 取一批曲目的直链。调用方负责分批（≤ kMaxSongIds）与串行化。
+        std::uint64_t startResolveUrls(const std::vector<std::string> &songIds, UrlCallback onDone);
 
         void cancel(std::uint64_t requestId);
 

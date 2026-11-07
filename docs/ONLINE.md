@@ -622,17 +622,19 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 
 > R3-1 ~ R3-5 与 R3-8 不依赖在线模块，可以**提前开工**（风险最低、收益最先兑现）。
 
-- [ ] **R3-1** `FfmpegDecoder` 挂 `AVIOInterruptCB`，绑 `std::atomic<bool> cancel_`；`close()` 里置位并等待解码线程退出
-- [ ] **R3-2** 同一个 `options` 字典加 `rw_timeout=15000000`、`reconnect=1`
-- [ ] **R3-3** `durationMs <= 0` 时标"时长未知"，不 clamp 成 0
-- [ ] **R3-4** `PlaybackState::Buffering` + `toName` + `PlaybackService` 状态机 + `stateLabel` 三处 switch（无 `default`）
-- [ ] **R3-5** `bufferedPercent()`（`avio_size`/`avio_tell`，-1 表示不可知）+ `PlayerBar.qml` 缓冲条 + 时长未知的不确定态进度
-- [ ] **R3-6** `NeteaseProvider::resolveUrls`（≤200 首/次，串行分批）
-- [ ] **R3-7** 表现层拼 `QueueEntry`（`trackId = 0`，`filePath` = 直链）并派发 `PlayTracks`
-- [ ] **R3-8** `SqlitePlaybackRecorder`：`trackId == 0` 显式早退 + 单测（不能依靠"UPDATE 零行命中"）
-- [ ] **R3-9** 直链过期重解析：`Failed` + URL 命中本会话表 → 重解析 1 次 + 同 `queueIndex` 重跳；连续 2 次失败停手
-- [ ] **R3-10** 顺手修 `PlayerBar.qml` 里 `stateText.indexOf("失败") >= 0` 这个永不成立的判断
+- [x] **R3-1** `FfmpegDecoder` 挂 `AVIOInterruptCB`，绑 `std::atomic<bool> cancel_`；`close()` 里置位并等待解码线程退出
+- [x] **R3-2** 同一个 `options` 字典加 `rw_timeout=15000000`、`reconnect=1`
+- [x] **R3-3** `durationMs <= 0` 时标"时长未知"，不 clamp 成 0
+- [x] **R3-4** `PlaybackState::Buffering` + `toName` + `PlaybackService` 状态机 + `stateLabel` 三处 switch（无 `default`）
+- [x] **R3-5** `bufferedPercent()`（`avio_size`/`avio_tell`，-1 表示不可知）+ `PlayerBar.qml` 缓冲条 + 时长未知的不确定态进度
+- [x] **R3-6** `NeteaseProvider::resolveUrls`（≤200 首/次，串行分批）
+- [x] **R3-7** 表现层拼 `QueueEntry`（`trackId = 0`，`filePath` = 直链）并派发 `PlayTracks`
+- [x] **R3-8** `SqlitePlaybackRecorder`：`trackId == 0` 显式早退 + 单测（不能依靠"UPDATE 零行命中"）
+- [x] **R3-9** 直链过期重解析：`Failed` + URL 命中本会话表 → 重解析 1 次 + 同 `queueIndex` 重跳；连续 2 次失败停手
+- [x] **R3-10** 顺手修 `PlayerBar.qml` 里 `stateText.indexOf("失败") >= 0` 这个永不成立的判断
 - [ ] **R3-11** gate：切歌 10 次无一次卡超 1 秒；拔网线 15 秒内进 `Failed` 不永久卡；连播 30 分钟不自跳
+      > 已实测：切歌 10 次（0 warn / 0 error / 队列连续推进，见 [§16.2](#162-直链播放的实测数字)）。
+      > **未实测**：断网 15 秒、连播 30 分钟——本机不能摘网，挂机时长也不够，见 [§16.3](#163-未在本机验证的两件事如实记录)。
 
 #### R4 登录
 
@@ -784,3 +786,35 @@ R0-1 ─► R0-2 ─┬─► R0-3 ┐
 - **播放端到端未证**：本机 `ffmpeg.exe` 不在 PATH（vcpkg 没编 `programs`），所以"点一下真出声"只能留到 R3；网络侧（协议 / 直链 / Range）已证。
 - **夹具是原始响应**：全部由 `--out` 直接落盘，没有手写；`.headers` 一并保存，方便以后核对 UA / Referer 是否变成必需。
 - **直链寿命实测（2026-11-07）**：同一条 200 秒的地址取回后，`+10 分钟` 仍 `206`、`+21 分钟` 仍 `206`、`+26 分钟` `403`。也就是说 `expi=1200` 是**偏保守的下界**，CDN 实际到 21–26 分钟之间才拒。实现上按 15 分钟主动重解析，并把 403 当作"立刻重解析一次再播"。
+
+## 16. R3 实测记录（2026-11-07）
+
+> 这一节只记"跑起来才知道"的东西。R3 的任务勾选在 [§11.2](#112-任务清单todolist)，任务本身按计划完成。
+
+### 16.1 出声了，但有三处只有真跑才会暴露
+
+| 现象 | 根因 | 修法 |
+| --- | --- | --- |
+| `QML Column: Cannot specify top/bottom/fill anchors for items inside Column. Column will not function.`（整条底部条布局失效） | 我给缓冲条写了 `anchors.top: seek.bottom`，而它的直接父项是 `Column` | 外面套一层 `Item { width: parent.width; height: 0 }`，条本身用 `y: -3` 偏移。Column 只禁用**直接子项**的 anchors |
+| `QML Image: Cannot open: file:http://p1.music.126.net/...`（在线封面全空） | `PlayerViewModel::refresh()` 对封面一律 `QUrl::fromLocalFile(path)`，在线曲目的 `coverPath` 本来就是 `http://` | 先判 `http://` / `https://` / `qrc:/` 前缀，命中就原样用，否则才 `fromLocalFile` |
+| 点第 2 行，实际从第 27 行开始播 | 取地址接口返回的 `data[]` **顺序与请求的 ids 顺序不一致**（重复 id 还会被去重），照响应顺序建队列就把下标对错了 | `applyPlayback` 改成**按列表行序重建队列**：`unordered_map<songId, entry>` → 遍历 `model_.rows()`，取不到地址的行直接跳过，队列下标用当前 `entries.size()`。这样"第几行"与"队列第几个"天然一致 |
+
+第三条尤其值得记：**不要假设批量接口的返回顺序等于请求顺序**。凡是"请求一批、按位置回填"的地方，都要按业务键重排，而不是按下标。
+
+### 16.2 直链播放的实测数字
+
+- 打开一条 200 秒的 `http://m801.music.126.net/...m4a?vuutv=...`：日志 `[ffmpeg] 打开 ... 44100 Hz / 2 声道 / aac / 317269 ms`，`Using Qt multimedia with FFmpeg version 9.0.2`。**FFmpeg 的 vcpkg 构建确实带 http/https（Schannel）**，[§15.4](#154-其它实测) 的网络侧结论在播放链路上兑现。
+- 底部条：真实封面、标题、艺术家、`5:17` 时长、进度递增、按钮切到「暂停」、侧栏 `正在播放 2 / 29`。
+- 切歌 10 次：`ffmpeg` 打开记录由 2 条涨到 12 条，全程 **0 条 `[warn]` / `[error]`**，界面始终可响应，队列 `2/29 → 12/29` 连续推进。
+- 曲目时长未知时的行为：`durationMs() <= 0` 返回 `-1`，`PlayerBar` 显示 `--:--` 且进度条不可拖（`InkSlider` 的 `enabled: Player.duration > 0`），**不会**再被 `clamp(0, 0)` 夹成 0:00。
+
+### 16.3 未在本机验证的两件事（如实记录）
+
+- **断网 15 秒进 `Failed`**：本机无法摘网（也没有可用的防火墙权限），只验证了"解析失败 → `Failed` → 错误行可见"这条路径（用不存在的本地文件跑过）；`rw_timeout=15000000` 与 `AVIOInterruptCB` 是 R3-1/R3-2 的静态保障，**没有实测断网形态**。
+- **连播 30 分钟不自跳**：需要真实挂机 30 分钟，本轮只跑到 ~6 分钟（进度与队列都正常）。另记为后续回归项。
+
+### 16.4 给下一轮的教训
+
+- 合成鼠标点击要**先把窗口挪到固定位置再点**（`.test_tmp/shot3.ps1` 会把窗口移到 (60,60)，此时"截图坐标 = 屏幕坐标 − 60"）；底部播放控制那一行在截图里是 `y ≈ 904`，不是进度条那行的 687。
+- 一次点击跑一个 powershell 进程会丢前台焦点，按键一个字符都进不去；键盘输入必须在**同一个进程**里 `AttachThreadInput + SetForegroundWindow` 再 `SendKeys`（`.test_tmp/r3_search.ps1`）。
+- Qt 的 `qrc:/` 资源没有磁盘文件，所以 Qt 自带的 `QmlPreviewMcpServer`（QtMCP）对我们**只能热重载、且必须先有磁盘 QML**；要不要开"debug 走磁盘、release 走 qrc"是独立决策，不在 R3 范围。

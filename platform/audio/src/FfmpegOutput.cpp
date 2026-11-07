@@ -186,9 +186,15 @@ struct FfmpegOutput::Impl {
 
     void fail(const std::string& message)
     {
-        qWarning("[ffmpeg] %s", message.c_str());
         decoderOpen.store(false, std::memory_order_release);
         playing.store(false);
+        if (decoder.cancelled()) {
+            // 读被打断 = 用户切歌/停止/关窗，不是文件坏了。安静回到 Idle，
+            // 别弹错误、也别写 warn —— 否则每次切歌都会在日志里留下一条假的失败。
+            emitState(PlaybackState::Idle);
+            return;
+        }
+        qWarning("[ffmpeg] %s", message.c_str());
         emitState(PlaybackState::Failed);
         emitError(message);
     }
@@ -318,6 +324,9 @@ struct FfmpegOutput::Impl {
         using clock = std::chrono::steady_clock;
         clock::time_point endReachedAt{};
         bool endNoticed = false;
+        // 解码这一轮一点数据都没产出、又不是播完 —— 从哪一刻开始的。
+        // 网络读在等数据时就是这样（av_read_frame 内部阻塞），本地文件几乎不会。
+        clock::time_point stallSince{};
 
         while (running.load(std::memory_order_acquire)) {
             // 1) 有没有待打开的文件
@@ -378,6 +387,21 @@ struct FfmpegOutput::Impl {
                 writtenSamples.fetch_add(static_cast<std::int64_t>(pumped.value()),
                                          std::memory_order_acq_rel);
                 endNoticed = false;
+                stallSince = clock::time_point{};
+                if (state.load(std::memory_order_relaxed) == PlaybackState::Buffering) {
+                    // 数据回来了：从"缓冲中"回到"播放中"，界面上的提示随之消失。
+                    emitState(PlaybackState::Playing);
+                }
+            } else if (!decoder.atEnd()) {
+                const auto now = clock::now();
+                if (stallSince == clock::time_point{}) {
+                    stallSince = now;
+                } else if (now - stallSince > std::chrono::milliseconds(400)
+                           && state.load(std::memory_order_relaxed) == PlaybackState::Playing) {
+                    // 连续 400ms 没解出数据，又没到结尾：网络在等。报"缓冲中"，
+                    // 而不是让界面一直显示"播放中"（用户听到的是卡住）。
+                    emitState(PlaybackState::Buffering);
+                }
             }
 
             if (decoder.atEnd() && ring.empty()) {
@@ -411,6 +435,11 @@ struct FfmpegOutput::Impl {
 
     void stopWorker()
     {
+        // 顺序很重要：先打断，再清 running。
+        // av_read_frame / avformat_open_input 在网络上是阻塞的，不打断的话
+        // join() 会一直等（http 没设 rw_timeout 时能等十几秒以上），
+        // 表现就是"切歌时界面卡住、只能杀进程"。
+        decoder.cancel();
         running.store(false, std::memory_order_release);
         wake.notify_all();
         readyCv.notify_all();
@@ -557,7 +586,16 @@ std::int32_t FfmpegOutput::volume() const noexcept
 
 std::int64_t FfmpegOutput::durationMs() const noexcept
 {
-    return impl_->durationMs.load();
+    const std::int64_t value = impl_->durationMs.load();
+    // 0 在界面上会被当成"零长度的歌"。用 -1 明确表达"时长未知"（网络流、
+    // 没写总长的容器），formatClock 对 <= 0 一律显示 --:--。
+    return value > 0 ? value : -1;
+}
+
+std::int32_t FfmpegOutput::bufferedPercent() const noexcept
+{
+    // 解码线程在每次读到 packet 后刷新这个原子；本地文件会是 -1（无意义）。
+    return impl_->decoder.bufferedPercent();
 }
 
 PlaybackState FfmpegOutput::state() const noexcept

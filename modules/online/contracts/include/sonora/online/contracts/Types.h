@@ -138,4 +138,22 @@ namespace sonora::online::contracts
         std::string coverUrl;
     };
 
+    // 一次解析出来的可播放直链。R3 只给表现层用：它把 url 塞进 QueueEntry.filePath，
+    // 再连同 trackId=0 一起派发 PlayTracks —— 播放层不需要知道"在线"这回事。
+    struct OnlinePlaybackEntry
+    {
+        std::string songId;
+        std::string url;
+        std::int32_t bitrateKbps{0};
+    };
+
+    // revision 变了才重建队列：表现层按它去重，避免每次轮询都把队列重装一遍。
+    struct OnlinePlaybackDto
+    {
+        std::uint64_t revision{0};
+        std::vector<OnlinePlaybackEntry> entries;
+        std::size_t startIndex{0};
+        OnlineError error;
+    };
+
 } // namespace sonora::online::contracts

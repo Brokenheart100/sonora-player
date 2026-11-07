@@ -85,6 +85,58 @@ namespace sonora::online::adapters
         return requestId;
     }
 
+    std::uint64_t NeteaseProvider::startResolveUrls(const std::vector<std::string> &songIds,
+                                                    UrlCallback onDone)
+    {
+        const std::uint64_t requestId = nextId_.fetch_add(1, std::memory_order_relaxed);
+        const std::string baseUrl = baseUrl_;
+        const std::string cookie = cookie_;
+
+        executor_.post([this, requestId, songIds, baseUrl, cookie, onDone = std::move(onDone)] {
+            auto request = provider::makeSongUrlRequest(baseUrl, songIds, "exhigh",
+                                                        std::chrono::milliseconds{6000});
+            request.headers = provider::defaultHeaders(cookie);
+
+            transport_.send(requestId, request,
+                            [onDone](kernel::Result<c::HttpResponse> response) {
+                                codec::UrlResult out;
+                                if (!response)
+                                {
+                                    const kernel::Error &error = response.error();
+                                    out.error.code = error.code();
+                                    out.error.message = error.message();
+                                    out.error.retryable = error.code() == kernel::ErrorCode::Timeout ||
+                                                          error.code() == kernel::ErrorCode::Unavailable;
+                                    if (onDone)
+                                    {
+                                        onDone(std::move(out));
+                                    }
+                                    return;
+                                }
+
+                                const c::HttpResponse &http = response.value();
+                                if (http.statusCode != 200)
+                                {
+                                    out.error.code = http.statusCode >= 500 || http.statusCode == 429
+                                                         ? kernel::ErrorCode::Unavailable
+                                                         : kernel::ErrorCode::Upstream;
+                                    out.error.message = "网易云返回 HTTP " + std::to_string(http.statusCode);
+                                    out.error.retryable = out.error.code == kernel::ErrorCode::Unavailable;
+                                }
+                                else
+                                {
+                                    out = codec::decodeSongUrls(http.body);
+                                }
+                                if (onDone)
+                                {
+                                    onDone(std::move(out));
+                                }
+                            });
+        });
+
+        return requestId;
+    }
+
     void NeteaseProvider::cancel(std::uint64_t requestId)
     {
         // 取消也必须回到 worker 线程做：`abort()` 作用在 QNetworkReply 上，

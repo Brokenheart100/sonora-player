@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <string_view>
@@ -51,12 +52,34 @@ namespace sonora::platform::audio
         // 帧/块边界，误差通常 < 50ms，播放器不需要更准。
         kernel::Result<std::int64_t> seekTo(std::int64_t ms);
 
+        // 从**别的线程**打断一个正卡在网络读上的 open/pump。
+        //
+        // 为什么需要它：avformat_open_input / av_read_frame 在 http 上是阻塞的，
+        // CDN 抖一下就可能卡十几秒。切歌、停止、关窗时如果不打断，解码线程会一直
+        // 卡在里面，join() 等于挂死整个进程（只能杀）。FFmpeg 给的办法是
+        // AVIOInterruptCB：读循环每轮问一次"要不要放弃"。
+        //
+        // 幂等，可以在任意线程重复调。打断之后 cancelled() 为真，
+        // 调用方据此把它当成"用户取消"而不是"文件坏了"。
+        void cancel() noexcept;
+        [[nodiscard]] bool cancelled() const noexcept { return cancel_.load(std::memory_order_acquire); }
+
+        // 0..100 的"容器读到哪了"，**-1 表示不可知**（本地文件或拿不到总大小）。
+        // 由解码线程在每次 pump 之后刷新，别的线程读的是原子快照。
+        [[nodiscard]] std::int32_t bufferedPercent() const noexcept {
+            return bufferedPercent_.load(std::memory_order_relaxed);
+        }
+
         // 从 seek 点算起已经产出的采样数（不是帧），供输出端推导播放位置。
         std::int64_t samplesProduced() const noexcept { return samplesProduced_; }
 
     private:
         kernel::Result<bool> decodeOneFrame(); // false = 暂时没有更多帧
         void convertFrame() noexcept;
+        void updateBufferedPercent() noexcept;
+
+        // FFmpeg 的回调签名是 int(*)(void*)，返回非 0 表示"别读了"。
+        static int interruptCallback(void *opaque) noexcept;
 
         // 不透明指针：公开头里一个 FFmpeg 类型都不出现，否则下游为了 include 这个头
         // 就得拿到 libav* 的 include 路径（M3 的 QAudioOutput 坑就是这个形状）。
@@ -74,6 +97,10 @@ namespace sonora::platform::audio
         std::int64_t seekTargetMs_ = 0;
         bool seekPending_ = false;
         std::int64_t skipSamples_ = 0;
+
+        // 跨线程的两个原子：一个打断阻塞读，一个报缓冲进度。
+        std::atomic<bool> cancel_{false};
+        std::atomic<std::int32_t> bufferedPercent_{-1};
     };
 
 } // namespace sonora::platform::audio

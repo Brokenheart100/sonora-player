@@ -44,4 +44,10 @@ namespace sonora::online::contracts
         std::string provider{"ncm"};
     };
 
+    // → OnlinePlaybackDto
+    // 表现层 50ms 轮询里顺带问一次；revision 变了才真的重建播放队列。
+    struct GetOnlinePlayback
+    {
+    };
+
 } // namespace sonora::online::contracts

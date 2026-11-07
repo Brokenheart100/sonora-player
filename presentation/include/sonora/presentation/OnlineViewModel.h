@@ -109,6 +109,8 @@ namespace sonora::presentation
         void onTick();
         void refreshStatus();
         void refreshRows();
+        void applyPlayback(const online::contracts::OnlinePlaybackDto &playback);
+        void rescanFailedPlayback();
         void dispatchQuietly(const std::function<kernel::Result<void>()> &action);
 
         kernel::ICommandBus &commands_;
@@ -120,6 +122,14 @@ namespace sonora::presentation
 
         std::uint64_t token_ = 0;
         std::uint64_t seenRevision_ = 0;
+        // 取地址回来的那批，靠 revision 去重：没变就不重建播放队列。
+        std::uint64_t seenPlaybackRevision_ = 0;
+        // 点的是哪一首。地址回来时按 songId 找回它在队列里的位置——
+        // 中间有几首取不到地址会被跳过，原来的下标不能直接用。
+        std::string playbackSongId_;
+        // 直链过期重解析：记住最后播的那首，连续失败两次就停手。
+        std::string lastPlaybackSongId_;
+        int reResolveAttempts_ = 0;
         QString keywords_;
 
         QString statusText_ = QStringLiteral("输入关键词，回车搜索");

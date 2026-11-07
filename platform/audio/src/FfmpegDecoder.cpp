@@ -88,24 +88,86 @@ void FfmpegDecoder::close() noexcept
     pendingCount_ = 0;
     drained_ = false;
     samplesProduced_ = 0;
+    bufferedPercent_.store(-1, std::memory_order_relaxed);
     format_ = Format{};
     impl_->reset();
+}
+
+void FfmpegDecoder::cancel() noexcept
+{
+    cancel_.store(true, std::memory_order_release);
+}
+
+int FfmpegDecoder::interruptCallback(void *opaque) noexcept
+{
+    const auto *self = static_cast<const FfmpegDecoder *>(opaque);
+    return (self != nullptr && self->cancelled()) ? 1 : 0;
+}
+
+void FfmpegDecoder::updateBufferedPercent() noexcept
+{
+    if (impl_->formatContext == nullptr || impl_->formatContext->pb == nullptr) {
+        bufferedPercent_.store(-1, std::memory_order_relaxed);
+        return;
+    }
+    // 本地文件 avio_size 能拿到文件大小，但那没有意义（整首都在磁盘上），
+    // 所以只在真能算出"读了多少 / 一共多少"的时候才报。
+    const std::int64_t size = avio_size(impl_->formatContext->pb);
+    if (size <= 0) {
+        bufferedPercent_.store(-1, std::memory_order_relaxed);
+        return;
+    }
+    const std::int64_t pos = avio_tell(impl_->formatContext->pb);
+    if (pos < 0) {
+        bufferedPercent_.store(-1, std::memory_order_relaxed);
+        return;
+    }
+    const auto percent = static_cast<std::int32_t>(pos * 100 / size);
+    bufferedPercent_.store(std::clamp<std::int32_t>(percent, 0, 100), std::memory_order_relaxed);
 }
 
 kernel::Result<FfmpegDecoder::Format> FfmpegDecoder::open(std::string_view utf8Path)
 {
     close();
 
+    // 新的一次打开，先把上一次的取消标记清掉，否则一进来就"已取消"。
+    cancel_.store(false, std::memory_order_release);
+    bufferedPercent_.store(-1, std::memory_order_relaxed);
+
     AVDictionary* options = nullptr;
     // 默认的探测会很耐心（几 MB、几秒），本地文件不需要——它只会让"双击一首歌"
     // 感觉慢半拍。0.5s 对本地音频够用，网络流才会需要更多。
     av_dict_set(&options, "probesize", "262144", 0);
     av_dict_set(&options, "analyzeduration", "500000", 0);
+    // 网络流的三道保险：
+    //   rw_timeout      —— 15 秒没有任何进展就当超时（默认是"永远等"）
+    //   reconnect       —— 连接被对端掐掉时自动重连
+    //   reconnect_streamed —— 对"边下边播"的流也允许重连（默认只对 seekable 生效）
+    // 本地文件不认这些键，FFmpeg 会静默忽略。
+    av_dict_set(&options, "rw_timeout", "15000000", 0);
+    av_dict_set(&options, "reconnect", "1", 0);
+    av_dict_set(&options, "reconnect_streamed", "1", 0);
+    av_dict_set(&options, "reconnect_delay_max", "5", 0);
+
+    // 中断回调必须在 avformat_open_input **之前**挂上：http 建连（DNS、握手、
+    // 等待首包）本身就可能是卡住的地方，挂晚了就白设。
+    impl_->formatContext = avformat_alloc_context();
+    if (impl_->formatContext == nullptr) {
+        av_dict_free(&options);
+        return makeError(kernel::ErrorCode::Internal, "分配格式上下文失败");
+    }
+    impl_->formatContext->interrupt_callback.callback = &FfmpegDecoder::interruptCallback;
+    impl_->formatContext->interrupt_callback.opaque = this;
 
     const std::string path{utf8Path};
     int ret = avformat_open_input(&impl_->formatContext, path.c_str(), nullptr, &options);
     av_dict_free(&options);
     if (ret < 0) {
+        if (cancelled()) {
+            // 用户切歌/关窗打断的，不是文件坏了：别报 NotFound，也别打日志吓人。
+            impl_->reset();
+            return makeError(kernel::ErrorCode::Internal, "已取消");
+        }
         logError("avformat_open_input", ret);
         return makeError(kernel::ErrorCode::NotFound, "打不开文件：" + path);
     }
@@ -203,6 +265,7 @@ kernel::Result<FfmpegDecoder::Format> FfmpegDecoder::open(std::string_view utf8P
     qInfo("[ffmpeg] 打开 %s：%d Hz / %d 声道 / %s / %lld ms",
           path.c_str(), format_.sampleRate, format_.channels,
           codec->name, static_cast<long long>(format_.durationMs));
+    updateBufferedPercent();
     return kernel::Result<Format>::ok(format_);
 }
 
@@ -231,11 +294,17 @@ kernel::Result<bool> FfmpegDecoder::decodeOneFrame()
             avcodec_send_packet(impl_->codecContext, nullptr);
             continue;
         }
+        if (ret == AVERROR_EXIT || cancelled()) {
+            // 中断回调把读打断了：这是"用户不想听了"，不是数据坏了。
+            drained_ = true;
+            return kernel::Result<bool>::ok(false);
+        }
         if (ret < 0) {
             logError("av_read_frame", ret);
             drained_ = true;
             return kernel::Result<bool>::ok(false);
         }
+        updateBufferedPercent();
         if (impl_->packet->stream_index != impl_->streamIndex) {
             av_packet_unref(impl_->packet);
             continue;   // 封面图之类，不是音轨

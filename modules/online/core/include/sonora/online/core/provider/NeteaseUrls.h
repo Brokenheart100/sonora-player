@@ -42,6 +42,16 @@ namespace sonora::online::core::provider
     // 空 cookie 时不会产出 Cookie 头。
     [[nodiscard]] std::vector<std::pair<std::string, std::string>> defaultHeaders(const std::string &cookie);
 
+    // 取播放地址。一次最多 kMaxSongIds 首（R0 实测 200 首可行，这里留余量），
+    // 多出来的由调用方分批串行发。
+    // level 匿名最高到 exhigh（256 kbps）：请求 lossless 会被降级回 exhigh，
+    // 所以默认就写 exhigh，省得以为是权限问题。
+    [[nodiscard]] contracts::HttpRequest makeSongUrlRequest(const std::string &baseUrl,
+                                                            const std::vector<std::string> &songIds,
+                                                            const std::string &level,
+                                                            std::chrono::milliseconds timeout);
+
     inline constexpr int kMaxSearchLimit = 100;
+    inline constexpr int kMaxSongIds = 200;
 
 } // namespace sonora::online::core::provider

@@ -39,6 +39,11 @@ namespace sonora::presentation
         Q_PROPERTY(QString positionText READ positionText NOTIFY positionChanged)
         Q_PROPERTY(QString durationText READ durationText NOTIFY positionChanged)
         Q_PROPERTY(double progress READ progress NOTIFY positionChanged)
+        // 已缓冲百分比：网络流是 0..100，本地文件是 -1（不可知，界面别画缓冲条）。
+        Q_PROPERTY(int buffered READ buffered NOTIFY positionChanged)
+        // 真的出错了。界面不要用 stateText 里有没有"失败"两个字来判断——
+        // 那种判断改一次文案就静默失效（之前就是这么坏的）。
+        Q_PROPERTY(bool failed READ failed NOTIFY stateChanged)
         Q_PROPERTY(int volume READ volume NOTIFY volumeChanged)
         // 播放模式用**标签**给界面（"顺序"/"循环"/"单曲"/"随机"），
         // 不把枚举名漏到 QML 里：哪天加一种模式，界面不用跟着改字符串。
@@ -62,6 +67,8 @@ namespace sonora::presentation
         [[nodiscard]] QString positionText() const { return positionText_; }
         [[nodiscard]] QString durationText() const { return durationText_; }
         [[nodiscard]] double progress() const { return progress_; }
+        [[nodiscard]] int buffered() const { return buffered_; }
+        [[nodiscard]] bool failed() const { return failed_; }
         [[nodiscard]] int volume() const { return volume_; }
         [[nodiscard]] QString modeLabel() const { return modeLabel_; }
         [[nodiscard]] QVariantList queue() const { return queue_; }
@@ -115,6 +122,8 @@ namespace sonora::presentation
         bool playing_ = false;
         int volume_ = 100;
         double progress_ = 0.0;
+        int buffered_ = -1;
+        bool failed_ = false;
 
         std::int64_t durationMs_ = 0;
         std::int64_t lastPositionMs_ = -1;

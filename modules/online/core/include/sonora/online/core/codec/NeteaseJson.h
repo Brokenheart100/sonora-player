@@ -38,4 +38,24 @@ namespace sonora::online::core::codec
     // 前者是 `artists/album/duration`，后者是 `ar/al/dt`（R0 两种都抓了夹具）。
     [[nodiscard]] DecodeResult decodeSearch(const std::string &body);
 
+    struct UrlEntry
+    {
+        std::string songId;
+        std::string url;
+        std::int32_t bitrate{0};
+    };
+
+    struct UrlResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        // 只包含真正能播的项：url 非空且 code == 200。
+        // code 404（版权下架）与 -110（会员）会被静默跳过 —— 整批里死一两首是常态，
+        // 报错会让用户以为全都不能放。
+        std::vector<UrlEntry> entries;
+    };
+
+    // `/api/song/enhance/player/url/v1` 的响应。
+    [[nodiscard]] UrlResult decodeSongUrls(const std::string &body);
+
 } // namespace sonora::online::core::codec

@@ -2,6 +2,7 @@
 
 
 #include <algorithm>
+#include <unordered_map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -9,6 +10,8 @@
 #include "sonora/kernel/Error.h"
 #include "sonora/online/contracts/Commands.h"
 #include "sonora/online/contracts/Queries.h"
+#include "sonora/playback/contracts/Commands.h"
+#include "sonora/playback/contracts/Queries.h"
 
 namespace sonora::presentation
 {
@@ -275,6 +278,8 @@ namespace sonora::presentation
             return;
         }
 
+        playbackSongId_ = rows[static_cast<std::size_t>(index)].songId;
+
         auto songIds = std::vector<std::string>{};
         songIds.reserve(rows.size());
         for (const auto &row : rows)
@@ -381,6 +386,118 @@ namespace sonora::presentation
         {
             emit statusChanged();
         }
+
+        const auto playback = queries_.ask<online::contracts::OnlinePlaybackDto>(
+            online::contracts::GetOnlinePlayback{});
+        if (playback && playback.value().revision != seenPlaybackRevision_)
+        {
+            seenPlaybackRevision_ = playback.value().revision;
+            applyPlayback(playback.value());
+        }
+
+        rescanFailedPlayback();
+    }
+
+    void OnlineViewModel::rescanFailedPlayback()
+    {
+        // R3-9：在线直链 20 分钟就过期（R0 实测 expi=1200）。过期后的症状是
+        // 播放器进 Failed，而用户只看到一个"出错"——这里悄悄重取一次地址，
+        // 连续两次还失败就停手，交给界面去报错。
+        if (lastPlaybackSongId_.empty() || reResolveAttempts_ >= 2)
+        {
+            return;
+        }
+        const auto snapshot = queries_.ask<playback::contracts::PlayerSnapshot>(
+            playback::contracts::GetPlayerSnapshot{});
+        if (!snapshot || snapshot.value().state != playback::contracts::PlaybackState::Failed)
+        {
+            return;
+        }
+
+        ++reResolveAttempts_;
+        const auto songId = lastPlaybackSongId_;
+        dispatchQuietly(
+            [this, songId]
+            {
+                online::contracts::ResolveAndPlayOnline command;
+                command.token = token_;
+                command.songIds = {songId};
+                command.startIndex = 0;
+                command.origin = online::contracts::SourceKind::Search;
+                return commands_.dispatch(command);
+            });
+    }
+
+    void OnlineViewModel::applyPlayback(const online::contracts::OnlinePlaybackDto &playback)
+    {
+        if (playback.error.code != kernel::ErrorCode::None)
+        {
+            errorText_ = fromUtf8(playback.error.message);
+            retryable_ = playback.error.retryable;
+            emit statusChanged();
+            return;
+        }
+        if (playback.entries.empty())
+        {
+            // 整批都取不到地址（版权下架 / 会员曲）：这是"点了放不了"，不是列表坏了。
+            errorText_ = QStringLiteral("这些歌都没有可播放的地址");
+            retryable_ = false;
+            emit statusChanged();
+            return;
+        }
+
+        const auto &rows = model_.rows();
+
+        // 按**列表顺序**重建队列，而不是按取地址接口返回的顺序：ids=[...] 传过去
+        // 以后，响应里的 data[] 未必保持同样的顺序（实测会重排），照着它排会让
+        // "点第 2 行"变成"从第 27 行开始"。
+        std::unordered_map<std::string, const online::contracts::OnlinePlaybackEntry *> urlById;
+        urlById.reserve(playback.entries.size());
+        for (const auto &item : playback.entries)
+        {
+            urlById.emplace(item.songId, &item);
+        }
+
+        auto entries = std::vector<playback::contracts::QueueEntry>{};
+        entries.reserve(playback.entries.size());
+        std::int32_t startIndex = 0;
+        for (const auto &row : rows)
+        {
+            const auto found = urlById.find(row.songId);
+            if (found == urlById.end())
+            {
+                // 取不到地址的行不进队列；于是它的下标在队列里不存在，
+                // 下面用"当前队列长度"算起点正好跳过它。
+                continue;
+            }
+            if (!playbackSongId_.empty() && row.songId == playbackSongId_)
+            {
+                startIndex = static_cast<std::int32_t>(entries.size());
+            }
+
+            playback::contracts::QueueEntry entry;
+            // 在线曲目没有本地行：trackId 用 0，播放记录据此跳过落库。
+            entry.trackId = 0;
+            entry.filePath = found->second->url;
+            entry.title = row.title;
+            entry.artistName = row.artists;
+            entry.coverPath = row.coverUrl;
+            entries.push_back(std::move(entry));
+        }
+
+        const auto result = commands_.dispatch(playback::contracts::PlayTracks{std::move(entries), startIndex});
+        if (!result)
+        {
+            errorText_ = fromUtf8(result.error().message());
+            retryable_ = false;
+            emit statusChanged();
+            return;
+        }
+        errorText_.clear();
+        retryable_ = false;
+        lastPlaybackSongId_ = playbackSongId_;
+        reResolveAttempts_ = 0;
+        emit statusChanged();
     }
 
     void OnlineViewModel::refreshStatus()

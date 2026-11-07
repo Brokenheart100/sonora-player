@@ -63,10 +63,13 @@ kernel::Result<void> PlaybackService::togglePlayPause() {
             return output_.play();
 
         case contracts::PlaybackState::Loading:
+        case contracts::PlaybackState::Buffering:
         case contracts::PlaybackState::Idle:
         case contracts::PlaybackState::Stopped:
         case contracts::PlaybackState::Failed:
             // 没装载过、或者刚播完：重新装载当前曲目再放。
+            // Buffering 也走这条：网络卡住时用户按暂停，其实是想让它停下，
+            // 而"重新装载并播放"最接近这个意图（没有独立的 cancel 语义）。
             if (queue_.current() == nullptr) {
                 return kernel::Error{kernel::ErrorCode::InvalidArgument, "还没有选曲"};
             }
@@ -80,7 +83,10 @@ kernel::Result<void> PlaybackService::seekTo(std::int64_t positionMs) {
         return kernel::Error{kernel::ErrorCode::InvalidArgument, "还没有选曲"};
     }
     const auto duration = output_.durationMs();
-    const auto clamped = std::clamp<std::int64_t>(positionMs, 0, duration > 0 ? duration : 0);
+    // 时长未知（网络流、没写总长的容器）时只保证非负：夹成 0 会把每一次
+    // 拖动都变成"回到开头"，而用户明明想往中间跳。
+    const auto clamped = duration > 0 ? std::clamp<std::int64_t>(positionMs, 0, duration)
+                                      : std::max<std::int64_t>(positionMs, 0);
     return output_.seekMs(clamped);
 }
 

@@ -25,6 +25,8 @@ namespace sonora::presentation
                 return QStringLiteral("就绪");
             case playback::contracts::PlaybackState::Loading:
                 return QStringLiteral("装载中");
+            case playback::contracts::PlaybackState::Buffering:
+                return QStringLiteral("缓冲中");
             case playback::contracts::PlaybackState::Playing:
                 return QStringLiteral("播放中");
             case playback::contracts::PlaybackState::Paused:
@@ -89,6 +91,15 @@ namespace sonora::presentation
             emit positionChanged();
         }
 
+        // 缓冲百分比只在网络流上有意义（本地文件永远是 -1）。跟着位置一起刷，
+        // 因为两者都是"解码线程写、GUI 线程读"的原子量，成本一样。
+        const auto buffered = position_.bufferedPercent();
+        if (buffered != buffered_)
+        {
+            buffered_ = buffered;
+            emit positionChanged();
+        }
+
         // ── 其余状态：2Hz 问一次（30 次/秒问 DTO 是浪费）────────────────────────
         if (++ticksSinceRefresh_ >= 15)
         {
@@ -113,9 +124,15 @@ namespace sonora::presentation
         const auto newArtist = QString::fromStdString(value.artistName);
         // 封面给的是绝对路径，QML 的 Image.source 只认 URL——
         // 裸路径会被当成相对地址解析，症状是封面全不显示。
-        const auto newCover = value.coverPath.empty()
-                                  ? QString{}
-                                  : QUrl::fromLocalFile(QString::fromStdString(value.coverPath)).toString();
+        // 在线曲目的封面本来就是 URL（CDN 直链），再套 fromLocalFile 会变成
+        // `file:http://…`，QML 打一条 "Cannot open" 就放弃——所以先认协议头。
+        const auto coverText = QString::fromStdString(value.coverPath);
+        const bool coverIsUrl = coverText.startsWith(QLatin1String("http://")) ||
+                                coverText.startsWith(QLatin1String("https://")) ||
+                                coverText.startsWith(QLatin1String("qrc:/"));
+        const auto newCover = coverText.isEmpty() ? QString{}
+                              : coverIsUrl      ? coverText
+                                                : QUrl::fromLocalFile(coverText).toString();
         const auto newQueue =
             value.queueSize > 0
                 ? QStringLiteral("%1 / %2").arg(value.queueIndex + 1).arg(value.queueSize)
@@ -142,10 +159,12 @@ namespace sonora::presentation
         }
 
         const auto nowPlaying = value.state == playback::contracts::PlaybackState::Playing;
+        const auto newFailed = value.state == playback::contracts::PlaybackState::Failed;
         const auto newStateText = stateLabel(value.state);
-        if (nowPlaying != playing_ || newStateText != stateText_)
+        if (nowPlaying != playing_ || newFailed != failed_ || newStateText != stateText_)
         {
             playing_ = nowPlaying;
+            failed_ = newFailed;
             stateText_ = newStateText;
             emit stateChanged();
         }

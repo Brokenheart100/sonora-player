@@ -15,6 +15,13 @@ using platform::storage::SqliteStatement;
 
 Result<void> SqlitePlaybackRecorder::record(std::uint64_t trackId,
                                             std::int64_t playedAtUnix) {
+    // trackId == 0 是"没有本地曲库行"的约定（在线直链就这么标）。这类条目
+    // 本来就没有 tracks 行可更新，直接返回成功——否则每放一首在线歌都会
+    // 在日志里留一条 NotFound。
+    if (trackId == 0) {
+        return Result<void>::ok();
+    }
+
     auto statement =
         connection_.prepare("UPDATE tracks SET play_count = play_count + 1,"
                             " last_played_at = ? WHERE id = ?");

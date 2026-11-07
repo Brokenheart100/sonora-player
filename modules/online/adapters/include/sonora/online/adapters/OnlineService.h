@@ -51,6 +51,7 @@ namespace sonora::online::adapters
         // 这就足够把 worker 线程带回来的结果搬进状态表。
         [[nodiscard]] kernel::Result<contracts::OnlineJobState> handle(const contracts::GetOnlineJob &query);
         [[nodiscard]] kernel::Result<contracts::OnlinePageDto> handle(const contracts::FetchOnlineRows &query);
+        [[nodiscard]] kernel::Result<contracts::OnlinePlaybackDto> handle(const contracts::GetOnlinePlayback &query);
         [[nodiscard]] kernel::Result<contracts::SourceStatusDto> handle(const contracts::GetSourceStatus &query) const;
         [[nodiscard]] kernel::Result<contracts::QrLoginDto> handle(const contracts::GetQrLoginState &query) const;
         [[nodiscard]] kernel::Result<std::vector<contracts::PlaylistDto>> handle(
@@ -69,6 +70,14 @@ namespace sonora::online::adapters
 
         // 投一个抓取任务。`bypassCache` 供重试用——重试的语义是"别给我缓存"。
         void submit(const contracts::RequestOnlinePage &command, bool bypassCache);
+
+        // 取地址的回包：worker 线程只往这里塞，GUI 线程的轮询顺手排空。
+        struct PendingPlayback
+        {
+            core::codec::UrlResult result;
+            std::int32_t startIndex{0};
+        };
+        void drainPlayback();
 
         // 把一份解码结果落进状态表（顺带写缓存）。只在 GUI 线程调用。
         void apply(std::uint64_t token, core::codec::DecodeResult result, const std::string &keywords,
@@ -89,6 +98,12 @@ namespace sonora::online::adapters
 
         contracts::SourceStatusDto status_{};
         contracts::QrLoginDto qr_{};
+
+        std::mutex playbackMutex_;
+        std::vector<PendingPlayback> playbackPending_;
+        // 表现层按 revision 去重：只有这个数变了才重装播放队列。
+        contracts::OnlinePlaybackDto playback_{};
+        std::uint64_t playbackRevision_{0};
     };
 
 } // namespace sonora::online::adapters

@@ -17,8 +17,9 @@
 namespace sonora::playback::contracts {
 
 enum class PlaybackState : std::uint8_t {
-    Idle,     // 什么都没装载
-    Loading,  // 正在打开文件（网络流会更久）
+    Idle,      // 什么都没装载
+    Loading,   // 正在打开文件（网络流会更久）
+    Buffering, // 已开播但数据供不上（网络抖动、CDN 慢）；本地文件正常不会出现
     Playing,
     Paused,
     Stopped,  // 播完了或主动停
@@ -32,6 +33,7 @@ constexpr std::string_view toName(PlaybackState state) noexcept {
     switch (state) {
         case PlaybackState::Idle: return "idle";
         case PlaybackState::Loading: return "loading";
+        case PlaybackState::Buffering: return "buffering";
         case PlaybackState::Playing: return "playing";
         case PlaybackState::Paused: return "paused";
         case PlaybackState::Stopped: return "stopped";
@@ -85,6 +87,13 @@ public:
 
     /// 无锁读。允许被 UI 线程高频调用。
     [[nodiscard]] virtual std::int64_t positionMs() const noexcept = 0;
+
+    /// 缓冲进度 0..100，**-1 表示不可知**（本地文件、或实现方不报）。
+    ///
+    /// 它不是"下载了多少"，而是"容器读到哪了"：网络流用 avio_tell / avio_size
+    /// 算，本地文件没有意义（整首都在磁盘上）。所以默认实现直接返回 -1，
+    /// 只有真正能算的实现才覆盖它 —— 界面据此决定要不要画那道缓冲条。
+    [[nodiscard]] virtual std::int32_t bufferedPercent() const noexcept { return -1; }
 };
 
 }  // namespace sonora::playback::contracts
