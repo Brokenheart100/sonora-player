@@ -690,6 +690,19 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
     </message>
 </context>
 <context>
+    <name>TrackListModel</name>
+    <message>
+        <location filename="../presentation/src/TrackListModel.cpp" line="70" />
+        <source>未知艺术家</source>
+        <translation>Unknown artist</translation>
+    </message>
+    <message>
+        <location filename="../presentation/src/TrackListModel.cpp" line="79" />
+        <source>未知专辑</source>
+        <translation>Unknown album</translation>
+    </message>
+</context>
+<context>
     <name>main</name>
     <message>
         <location filename="../presentation/qml/main.qml" line="16" />
@@ -870,42 +883,42 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>sonora::presentation::TrackListModel</name>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="119" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="148" />
         <source>正在读取…</source>
         <translation>Reading…</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="177" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="206" />
         <source>共 %1 首（已加载 %2）</source>
         <translation>%1 songs (%2 loaded)</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="178" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="207" />
         <source>共 %1 首</source>
         <translation>%1 songs</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="195" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="224" />
         <source>没有选择文件夹</source>
         <translation>No folder selected</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="235" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="264" />
         <source>上一批还在导入，等它跑完</source>
         <translation>The previous batch is still importing; wait for it</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="239" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="268" />
         <source>正在导入…（%1 个文件夹）</source>
         <translation>Importing… (%1 folders)</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="321" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="350" />
         <source>正在播放：%1</source>
         <translation>Playing: %1</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="356" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="385" />
         <source>拖进来的东西没有文件，也没有文件夹</source>
         <translation>Nothing dropped contained files or folders</translation>
     </message>

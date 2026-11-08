@@ -1,5 +1,7 @@
 #include "sonora/presentation/TrackListModel.h"
 
+#include <QCoreApplication>
+
 #include <QDir>
 #include <QFileInfo>
 #include <QString>
@@ -53,7 +55,34 @@ namespace sonora::presentation
         return static_cast<int>(rows_.size());
     }
 
-    QVariant TrackListModel::data(const QModelIndex &index, int role) const
+    namespace
+{
+    // 曲库里的"未知艺术家/未知专辑"是导入时写进数据库的哨兵值
+    // （Catalog.Core 零 Qt，不该产出界面文案）。显示时按语言换成占位符：
+    // 中文下与库里逐字相同，英文下走翻译。空串同样落到占位符。
+    constexpr char kNoArtist[] = "未知艺术家";
+    constexpr char kNoAlbum[] = "未知专辑";
+
+    QString displayArtist(const std::string &value)
+    {
+        if (value.empty() || value == kNoArtist)
+        {
+            return QCoreApplication::translate("TrackListModel", "未知艺术家");
+        }
+        return QString::fromStdString(value);
+    }
+
+    QString displayAlbum(const std::string &value)
+    {
+        if (value.empty() || value == kNoAlbum)
+        {
+            return QCoreApplication::translate("TrackListModel", "未知专辑");
+        }
+        return QString::fromStdString(value);
+    }
+} // namespace
+
+QVariant TrackListModel::data(const QModelIndex &index, int role) const
     {
         if (!index.isValid() || index.row() < 0 || index.row() >= static_cast<int>(rows_.size()))
         {
@@ -65,9 +94,9 @@ namespace sonora::presentation
         case TitleRole:
             return QString::fromStdString(row.title);
         case ArtistRole:
-            return QString::fromStdString(row.artistName);
+            return displayArtist(row.artistName);
         case AlbumRole:
-            return QString::fromStdString(row.albumTitle);
+            return displayAlbum(row.albumTitle);
         case DurationRole:
             return formatDuration(static_cast<qint64>(row.durationMs));
         case FilePathRole:
