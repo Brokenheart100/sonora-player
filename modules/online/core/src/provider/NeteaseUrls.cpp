@@ -275,4 +275,17 @@ namespace sonora::online::core::provider
         return request;
     }
 
+
+    contracts::HttpRequest makeRadioRequest(const std::string &baseUrl, const std::string &cookie,
+                                            std::chrono::milliseconds timeout)
+    {
+        // 私人 FM：一次只回一首，没有 limit 参数。凑一批就多请求几次（见 OnlineService）。
+        contracts::HttpRequest request;
+        request.method = contracts::HttpMethod::Get;
+        request.url = baseUrl + "/api/v1/radio/get";
+        request.headers = defaultHeaders(cookie);
+        request.transferTimeout = timeout;
+        return request;
+    }
+
 } // namespace sonora::online::core::provider

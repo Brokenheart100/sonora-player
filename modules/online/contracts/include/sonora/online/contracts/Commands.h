@@ -39,6 +39,21 @@ namespace sonora::online::contracts
         std::int32_t limit{30};
     };
 
+    // 取一批私人 FM 曲目（≈3 首），由组合根接到播放队列尾部。
+    //
+    // 为什么不是"点一下播放"：FM 是无限流，一次只取一批；播到队尾时
+    // Playback 发 QueueNeedsMore，组合根再发这个命令续一批。
+    struct StartPersonalFm
+    {
+        std::int32_t count{3};
+    };
+
+    /// "不感兴趣"：歌曲不再出现（本地黑名单，不发请求）。
+    struct DislikeFmSong
+    {
+        std::string songId;
+    };
+
     // 拉一次"我的歌单"。结果缓存进服务里，界面用 `GetMyPlaylists` 取。
     // 未登录时**不把任务发出去**：游客点"我的"看到的应该是"登录后可见"，
     // 而不是一条"未登录"错误（AGENTS：降级不消耗令牌）。

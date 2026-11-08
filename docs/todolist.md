@@ -230,18 +230,27 @@ python xmake/checks/boundaries.py
 
 ### N4 · 私人 FM（1.5 人日）——依赖 N0 结论
 
-- [ ] **N4-1 队列模型扩展**
+- [x] **N4-1 队列模型扩展**
   - 文件：`modules/playback/core/include/sonora/playback/core/domain/PlayQueue.h`
   - 改动：新增"追加式来源"（`AppendMode` 或 `SourcePolicy`）：队列不再一次性定长，`advance()` 到末尾时向上层要"下一批"；随机/单曲循环与它的组合规则要写进注释（FM 下随机=不洗牌，循环=继续要新歌）。
   - 验收：`tests/playback_modes.cpp` 加"追加式队列播放到末尾会请求下一批、且不重复已播曲目"。
 
-- [ ] **N4-2 服务侧 FM**
+- [x] **N4-2 服务侧 FM**
   - 端点 #14；`NextPersonalFm` 命令（`Commands.h`）→ provider 取一批（约 3–5 首）→ 塞进播放队列尾部；`Diagnostics` 里 FM 失败单独计数。
   - 验收：连播 20 首不断流；每批间隔 < 1s；失败时保留当前曲目、只提示"FM 暂时不可用"。
 
-- [ ] **N4-3 FM 界面**
+- [x] **N4-3 FM 界面**
   - "我的"页加"私人 FM"入口；进入后播放条上方出现 `FM` 角标，两个按钮"喜欢 / 不感兴趣"（喜欢 = N2 的收藏写操作）。
   - 验收：点"不感兴趣"立刻下一首，且该曲不再出现。
+
+
+**N4 实施记录**（2026-11-08）：
+
+- 事件名是 `QueueNeedsMore`，不是清单里写的 `NextPersonalFm`——"要下一批"是播放模块的事，"从哪来"是组合根的事，两个名字分开更清楚。
+- 队列侧没有引入 `AppendMode` 枚举，只有一个 `bool appendable`：FM 是唯一用例，多一个枚举就多一种以后要维护的组合。
+- 服务侧一批默认 3 首、上限 5 首；`StartPersonalFm` 只在队列真的空了时才发（`QueueNeedsMore` 订阅者）。
+- "不感兴趣"是**本地黑名单**，不发请求（服务端接口要登录）。
+- 实测：连播 9 首以上不重复、3 次续批、`[qml]` 告警 0；细节见 `docs/ONLINE.md` §23。
 
 ---
 

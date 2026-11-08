@@ -24,6 +24,7 @@ using sonora::online::core::codec::decodePlaylistDetail;
 using sonora::online::core::codec::decodeSongDetails;
 using sonora::online::core::codec::decodeDailySongs;
 using sonora::online::core::codec::decodeLyric;
+using sonora::online::core::codec::decodeRadio;
 using sonora::online::core::codec::decodeFavoriteToggle;
 using sonora::online::core::codec::decodeToplist;
 using sonora::online::core::codec::decodeUserPlaylists;
@@ -307,4 +308,42 @@ TEST_CASE("在线歌词：缺 lrc 字段也按纯音乐处理，不抛也不崩"
 
     const auto notObject = decodeLyric("[]");
     CHECK(!notObject.ok);
+}
+
+TEST_CASE("私人 FM：/api/v1/radio/get 顶层没有 code，data 是数组")
+{
+    // 实测形状：{"popAdjust":false,"data":[{...一首...}]}，**没有顶层 code**。
+    // 早期用 findMember 找 data 永远拿不到（那个 helper 只认对象），
+    // 所以这里同时钉住"数组也能取到"这件事。
+    const auto one = decodeRadio(R"({"popAdjust": false, "data": [
+        {"name": "Undefined", "id": 3451951517,
+         "artists": [{"name": "PerVade"}],
+         "album": {"name": "某专辑", "picUrl": "http://p1.music.126.net/a.jpg"},
+         "duration": 233000}]})");
+
+    CHECK(one.ok);
+    REQUIRE(one.rows.size() == 1);
+    CHECK(one.rows.front().songId == "3451951517");
+    CHECK(one.rows.front().title == "Undefined");
+    CHECK(one.rows.front().artists == "PerVade");
+    CHECK(one.rows.front().durationMs == 233000);
+
+    // v1 风格：code 0 也是成功
+    const auto zero = decodeRadio(R"({"code": 0, "data": [{"id": 7, "name": "x"}]})");
+    CHECK(zero.ok);
+    REQUIRE(zero.rows.size() == 1);
+    CHECK(zero.rows.front().songId == "7");
+}
+
+TEST_CASE("私人 FM：data 不是数组时报上游变了，而不是静默空列表")
+{
+    const auto missing = decodeRadio(R"({"popAdjust": false})");
+    CHECK(!missing.ok);
+    CHECK(missing.error.retryable);
+
+    const auto wrongShape = decodeRadio(R"({"data": {"songs": []}})");
+    CHECK(!wrongShape.ok);
+
+    const auto notJson = decodeRadio("<html>502</html>");
+    CHECK(!notJson.ok);
 }

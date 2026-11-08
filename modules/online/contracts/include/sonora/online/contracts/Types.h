@@ -93,6 +93,9 @@ namespace sonora::online::contracts
         std::string qualityLabel; // "标准" / "较高" / "极高" / "试听"
         bool playable{false};     // false → 行尾灰标签"无版权"
         bool fromCache{false};
+        // 直链。只有私人 FM 这条链路会填：它拿到歌就得立刻排进播放队列，
+        // 没有"用户再点一下才解析"的机会。其它列表留空，点播时照旧解析。
+        std::string playUrl;
     };
 
     // 便宜的状态快照，界面可以 20Hz 拉它（不含行数据）。
@@ -273,6 +276,9 @@ namespace sonora::online::contracts
         // （否则"收藏失败"会被读侧的 upstream/timeout 计数吃掉）。
         std::int32_t favoriteWrites{0};
         std::int32_t favoriteFailures{0};
+        // 私人 FM 单独计数：它不是用户点出来的，失败时安静重试，不该混进
+        // "搜索失败"那条降级里去。
+        std::int32_t fmFailures{0};
         // 最新在前，最多 10 条。
         std::vector<OnlineErrorRecord> recentErrors;
     };

@@ -86,6 +86,56 @@ Item {
             font.pixelSize: Theme.textSmall
             elide: Text.ElideRight
         }
+
+        // ── 私人 FM 的小角标与两个动作（N4）────────────────────────────
+        // 只有"看着像是 FM 曲目"时才出现：VM 说在 FM 模式，且当前曲目确实
+        // 带着在线 songId。两个动作都只是把 songId 递回去，播放器不认识 FM。
+        Row {
+            visible: Online.fmMode && Player.onlineSongId.length > 0
+            spacing: 8
+            height: visible ? 16 : 0
+
+            MangaPanel {
+                width: 30
+                height: 14
+                padding: 0
+                fillColor: Theme.accent
+                shadowOffset: 1
+
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("FM")
+                    color: Theme.paper
+                    font.family: Fonts.display
+                    font.pixelSize: 9
+                }
+            }
+
+            Text {
+                text: qsTr("喜欢")
+                color: Theme.accent
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textSmall - 1
+
+                TapHandler {
+                    onTapped: Online.likeFmSong(Player.onlineSongId)
+                }
+            }
+
+            Text {
+                text: qsTr("不感兴趣")
+                color: Theme.inkSoft
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textSmall - 1
+
+                TapHandler {
+                    onTapped: {
+                        Online.dislikeFmSong(Player.onlineSongId);
+                        Player.next();
+                    }
+                }
+            }
+        }
     }
 
     // ── 进度 ────────────────────────────────────────────────────────────

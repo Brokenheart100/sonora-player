@@ -463,6 +463,50 @@ int main(int argc, char *argv[])
     playback::core::PlaybackService playbackService{audioOutput, &logger, &audioOutput, &events};
     playback::core::registerPlayback(commands, queries, playbackService);
 
+    // ---- N4：私人 FM ----
+    // 一批 FM 曲目解析好直链后，由这里翻成队列条目交给播放服务。
+    // 播放模块不知道"FM"是什么，它只会在队列播到末尾时发布 QueueNeedsMore；
+    // 我们收到就再要一批——这条环由组合根闭合，两边互不认识。
+    {
+        using namespace sonora::online::contracts;
+        commands.on<StartPersonalFm>([&onlineService](const StartPersonalFm &command)
+                                     { return onlineService.handle(command); });
+        commands.on<DislikeFmSong>([&onlineService](const DislikeFmSong &command)
+                                   { return onlineService.handle(command); });
+
+        onlineService.setFmListener(
+            [&commands](const std::vector<OnlineTrackDto> &tracks)
+            {
+                std::vector<playback::contracts::QueueEntry> entries;
+                entries.reserve(tracks.size());
+                for (const OnlineTrackDto &track : tracks)
+                {
+                    playback::contracts::QueueEntry entry;
+                    entry.trackId = 0; // 在线曲目没有本地 id
+                    entry.filePath = track.playUrl;
+                    entry.title = track.title;
+                    entry.artistName = track.artists;
+                    entry.coverPath = track.coverUrl;
+                    entry.onlineSongId = track.songId;
+                    entries.push_back(std::move(entry));
+                }
+                if (entries.empty())
+                {
+                    return;
+                }
+                (void)commands.dispatch(
+                    playback::contracts::AppendTracks{std::move(entries), true});
+            });
+
+        events.subscribe<sonora::contracts::QueueNeedsMore>(
+            [&commands](const sonora::contracts::QueueNeedsMore &)
+            {
+                // 队列空了才喊饿，所以这里只补一小批；失败不重试，
+                // 下一首播完还会再来要（FM 是背景服务，断了就安静地等）。
+                (void)commands.dispatch(StartPersonalFm{3});
+            });
+    }
+
     // ---- 表现层 ----
     sonora::presentation::TrackListModel library{commands, queries};
     sonora::presentation::LyricsModel lyricsModel{queries};

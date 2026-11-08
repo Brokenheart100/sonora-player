@@ -1161,3 +1161,56 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 
 - `IQueryBus::ask` 不是 const，而 `ILyricsSource::load` 是 const——`const_cast` 在这里是合适的：查询没有副作用，作者不是它。
 - `startGet` 只吃 path（自己拼 baseUrl），`makeLyricRequest` 返回的是完整 `HttpRequest`；要么走 path 形态，要么另写一个 POST 用的骨架，别指望两者能混。
 - 本机日志是 GBK：`data.decode('gbk', errors='replace')` 后再写 UTF-8 文件，直接 `cat` 只会看到 `����`。
+
+## 23. N4 实施记录：私人 FM（2026-11-08）
+
+### 23.1 端点
+
+| 用途 | 端点 | 匿名 | 备注 |
+| --- | --- | --- | --- |
+| 下一首 FM | `GET /api/v1/radio/get` | 可用 | **一次只回一首**，没有 `limit`；顶层**没有 `code`**，成功与否只看 `data` 是不是数组 |
+| 直链 | `GET /api/song/enhance/player/url` | 可用 | 与搜索/歌单同一条 |
+
+凑一批 = 并发请求 N 次（`kFmMaxBatch = 5`，默认 3）。
+
+### 23.2 代码落点
+
+| 层 | 文件 | 做了什么 |
+| --- | --- | --- |
+| 契约 | `modules/contracts/include/sonora/contracts/PlaybackEvents.h` | 新集成事件 `QueueNeedsMore`（Playback 发，组合根订阅） |
+| 播放 | `.../playback/core/domain/PlayQueue.h` | `setAppendable` / `append` / `atEnd`；随机不洗牌、循环不绕回 |
+| 播放 | `.../playback/core/app/PlaybackService.cpp` | `handleFinished` 与 `next()` 两条路都在末尾喊饿；`appendTracks` 接上新批次 |
+| 在线 | `.../online/core/codec/NeteaseJson.cpp` | `decodeRadio`（数组 `data`）；新 helper `findValue` |
+| 在线 | `.../online/adapters/src/OnlineService.cpp` | `StartPersonalFm` / `DislikeFmSong` / `drainFm` / `drainFmUrls` / `setFmListener` |
+| 组合根 | `host/main.cpp` | 监听器把 DTO 翻成 `QueueEntry` 投 `AppendTracks`；订阅 `QueueNeedsMore` 再要一批 |
+| 界面 | `OnlinePage.qml` / `PlayerBar.qml` | 「私人 FM」按钮；`FM` 角标 + 「喜欢 / 不感兴趣」 |
+
+### 23.3 三个真跑才暴露的问题
+
+1. **`/api/v1/radio/get` 顶层没有 `code`，而 `data` 是数组**。`findMember()` 只认对象成员（它给 `unwrapSong` 用），拿数组永远拿到 `nullptr` → 每一批都报"接口可能已变更"。新增 `findValue()`（缺失/null 才返回 nullptr，数组也认），`decodeRadio` 改用它。
+2. **`next()` 走到末尾不喊饿**。`handleFinished()` 加了发布 `QueueNeedsMore`，但用户/探针按"下一首"走的是 `PlaybackService::next()`，那条路直接 `stop()` 返回 `NotFound`。两条路都要判 `queue_.appendable()`。
+3. **没人排水，FM 死在 `token_ == 0`**。FM 的批次不走 `JobRegistry`，原本只有 `GetOnlineJob` 与 `GetMyPlaylists` 会排水；没搜过东西时界面根本不问 `GetOnlineJob`（那边有 `token_ == 0` 早退）。改成让 `GetSourceStatus`（每一拍都问的登录态查询）当心跳，先 `drain()` 再返回。
+
+### 23.4 实测
+
+| 项目 | 结果 |
+| --- | --- |
+| 首批 | `fm start count=3` → 3 个回包 → `entries=3 songs=3` |
+| 出声 | `t=日落归山海 st=播放中 p=1 q=1 / 3` → `q=2 / 3` → `q=3 / 3` |
+| 续批 | 连按"下一首"到末尾后自动再要一批（日志里 3 次 `fm start`，共 9 首以上不重复） |
+| 失败 | 断网时不弹窗，只 `fmFailures +1`；下一首播完会再试 |
+| `[qml]` 告警 | 0 |
+| 截图 | `.demo/n4_fm.png`（播放条左侧有 FM 角标与两个动作） |
+| 单测 | 179 用例 / 5252 断言（新增追加式队列 3 例 + `decodeRadio` 2 例） |
+
+### 23.5 没做的，以及为什么
+
+- **服务端"不感兴趣"**：`/api/dislike` 要登录，而 FM 在游客态也能听；本地黑名单先顶上（`fmDisliked_`，最多 60 条）。
+- **FM 批次写库**：FM 本来就是"下次不一样"，缓存没有意义。
+- **批次大小自适应**：固定 3 首（`StartPersonalFm{3}`）。调大要连令牌桶一起改，等有真实使用反馈再说。
+
+### 23.6 给下一轮的教训
+
+- 追加式队列的"喊饿"有**两个入口**（自然播完、手动下一首），漏一个就是"播着播着停了"。
+- 背景能力的排水不能依附于"用户正在搜索"这条路径——需要一个每拍必到的查询当心跳。
+- `findMember` 这种"方便 helper"的语义边界要写死：它只认对象；数组要用另一个名字。名字只差一个字符、行为差一整类，比类型错误更难发现。

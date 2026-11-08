@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -56,6 +57,16 @@ namespace sonora::online::adapters
         // 界面据此显示"登录后可见"。写操作收藏/取消收藏同在这条通道上。
         kernel::Result<void> handle(const contracts::LoadMyPlaylists &command);
         kernel::Result<void> handle(const contracts::ToggleFavorite &command);
+        // 私人 FM：取一批（≈3 首）并解析好直链，然后**推**给组合根注册的监听器。
+        // 为什么是推不是拉：FM 的"下一批"由播放队列喊饿引起，拉模型得再发明一个轮询。
+        kernel::Result<void> handle(const contracts::StartPersonalFm &command);
+        // "不感兴趣"：记进本地黑名单，之后取到的批次会把它过滤掉。
+        kernel::Result<void> handle(const contracts::DislikeFmSong &command);
+
+        // 组合根接线：一批 FM 曲目（已带 playUrl）准备好了。回调在 worker 线程上回来，
+        // host 只负责把它们转成 QueueEntry 并投给播放服务。
+        using FmListener = std::function<void(const std::vector<contracts::OnlineTrackDto> &)>;
+        void setFmListener(FmListener listener);
         kernel::Result<void> handle(const contracts::CancelOnlineJob &command);
         kernel::Result<void> handle(const contracts::RetryOnlineJob &command);
         kernel::Result<void> handle(const contracts::ResolveAndPlayOnline &command);
@@ -203,6 +214,35 @@ namespace sonora::online::adapters
             core::codec::LyricResult result;
         };
         void drainLyrics();
+
+        // ---- N4：私人 FM ----
+        struct PendingRadio
+        {
+            core::codec::DecodeResult result;
+        };
+        struct PendingFmUrls
+        {
+            core::codec::UrlResult result;
+        };
+        void drainFm();
+        void drainFmUrls();
+        // 一批最多 5 首：接口一次只回一首，取多了就是一串并行请求，
+        // 令牌桶（3/s）也会跟着吃紧。
+        static constexpr std::int32_t kFmMaxBatch = 5;
+        static constexpr std::size_t kFmSeenLimit = 60;
+        std::mutex fmMutex_;
+        std::vector<PendingRadio> radioPending_;
+        std::vector<PendingFmUrls> fmUrlPending_;
+        std::int32_t fmExpected_{0};
+        std::int32_t fmSettled_{0};
+        bool fmActive_{false};
+        std::vector<contracts::OnlineTrackDto> fmSongs_;
+        // 最近取到过的 songId：FM 偶尔会把同一首再推一次，界面上重复出现很刺眼。
+        std::vector<std::string> fmSeen_;
+        // "不感兴趣"：本地过滤，不发请求（服务端的 trash 接口要登录，
+        // 而这按钮在游客态也该能用）。
+        std::vector<std::string> fmDisliked_;
+        FmListener fmListener_;
         // 内存只留最近 kLyricCacheSize 首：歌词一份几 KB，但"整张列表都播过一遍"
         // 之后没有上限就会一直涨。
         static constexpr std::size_t kLyricCacheSize = 16;

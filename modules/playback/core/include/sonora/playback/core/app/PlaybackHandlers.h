@@ -98,6 +98,17 @@ private:
     PlaybackService& service_;
 };
 
+class AppendTracksHandler {
+public:
+    explicit AppendTracksHandler(PlaybackService& service) : service_(service) {}
+    kernel::Result<void> handle(const contracts::AppendTracks& command) {
+        return service_.appendTracks(command);
+    }
+
+private:
+    PlaybackService& service_;
+};
+
 class GetPlayQueueHandler {
 public:
     explicit GetPlayQueueHandler(const PlaybackService& service) : service_(service) {}
@@ -136,6 +147,7 @@ inline void registerPlayback(kernel::CommandBus& commands, kernel::QueryBus& que
     auto previous = std::make_shared<PlayPreviousHandler>(service);
     auto mode = std::make_shared<SetPlaybackModeHandler>(service);
     auto jump = std::make_shared<JumpToTrackHandler>(service);
+    auto append = std::make_shared<AppendTracksHandler>(service);
     auto snapshot = std::make_shared<GetPlayerSnapshotHandler>(service);
     auto queue = std::make_shared<GetPlayQueueHandler>(service);
 
@@ -147,6 +159,7 @@ inline void registerPlayback(kernel::CommandBus& commands, kernel::QueryBus& que
     commands.on<contracts::PlayPrevious>(previous);
     commands.on<contracts::SetPlaybackMode>(mode);
     commands.on<contracts::JumpToTrack>(jump);
+    commands.on<contracts::AppendTracks>(append);
 
     // QueryBus 只收可调用对象（没有 shared_ptr 的 handler overload），所以这里包一层 lambda。
     queries.on<contracts::GetPlayerSnapshot, contracts::PlayerSnapshot>(

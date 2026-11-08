@@ -10,7 +10,9 @@
 
 #include "fake_audio_output.h"
 
+#include "sonora/contracts/PlaybackEvents.h"
 #include "sonora/kernel/Error.h"
+#include "sonora/kernel/EventBus.h"
 #include "sonora/playback/contracts/Commands.h"
 #include "sonora/playback/contracts/PlaybackMode.h"
 #include "sonora/playback/core/app/PlaybackService.h"
@@ -235,4 +237,67 @@ TEST_CASE("服务：播过 3 秒后上一首先回开头") {
     output.posMs = 1000; // 刚开头，再按才换上一首
     REQUIRE(service.previous().hasValue());
     CHECK(service.snapshot().trackId == 1);
+}
+
+TEST_CASE("追加式队列：append 接在队尾，播到末尾不回绕而是等新歌") {
+    PlayQueue queue;
+    queue.setAppendable(true);
+    queue.setEntries(makeTracks(2), 0);
+
+    CHECK(queue.advance());
+    CHECK_FALSE(queue.advance()); // 到头就停，不因为"循环"绕回第一首
+    CHECK(queue.atEnd());
+
+    const auto added = queue.append({entry(9, "FM 1"), entry(10, "FM 2")});
+    CHECK(added == 2);
+    CHECK_FALSE(queue.atEnd());
+    CHECK(queue.advance());
+    REQUIRE(queue.current() != nullptr);
+    CHECK(queue.current()->trackId == 9);
+    CHECK(queue.advance());
+    CHECK(queue.current()->trackId == 10);
+}
+
+TEST_CASE("追加式队列：随机模式下不洗牌（下一批本来就是随机的）") {
+    PlayQueue queue;
+    queue.setAppendable(true);
+    queue.setMode(PlaybackMode::Shuffle);
+    queue.setEntries(makeTracks(4), 0);
+
+    // 顺序保持原样：追加式来源不接管"随机"，否则队列顺序和用户看到的对不上。
+    for (std::uint64_t i = 0; i < 4; ++i) {
+        REQUIRE(queue.current() != nullptr);
+        CHECK(queue.current()->trackId == i + 1);
+        if (i != 3) {
+            CHECK(queue.advance());
+        }
+    }
+}
+
+TEST_CASE("服务：追加式队列播到末尾会喊饿，而不是停在那里") {
+    FakeAudioOutput output;
+    sonora::kernel::EventBus events;
+    int canned = 0;
+    events.subscribe<sonora::contracts::QueueNeedsMore>(
+        [&canned](const sonora::contracts::QueueNeedsMore &) { ++canned; });
+
+    sonora::playback::core::PlaybackService service{output, nullptr, nullptr, &events};
+
+    PlayTracks command;
+    command.entries = makeTracks(2);
+    command.appendable = true;
+    REQUIRE(service.playTracks(command).hasValue());
+
+    output.finishCurrent();
+    CHECK(service.snapshot().trackId == 2); // 还有第二首，正常前进
+    CHECK(canned == 0);
+
+    output.finishCurrent();
+    CHECK(canned == 1); // 播到末尾：发布 QueueNeedsMore，交给组合根去要下一批
+    CHECK(service.snapshot().state == sonora::playback::contracts::PlaybackState::Stopped);
+
+    // 组合根把新一批接上，播放立刻继续
+    REQUIRE(service.appendTracks({ {entry(9, "FM 1")}, true }).hasValue());
+    CHECK(service.snapshot().trackId == 9);
+    CHECK(service.snapshot().state == sonora::playback::contracts::PlaybackState::Playing);
 }

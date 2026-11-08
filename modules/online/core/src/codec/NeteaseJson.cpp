@@ -96,6 +96,18 @@ namespace sonora::online::core::codec
             return &*it;
         }
 
+        // 与 findMember 的区别：**数组也认**。`/api/v1/radio/get` 的 `data` 就是数组，
+        // 用 findMember 找它永远拿到 nullptr（那个 helper 只认对象）。
+        const json *findValue(const json &object, const char *key)
+        {
+            const auto it = object.find(key);
+            if (it == object.end() || it->is_null())
+            {
+                return nullptr;
+            }
+            return &*it;
+        }
+
         std::string artistNames(const json &song)
         {
             const json *list = nullptr;
@@ -886,6 +898,35 @@ namespace sonora::online::core::codec
             return out;
         }
         appendTracks(member(*dataPtr, "dailySongs"), out);
+        out.ok = true;
+        out.total = static_cast<int>(out.rows.size());
+        out.raw = body;
+        return out;
+    }
+
+
+    DecodeResult decodeRadio(const std::string &body)
+    {
+        // 注意 code 是 0：这个端点是老 v1 风格，和其它几个一样只认顶层 code。
+        DecodeResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "响应不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+
+        const json *dataPtr = findValue(root, "data");
+        if (dataPtr == nullptr || !dataPtr->is_array())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "接口可能已变更，稍后再试", true, 0};
+            return out;
+        }
+        appendTracks(*dataPtr, out);
         out.ok = true;
         out.total = static_cast<int>(out.rows.size());
         out.raw = body;

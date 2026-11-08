@@ -153,4 +153,10 @@ namespace sonora::online::core::provider
     // 我的歌单上限：实测账号最多几十张，1000 是"一次拿全"的保险值。
     inline constexpr int kMaxUserPlaylistsLimit = 1000;
 
+    // 私人 FM：一次回一首（`data[]` 里就一条）。要凑一批就多请求几次——
+    // 这个端点没有 limit 参数，只能靠调用方自己攒。
+    [[nodiscard]] contracts::HttpRequest makeRadioRequest(const std::string &baseUrl,
+                                                          const std::string &cookie,
+                                                          std::chrono::milliseconds timeout);
+
 } // namespace sonora::online::core::provider

@@ -214,4 +214,9 @@ namespace sonora::online::core::codec
     // 合并翻译是 LrcParser 的事（它按时间戳配对），这里只负责把两段拿出来。
     [[nodiscard]] LyricResult decodeLyric(const std::string &body);
 
+
+    // 私人 FM 的一批：`data[]` 里是**旧字段**歌曲对象（artists/album/duration），
+    // 与 `song/detail` 同一种形状，所以复用同一套 toTrack。
+    [[nodiscard]] DecodeResult decodeRadio(const std::string &body);
+
 } // namespace sonora::online::core::codec

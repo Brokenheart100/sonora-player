@@ -436,6 +436,13 @@ namespace sonora::online::adapters
             [](const std::string &body) { return codec::decodeLyric(body); }, std::move(onDone));
     }
 
+    std::uint64_t NeteaseProvider::startRadio(PageCallback onDone)
+    {
+        return startGet<codec::DecodeResult>("/api/v1/radio/get",
+                                             [](const std::string &body) { return codec::decodeRadio(body); },
+                                             std::move(onDone));
+    }
+
     std::uint64_t NeteaseProvider::startToggleFavorite(const std::string &playlistId,
                                                       const std::string &songId, bool add,
                                                       const std::string &csrf, FavoriteCallback onDone)

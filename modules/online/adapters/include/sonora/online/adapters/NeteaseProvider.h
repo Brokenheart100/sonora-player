@@ -81,7 +81,10 @@ namespace sonora::online::adapters
         // 每日推荐歌曲：匿名也回数据（N0 实测 31 首），所以这里不判断登录态。
         std::uint64_t startDailySongs(PageCallback onDone);
         // 在线歌词（N3）：`/api/song/lyric?id=&lv=-1&tv=-1`，匿名可用。
-        std::uint64_t startLyric(std::string songId, LyricCallback onDone);
+        /// 私人 FM：一次回一首（`data[]` 只有一条）。要一批就调用多次。
+    std::uint64_t startRadio(PageCallback onDone);
+
+    std::uint64_t startLyric(std::string songId, LyricCallback onDone);
         // 收藏/取消收藏。`csrf` 只进表单字段，不落日志。
         std::uint64_t startToggleFavorite(const std::string &playlistId, const std::string &songId,
                                           bool add, const std::string &csrf,

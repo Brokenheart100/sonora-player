@@ -186,7 +186,20 @@ namespace sonora::presentation
         Q_INVOKABLE void confirmFavorite();
         Q_INVOKABLE void cancelFavorite();
 
+        // ---- N4：私人 FM ----
+        // FM 是"追加式队列"：播到末尾由播放服务喊饿，组合根再要一批。
+        // 这里只管"进入 FM 模式 / 喜欢 / 不感兴趣"三件事。
+        Q_PROPERTY(bool fmMode READ fmMode NOTIFY fmChanged)
+        [[nodiscard]] bool fmMode() const noexcept { return fmMode_; }
+        Q_INVOKABLE void startPersonalFm();
+        Q_INVOKABLE void leaveFm();
+        // songId 由 QML 从 `Player.onlineSongId` 传进来：VM 不持有播放器，
+        // 也不该为了两个按钮去认识播放模块。
+        Q_INVOKABLE void likeFmSong(const QString &songId);
+        Q_INVOKABLE void dislikeFmSong(const QString &songId);
+
     signals:
+        void fmChanged();
         void statusChanged();
         void qrChanged();
         void diagnosticsChanged();
@@ -258,6 +271,10 @@ namespace sonora::presentation
         QString favoritePromptText_;
         std::string favoriteSongId_;
         std::string favoritePlaylistId_;
+        // FM 模式与"进来时顺手拉到的喜欢列表 id"。
+        bool fmMode_{false};
+        std::string fmPlaylistId_;
+        std::string pendingLikeSongId_;
         std::size_t myPlaylistsSeen_ = 0;
         void publishMyPlaylists(const std::vector<online::contracts::PlaylistDto> &items);
 

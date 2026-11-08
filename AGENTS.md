@@ -133,6 +133,11 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - 在 QML 绑定表达式里调用会改绑定的函数（如 `Online.refreshDiagnostics()`）会立刻换来 `Binding loop detected`：要刷新就挂 `Timer`，别写在 `text:` 里。
 - 在线歌词是**异步**的：`OnlineLyricDto.ready == false` 表示"还没取回来"，不是"没词"。`LyricsDocument.pending` / `LyricsView.pending` 就是为这层语义存在的；把它当 `nullopt` 处理，界面会把"网络慢"显示成"这首歌没有歌词"。
 - `IQueryBus::ask()` 不是 const，而 `ILyricsSource::load()` 是 const——在线歌词来源里的 `const_cast<IQueryBus &>` 是**有意的**（查询无副作用，作者不是它）。别改成 mutable 成员或绕过总线。
+- **`findMember` 只认对象**：它给"`{"song":{…}}` 包一层"的判断用。要取数组（`/api/v1/radio/get` 的 `data`）必须用 `findValue`，否则永远拿到 `nullptr`，表现为"接口可能已变更"。
+- **追加式队列的"喊饿"有两个入口**：播完（`handleFinished`）与手动下一首（`next()`）。漏一个就是"播着播着停了"，而且只在用户按下一首时才复现。
+- **后台批次要有心跳**：私人 FM 不走 `JobRegistry`，排水挂在 `GetSourceStatus` 上——那条查询每一拍都会到，别依赖"用户正在搜索"才排水。
+- 私人 FM 失败只记 `fmFailures`，**不进 `noteFailure`**：否则一次 FM 抽风会把搜索那条退避闸门按下 5 秒。
+
 - 应用日志是**控制台代码页（GBK）**，bash 里 `grep`/`cat` 中文全是 `����`。要看得先 `open(path,'rb').read().decode('gbk', errors='replace')`，再写 UTF-8 文件。
 
 **打包 / 发布**

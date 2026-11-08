@@ -69,6 +69,23 @@ public:
     /// 在队列面板里点了某一项（entries_ 的下标）。找不到返回 false。
     [[nodiscard]] bool jumpTo(std::int32_t entryIndex);
 
+    /// 追加式队列（FM）：播到末尾不再是"播完了"，而是交给上层再要一批。
+    ///
+    /// 它同时改三件事，写在这里免得以后又忘：
+    ///   - 随机模式**不洗牌**——FM 给的下一批本来就是随机的，再洗一次只会让
+    ///     "上一首"变得不可解释；
+    ///   - 循环模式**不绕回开头**——绕回就是重播，FM 要的是新歌；
+    ///   - 单曲循环**不重放**，让位给"下一首"。
+    void setAppendable(bool on) noexcept { appendable_ = on; }
+    [[nodiscard]] bool appendable() const noexcept { return appendable_; }
+
+    /// 接一批新条目到队尾。返回追加了几条（0 表示什么都没加）。
+    /// 游标不动：新歌排在队尾，"下一首"自然走到它们，正在播的那首不受影响。
+    std::int32_t append(std::vector<contracts::QueueEntry> entries);
+
+    /// 是否已经停在最后一项。追加式队列这时该去要下一批了。
+    [[nodiscard]] bool atEnd() const noexcept;
+
 private:
     void rebuildOrder(std::int32_t keepEntry, std::uint64_t seed);
 
@@ -77,6 +94,7 @@ private:
     std::int32_t cursor_ = -1; // 在 order_ 里的位置
     contracts::PlaybackMode mode_ = contracts::PlaybackMode::Sequential;
     std::uint64_t seed_ = 0;
+    bool appendable_ = false;
 };
 
 } // namespace sonora::playback::core

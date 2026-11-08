@@ -36,6 +36,19 @@ struct QueueEntry {
 struct PlayTracks {
     std::vector<QueueEntry> entries;
     std::int32_t startIndex = 0;
+    // 追加式来源（私人 FM）：播到末尾不结束，而是发布 QueueNeedsMore 让人送新歌。
+    // 普通列表保持 false —— 播完就该停，别偷偷去网上取。
+    bool appendable = false;
+};
+
+/// 接一批新条目到队尾（追加式来源用）。
+///
+/// 和 PlayTracks 的分工：PlayTracks 是"换一整个队列"，AppendTracks 是"接着放"。
+/// 后者不动正在播的那首，也不改播放模式——它只往队尾加东西。
+struct AppendTracks {
+    std::vector<QueueEntry> entries;
+    // 队列已经停在末尾等新歌时为 true：接上就立刻开播这一批的第一首。
+    bool playWhenIdle = true;
 };
 
 struct TogglePlayPause {};

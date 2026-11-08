@@ -31,4 +31,23 @@ struct TrackFinished final : kernel::IDomainEvent {
     [[nodiscard]] std::string_view eventName() const noexcept override { return kName; }
 };
 
+
+/// 追加式队列播到末尾了：还要不要下一批？
+///
+/// Playback 发布，**组合根**订阅。为什么不是 Playback 自己去问在线模块——
+/// 播放模块不知道"FM 是什么"，它只知道"我的队列还能接东西"。
+/// 由 host 去取下一批、再发 `AppendTracks`，边界才没有被打穿。
+///
+/// 只在"追加式队列"上发布：普通列表播完了就播完了，不该有人去要新歌。
+struct QueueNeedsMore final : kernel::IDomainEvent {
+    static constexpr std::string_view kName = "playback.queue_needs_more";
+
+    QueueNeedsMore() = default;
+    explicit QueueNeedsMore(std::int64_t at) : atUnix(at) {}
+
+    std::int64_t atUnix = 0;
+
+    [[nodiscard]] std::string_view eventName() const noexcept override { return kName; }
+};
+
 } // namespace sonora::contracts

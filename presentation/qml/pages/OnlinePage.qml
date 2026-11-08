@@ -684,6 +684,17 @@ Item {
                     onClicked: Online.openDailyRecommend()
                 }
 
+                // N4：私人 FM。追加式队列，播到末尾会自动再来要一批。
+                ComicButton {
+                    text: qsTr("私人 FM")
+                    tone: Online.fmMode ? "accent" : "paper"
+                    onClicked: {
+                        page.browseMode = ""
+                        Online.closeCollection()
+                        Online.startPersonalFm()
+                    }
+                }
+
                 ComicButton {
                     text: qsTr("我的")
                     tone: page.browseMode === "mine" ? "accent" : "paper"
@@ -877,4 +888,5 @@ Item {
             }
         }
     }
+
 }

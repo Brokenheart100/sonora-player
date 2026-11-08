@@ -1,6 +1,7 @@
 #include <sonora/playback/core/domain/PlayQueue.h>
 
 #include <algorithm>
+#include <iterator>
 #include <numeric>
 
 #include <sonora/playback/core/domain/ShufflePlanner.h>
@@ -37,7 +38,8 @@ void PlayQueue::setMode(contracts::PlaybackMode mode, std::uint64_t seed) {
 }
 
 void PlayQueue::rebuildOrder(std::int32_t keepEntry, std::uint64_t seed) {
-    if (mode_ == contracts::PlaybackMode::Shuffle) {
+    // 追加式队列不洗牌：FM 的下一批本来就是随机的，再洗一次只会让"上一首"不可解释。
+    if (mode_ == contracts::PlaybackMode::Shuffle && !appendable_) {
         seed_ = seed != 0 ? seed : ShufflePlanner::freshSeed();
         order_ = ShufflePlanner::plan(size(), keepEntry, seed_);
         // 排列的第一项就是 keepEntry，所以游标从 0 开始。
@@ -73,6 +75,14 @@ bool PlayQueue::advance(AdvanceReason reason) {
     if (empty() || order_.empty()) {
         return false;
     }
+    // 追加式队列：单曲循环不再重放（FM 要的是新歌），到末尾也不绕回开头。
+    if (appendable_) {
+        if (cursor_ + 1 < static_cast<std::int32_t>(order_.size())) {
+            ++cursor_;
+            return true;
+        }
+        return false;
+    }
     if (reason == AdvanceReason::AutoFinished && mode_ == contracts::PlaybackMode::RepeatOne) {
         // 游标不动 = 重放本曲。调用方拿到 true 会重新装载当前曲目。
         return true;
@@ -101,6 +111,29 @@ bool PlayQueue::retreat() {
         return true;
     }
     return false;
+}
+
+std::int32_t PlayQueue::append(std::vector<contracts::QueueEntry> entries) {
+    if (entries.empty()) {
+        return 0;
+    }
+    const auto added = static_cast<std::int32_t>(entries.size());
+    const auto base = size();
+    entries_.insert(entries_.end(), std::make_move_iterator(entries.begin()),
+                    std::make_move_iterator(entries.end()));
+    if (order_.empty() && cursor_ < 0) {
+        // 原来空着：这一批就是队列，从头开始。
+        rebuildOrder(0, seed_);
+        return added;
+    }
+    for (std::int32_t i = 0; i < added; ++i) {
+        order_.push_back(base + i);
+    }
+    return added;
+}
+
+bool PlayQueue::atEnd() const noexcept {
+    return cursor_ >= 0 && cursor_ + 1 >= static_cast<std::int32_t>(order_.size());
 }
 
 bool PlayQueue::jumpTo(std::int32_t entryIndex) {

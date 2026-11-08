@@ -50,6 +50,8 @@ kernel::Result<void> PlaybackService::playTracks(const contracts::PlayTracks& co
     if (command.entries.empty()) {
         return kernel::Error{kernel::ErrorCode::InvalidArgument, "播放列表是空的"};
     }
+    queue_.setAppendable(command.appendable);
+    waitingMore_ = false;
     queue_.setEntries(command.entries, command.startIndex);
     return loadCurrentAndPlay();
 }
@@ -98,6 +100,18 @@ kernel::Result<void> PlaybackService::setVolume(std::int32_t volume) {
 kernel::Result<void> PlaybackService::next() {
     if (!queue_.advance(AdvanceReason::Manual)) {
         (void)output_.stop();
+        // 追加式队列（私人 FM）：走到末尾不是"没有下一首"，而是"该要下一批了"。
+        // 与 handleFinished 走同一条路——播放模块不知道 FM 是什么。
+        if (queue_.appendable()) {
+            waitingMore_ = true;
+            if (events_ != nullptr) {
+                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+                events_->publish(sonora::contracts::QueueNeedsMore{now});
+            }
+            return kernel::Result<void>::ok();
+        }
         return kernel::Error{kernel::ErrorCode::NotFound, "已经是最后一首"};
     }
     return loadCurrentAndPlay();
@@ -199,6 +213,29 @@ kernel::Result<void> PlaybackService::loadCurrentAndPlay() {
     return output_.play();
 }
 
+kernel::Result<void> PlaybackService::appendTracks(const contracts::AppendTracks& command) {
+    if (command.entries.empty()) {
+        return {};
+    }
+    if (queue_.empty()) {
+        // 空队列接第一批：等价于"从头开始播"。
+        queue_.setAppendable(true);
+        waitingMore_ = false;
+        queue_.setEntries(command.entries, 0);
+        return command.playWhenIdle ? loadCurrentAndPlay() : kernel::Result<void>{};
+    }
+
+    (void)queue_.append(command.entries);
+    if (waitingMore_ && command.playWhenIdle) {
+        waitingMore_ = false;
+        if (!queue_.advance(AdvanceReason::Manual)) {
+            return kernel::Error{kernel::ErrorCode::NotFound, "新一批没有可播的曲目"};
+        }
+        return loadCurrentAndPlay();
+    }
+    return {};
+}
+
 void PlaybackService::handleFinished() {
     // 先把"这首歌放完了"这件事发出去，再推进队列。
     // 顺序不能反：推进之后 queue_.current() 已经指向下一首了，
@@ -215,6 +252,22 @@ void PlaybackService::handleFinished() {
 
     // AutoFinished 在单曲循环下返回 true 但游标不动 → 重新装载同一首。
     if (!queue_.advance(AdvanceReason::AutoFinished)) {
+        // 追加式队列：别停，也别自己去找歌——发一条"还差歌"，让组合根决定
+        // 从哪儿取。播放模块不知道 FM 是什么，它只知道队列还能接东西。
+        if (queue_.appendable()) {
+            (void)output_.stop();
+            waitingMore_ = true;
+            if (events_ != nullptr) {
+                const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                                     std::chrono::system_clock::now().time_since_epoch())
+                                     .count();
+                events_->publish(sonora::contracts::QueueNeedsMore{now});
+            }
+            if (logger_ != nullptr) {
+                logger_->info("追加式队列播到末尾，等待下一批：已播 {} 首", queue_.size());
+            }
+            return;
+        }
         // 队列播完：必须显式停掉输出。否则引擎还停在"正在播"的状态，
         // 界面上的按钮就永远显示"暂停"，位置也卡在末尾不再刷新。
         (void)output_.stop();

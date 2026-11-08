@@ -44,6 +44,7 @@ public:
     kernel::Result<void> previous();
     kernel::Result<void> setMode(contracts::PlaybackMode mode);
     kernel::Result<void> jumpTo(std::uint64_t trackId);
+    kernel::Result<void> appendTracks(const contracts::AppendTracks& command);
 
     // ── 查询 ────────────────────────────────────────────────────────────────
     [[nodiscard]] contracts::PlayerSnapshot snapshot() const;
@@ -60,6 +61,8 @@ private:
     kernel::IEventBus* events_ = nullptr;
     PlayQueue queue_;
     std::int32_t volume_ = 100;
+    // 追加式队列停在末尾、已经喊过 QueueNeedsMore：等新一批来了直接接上开播。
+    bool waitingMore_ = false;
 };
 
 } // namespace sonora::playback::core

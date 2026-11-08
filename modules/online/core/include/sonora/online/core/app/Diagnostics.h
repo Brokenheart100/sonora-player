@@ -32,8 +32,12 @@ namespace sonora::online::core::app
         // 但不能混进读路径的降级（"收藏失败"不是"搜索失败"）。
         void recordFavoriteWrite() noexcept { ++favoriteWrites_; }
         void recordFavoriteFailure() noexcept { ++favoriteFailures_; }
+
+        // 私人 FM 同理：它不是用户点出来的，失败时安静重试，单独计数。
+        void recordFmFailure() noexcept { ++fmFailures_; }
         [[nodiscard]] std::int32_t favoriteWrites() const noexcept { return favoriteWrites_; }
         [[nodiscard]] std::int32_t favoriteFailures() const noexcept { return favoriteFailures_; }
+        [[nodiscard]] std::int32_t fmFailures() const noexcept { return fmFailures_; }
         void recordUrlExpired() noexcept { ++counters_.urlExpired; }
 
         [[nodiscard]] const contracts::DegradationCounters &counters() const noexcept { return counters_; }
@@ -46,6 +50,7 @@ namespace sonora::online::core::app
             counters_ = {};
             favoriteWrites_ = 0;
             favoriteFailures_ = 0;
+            fmFailures_ = 0;
             next_ = 0;
             filled_ = 0;
         }
@@ -54,6 +59,7 @@ namespace sonora::online::core::app
         contracts::DegradationCounters counters_{};
         std::int32_t favoriteWrites_{0};
         std::int32_t favoriteFailures_{0};
+        std::int32_t fmFailures_{0};
         std::array<contracts::OnlineErrorRecord, kRecentLimit> ring_{};
         std::size_t next_{0}; // 下一条写哪
         std::size_t filled_{0};
