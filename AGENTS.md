@@ -144,6 +144,13 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 
 - 应用日志是**控制台代码页（GBK）**，bash 里 `grep`/`cat` 中文全是 `����`。要看得先 `open(path,'rb').read().decode('gbk', errors='replace')`，再写 UTF-8 文件。
 
+**歌单 / 设置（模块接线）**
+
+- **`QueryBus::on` 只收可调用对象**，`CommandBus::on` 才收 `std::shared_ptr<THandler>`。传 `std::make_shared<GetSettingHandler>(service)` 给查询总线是一屏 `functional(1234)` 模板报错；正确写法是 `queries.on<Q, T>([&service](const Q& q) { return Handler{service}.handle(q); });`。
+- **`SqliteConnection::exec()` 不绑定参数**：`exec("DELETE ... WHERE playlist_id = ?1")` 里的 `?1` 落成 NULL，**一行也删不掉、还不报错**。带参数的语句一律 `prepare` + `bind` + `step`。这个坑的症状是"接着的 INSERT 撞唯一索引"，很容易误判成索引写错了。
+- `Result<T>` 不能从 `T` 隐式构造：`return entries;` 是 `C2440`，写 `Result<T>::ok(std::move(x))`。`kernel::Error::message` 是**方法** `message()`，不是字段。
+- `catalog::contracts::ListTracks` 的 `limit` 上限是 **10000**（`ListTracksHandler` 直接拒绝更大的值）。表现层要按 `trackId` 建索引时用分页拉，别一把 100000。
+
 **打包 / 发布**
 
 - **版本号只有 `xmake.lua` 的 `SONORA_VERSION` 一处**（`set_version` + `add_defines` → `host/main.cpp` 传给 `setApplicationVersion`，QML 读 `Qt.application.version`）。只有 `assets/app.rc` 的 `VERSIONINFO` 是第二份，改版本时要一起改，否则资源管理器属性对不上。

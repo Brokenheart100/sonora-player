@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Dialogs
 import "../comic"
 import "../theme"
 import Sonora.Presentation 1.0
@@ -81,6 +82,154 @@ Item {
                 color: Theme.screentone
             }
 
+            // ── 播放偏好 ────────────────────────────────────────────────
+            // 音量与模式写在 Preferences（settings.ini）里，换会话不会被忘掉；
+            // 这两项都是**播放器自己的状态**，设置页只做显示与转发。
+            Column {
+                spacing: 8
+                width: parent.width
+
+                Text {
+                    text: qsTr("音量")
+                    color: Theme.ink
+                    font.family: Theme.fontText
+                    font.pixelSize: Theme.textBody
+                    font.weight: Font.DemiBold
+                }
+
+                Item {
+                    width: parent.width
+                    height: 26
+
+                    Rectangle {
+                        id: volumeTrack
+                        anchors.left: parent.left
+                        anchors.right: volumeText.left
+                        anchors.rightMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 6
+                        radius: 3
+                        color: Theme.screentone
+
+                        Rectangle {
+                            width: volumeTrack.width * (Player.volume / 100.0)
+                            height: parent.height
+                            radius: parent.radius
+                            color: Theme.accent
+                        }
+
+                        Rectangle {
+                            x: Math.max(0, Math.min(volumeTrack.width - 14,
+                                                   volumeTrack.width * (Player.volume / 100.0) - 7))
+                            y: (parent.height - 14) / 2
+                            width: 14
+                            height: 14
+                            radius: 7
+                            color: Theme.paperHigh
+                            border.width: Theme.stroke
+                            border.color: Theme.ink
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            // 拖动时按相对位置换算，和"点哪跳哪"是同一条路径。
+                            onPositionChanged: function (mouse) {
+                                if (pressed) {
+                                    Player.setVolume(Math.round(100 * mouse.x / width))
+                                }
+                            }
+                            onClicked: function (mouse) {
+                                Player.setVolume(Math.round(100 * mouse.x / width))
+                            }
+                        }
+                    }
+
+                    Text {
+                        id: volumeText
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 44
+                        horizontalAlignment: Text.AlignRight
+                        text: Player.volume + "%"
+                        color: Theme.inkSoft
+                        font.family: Theme.fontText
+                        font.pixelSize: Theme.textSmall
+                    }
+                }
+
+                Row {
+                    spacing: 10
+
+                    ComicButton {
+                        width: 120
+                        height: 32
+                        // 按钮上写"当前是什么"，点一下换下一个。
+                        text: Player.modeLabel
+                        onClicked: Player.cycleMode()
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("播放模式：顺序 → 列表循环 → 单曲 → 随机")
+                        color: Theme.inkSoft
+                        font.family: Theme.fontText
+                        font.pixelSize: Theme.textSmall
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: Theme.stroke
+                color: Theme.screentone
+            }
+
+            // ── 曲库 ────────────────────────────────────────────────────
+            Column {
+                spacing: 8
+                width: parent.width
+
+                Text {
+                    text: qsTr("曲库")
+                    color: Theme.ink
+                    font.family: Theme.fontText
+                    font.pixelSize: Theme.textBody
+                    font.weight: Font.DemiBold
+                }
+
+                Row {
+                    spacing: 10
+
+                    ComicButton {
+                        width: 108
+                        height: 32
+                        text: qsTr("重新扫描")
+                        onClicked: Library.refresh()
+                    }
+
+                    ComicButton {
+                        width: 108
+                        height: 32
+                        text: qsTr("换目录…")
+                        onClicked: folderDialog.open()
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("已在库里 %1 首").arg(Library.count)
+                        color: Theme.inkSoft
+                        font.family: Theme.fontText
+                        font.pixelSize: Theme.textSmall
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.width
+                height: Theme.stroke
+                color: Theme.screentone
+            }
+
             ChoiceRow {
                 title: qsTr("外观")
                 current: Appearance.themeMode
@@ -130,5 +279,12 @@ Item {
                 }
             }
         }
+    }
+
+    // 换曲库目录：选完交给 Library，具体"记到哪儿"由宿主（host/main.cpp）决定。
+    FolderDialog {
+        id: folderDialog
+        title: qsTr("选择音乐文件夹")
+        onAccepted: Library.chooseFolder(selectedFolder.toString())
     }
 }

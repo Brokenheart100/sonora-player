@@ -297,7 +297,7 @@ QML 侧只认四个注入的单例：`Player`、`Library`、`Settings`、`Sfx`�
 
 | 事件                                                    | 发布者        | 订阅者（同模块 / 跨模块）                                                 |
 | ------------------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
-| `TrackImported` / `TrackRenamed` / `TrackRemoved` | `Catalog`   | 同模块更新读模型；跨模块 → `Lyrics`（清理）、`Playlists`（标记失效） |
+| `TrackImported` / `TrackRenamed` / `TrackRemoved` | `Catalog`   | 同模块更新读模型；跨模块 → `Lyrics`（清理）、`Playlists`（标记失效，**发布者待曲库删除功能**） |
 | `TrackStarted` / `TrackFinished`                    | `Playback`  | 跨模块 → `Catalog`（播放统计）、`Preferences`（恢复点）              |
 | `QueueAdvanced` / `QueueModeChanged`                | `Playback`  | 同模块读模型                                                              |
 | `PlaylistCreated` / `PlaylistMembershipChanged`     | `Playlists` | 同模块读模型                                                              |
@@ -650,6 +650,23 @@ Presentation (OnlineViewModel)
 - **分页**：歌单 / 榜单先取 `playlist.trackIds[]`，再按 500 一并发 `/api/song/detail`；专辑 / 歌手 / 新歌一次取全、在内存里切片。
 - **追加式队列**：Playback 只发布集成事件 `QueueNeedsMore`，组合根收到后发 `StartPersonalFm` ——播放模块不知道"FM"是什么，`PlayQueue` 只多一个 `appendable` 位。
 - **缓存来路**：页面数据来自本地缓存时 `GetOnlineJob` 带 `fromCache`，界面显示「离线·上次结果」；真正的网络回包在 `drain()` 里清掉标记，不会一直挂着"上次结果"。
+
+### 7.6 歌单与设置链路（两个支撑模块）
+
+`Playlists` 与 `Preferences` 走的是**同步命令/查询**，不进轮询、不发网络、不需要排水：
+
+```
+PlaylistsPage / PlaylistsViewModel
+  → ICommandBus: CreatePlaylist / Rename / Delete / AddTrack / RemoveTrack / MoveTrack / MarkTrackUnavailable
+  → IQueryBus:   ListPlaylists / GetPlaylistTracks
+    → Playlists.Core: Playlist 聚合（不变量：不重名条目、pos 连续、删曲目只置 available=0）
+      → IPlaylistRepository → Playlists.Adapters: SqlitePlaylistRepository（UoW 事务）
+```
+
+- **条目不带标题**：`PlaylistEntryDto{trackId,pos,available}` 只有 id。表现层用曲库的 `ListTracks` 建一次 `QHash<trackId, TrackDto>` 自己拼标题、封面与时长——为少一次拼装而让 playlists JOIN catalog 的表，等于把两个模块的边界换成一句注释。
+- **唯一 pos 索引**：`playlist_item` 上 `(playlist_id, pos)` 唯一。保存时**先删光再按新顺序插**；逐条 UPDATE 会在中途撞索引。
+- **不可用占位**：`TrackRemoved` 的订阅方式已定（`markTrackUnavailable`），但曲库还没有"移除曲目"功能，因此目前**没有发布者**——接口、仓储与测试先就位。
+- **设置**：`PreferencesService` 在内存里持一份 `map`，`set` 先落库再改缓存；音量与播放模式由组合根接一个回调写回（`PlaybackService::onSettingsChanged`），播放模块不知道 Preferences 存在。曲库根目录仍留在 `settings.ini` 的 `library/root`，主题与语言仍由 `Appearance` 用 `QSettings` 管——三种存法各有理由，暂不合并。
 
 ---
 

@@ -28,11 +28,15 @@
 | **R3** ✅ | 在线出声（直链批量解析 + `Buffering` + 过期重解析） | 2 | R2, M4 | 点在线歌能出声，进度/暂停/切歌与本地无异 |
 | **R4** ✅ | 登录（扫码 + 粘贴 cookie + DPAPI + 账号胶囊） | 2 | R1 | 重启仍登录，库里 `grep MUSIC_U` 为空 |
 | **R5** ✅ | 收尾（降级矩阵 / 缓存 LRU / 诊断 / 文档 / CI 断言） | 1 | R3, R4 | 端点改成 404 域名后本地照常播、在线页提示「接口可能已变更」 |
-| | **合计** | **≈ 33 + 9.5（在线音源）** | | 本地曲库 M0–M9 全部完成；在线音源 R0–R5 见 [ONLINE.md](ONLINE.md) |
+| **N0–N6** ✅ | 网易云常用接口第二批（歌单/榜单/专辑/歌手/推荐/新歌/歌词/收藏/私人 FM/界面） | 12.5 | R5 | 见 [ONLINE.md](ONLINE.md) §19–§25 |
+| **P** ✅ | `Preferences` 从 probe 壳补成真模块（`kv` + 音量/模式持久化 + 设置页） | 1 | M9 | 改音量/模式，重启后仍是那个值 |
+| **PL** ✅ | `Playlists` 从 probe 壳补成真模块（聚合/仓储/服务 + 歌单页 + 从曲库加歌） | 2 | M1, M9 | 建歌单、加歌、重排、移出、删歌单全流程可用 |
+| | **合计** | **≈ 33 + 9.5（在线音源）+ 12.5（第二批）+ 3（P/PL）** | | 本地曲库 M0–M9 全部完成；在线音源 R0–R5 与第二批 N0–N6 见 [ONLINE.md](ONLINE.md) |
 
 **关键路径**：`M0 → M1 → M3 → M4 → M6 → M7 → M9`。这条链上任何一环延期都顺延交付。
 
 **进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**M5 ✅ 已完成**：搜索 / 增量扫描 / 真标签 / 分批与后台导入 / 分页 / 封面缓存 / 分组 / `TrackRow` 全部落地并实测（一万首首扫 9.4s、二扫 403ms、滚动帧 2–5ms）。**M6 ✅ 已完成**：四种播放模式与随机排列、随机模式精确回溯、`TrackFinished` 集成事件 → `play_count`、队列抽屉、`NowPlaying` 页、快捷键、文件被删的优雅降级（实测：连放自动推进、`play_count` 0→1→2、边界 143 文件、单测 94 用例 / 4686 断言）。**M7 ✅ 已完成**：LRC 解析（offset / 多标签 / 翻译 / 逐字）、两个来源与优先级、`LyricsModel` + `NowPlaying` 歌词列（实测：`D:\Music` 6 首真曲 24 行歌词滚动、同步滞后上限 33ms、边界 166 文件、单测 115 用例 / 4795 断言）。**M8 ✅ 已完成**：拟声字池 / 翻页转场 / 角色立绘（喵）/ 组件胶囊化 / 集中线（`Canvas` 重写）全部落地，1480 帧 median 1ms、p99 6ms，启动后无单帧 > 8ms（实测：边界 166 文件、单测 115 用例 / 4795 断言）。**R0–R5 ✅ 已完成**：在线音源从探针（`curl` 脚本，不建 target）、`online` 三 target + `platform/net`、搜索闭环（280ms 防抖）、直链播放（批量取地址 + 缓冲态 + 过期重解析）、扫码登录（DPAPI 落盘）一路做到收尾（降级矩阵实测、搜索缓存 200 行/4 MiB LRU、`GetOnlineDiagnostics` 诊断、release 包硬核对）。R5 实测记录与 12 条验收清单见 [ONLINE.md](ONLINE.md) §18；**唯一没在真 runner 上跑过的是 release 流水线本身**。**M9 ✅ 已完成**：版本号单一出处、`tools/package.ps1` 一键出绿色 zip、`installer/sonora.iss`（Inno Setup，未编译）、首次启动引导页、单实例锁、数据目录与 INI 设置、`LICENSE` + `THIRD-PARTY-NOTICES.md` + `dist/README.txt`（实测：`--version`、引导页遮罩 luma 126→223、选目录落盘并导入 6 首、重启自动回到上次目录、第二个实例 197ms 退出、`PATH=C:\Windows\system32` 下发布包能跑；边界 217 文件、单测 155 用例 / 5115 断言、字体 1000 字形）
+**P / PL ✅ 已完成**（把两个 probe 空壳补成真模块，用户要求"补充两个空壳模块"）：`Preferences` 是支撑域纯 CRUD（表 `kv`，构造时把全表读进内存，`set` 先落库再改缓存；音量与播放模式由组合根接 `PlaybackService::onSettingsChanged` 回写，播放模块不认识 Preferences），`Playlists` 是核心域（`Playlist` 聚合 + SQLite 仓储 + UoW 事务，表 `playlist` / `playlist_item`，`(playlist_id,pos)` 唯一索引要求保存时"先删光再按新顺序插"）。界面新增 `PlaylistsPage.qml`（列表/新建/删除确认/详情/加歌浮层/播放全部/移出）与 `SettingsPage.qml` 的「播放偏好」「曲库」两段，「歌单」nav 真正可用。实测：`PL1 opened=true → PL2 entries=3 first=A4 - 440Hz → PL3 播放中 pos=0:01 → PL4 after-remove=2 → PL5 lists=3 vol=100 mode=顺序 lib=6`；重复加同一首显示领域原文「这首歌已经在歌单里了」；`sonora_tests` 196 用例 / 5435 断言、`boundaries.py` 252 文件、字体 1046 字形 / 174 KB。**`MarkTrackUnavailable` 目前没有发布者**——曲库还没有"移除曲目"功能，接口、仓储与测试先就位。
 
 > 依赖清单（哪个库在哪一层、版本、许可证、获取渠道）见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。
 

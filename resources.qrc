@@ -33,6 +33,7 @@
         <file alias="qml/pages/OnlinePage.qml">presentation/qml/pages/OnlinePage.qml</file>
         <file alias="qml/pages/CollectionPage.qml">presentation/qml/pages/CollectionPage.qml</file>
         <file alias="qml/pages/SettingsPage.qml">presentation/qml/pages/SettingsPage.qml</file>
+        <file alias="qml/pages/PlaylistsPage.qml">presentation/qml/pages/PlaylistsPage.qml</file>
 
         <!-- 布局部件 -->
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>

@@ -11,7 +11,7 @@ import Sonora.Presentation 1.0
 Item {
     id: shell
 
-    property int currentPage: 0        // 0 = 曲库，1 = 正在播放，2 = 在线
+    property int currentPage: 0        // 0 曲库 / 1 正在播放 / 2 在线 / 3 设置 / 4 歌单
     property bool queueOpen: false     // 右下角抽屉：当前播放队列
 
     // 焦点落在文本输入框里时（曲库页的搜索框），空格和方向键属于输入法，
@@ -108,8 +108,13 @@ Item {
             NavItem {
                 width: sidebar.width
                 label: qsTr("歌单")
-                hint: qsTr("M6")
-                enabled: false
+                hint: Playlists.count > 0 ? Playlists.count.toString() : "—"
+                active: shell.currentPage === 4
+                onClicked: {
+                    shell.currentPage = 4
+                    // 从别处回来时重新取一次：设置页里可能刚建过/删过。
+                    Playlists.refresh()
+                }
             }
             NavItem {
                 width: sidebar.width
@@ -148,7 +153,7 @@ Item {
         anchors.bottom: playerBar.top
         anchors.bottomMargin: 14
 
-        pages: [libraryPage, nowPlayingPage, onlinePage, settingsPage]
+        pages: [libraryPage, nowPlayingPage, onlinePage, settingsPage, playlistsPage]
         index: shell.currentPage
     }
 
@@ -158,6 +163,7 @@ Item {
     Component { id: nowPlayingPage; NowPlaying { } }
     Component { id: onlinePage; OnlinePage { } }
     Component { id: settingsPage; SettingsPage { } }
+    Component { id: playlistsPage; PlaylistsPage { } }
 
 
     // ── 拟声字层 ────────────────────────────────────────────────────────
