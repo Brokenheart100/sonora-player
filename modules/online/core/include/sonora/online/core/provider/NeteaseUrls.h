@@ -119,10 +119,38 @@ namespace sonora::online::core::provider
                                                           const std::string &songId,
                                                           std::chrono::milliseconds timeout);
 
+    // ------------------------------------------------------------------ N2
+    //
+    // 登录侧：我的歌单、每日推荐、收藏/取消收藏。
+    // 前两个要 cookie（`MUSIC_U`），最后一个还要 `__csrf`——**只从 cookie 读、
+    // 只放表单字段**，不落日志、不进 DTO（AGENTS「在线音源」第 2 条）。
+
+    // 我的歌单：`/api/user/playlist?uid=&limit=`。uid 来自登录后的账号信息。
+    [[nodiscard]] contracts::HttpRequest makeUserPlaylistsRequest(const std::string &baseUrl,
+                                                                  const std::string &userId,
+                                                                  const std::string &cookie, int limit,
+                                                                  std::chrono::milliseconds timeout);
+
+    // 每日推荐歌曲：`/api/v3/discovery/recommend/songs`（匿名可用，见 N0 实测）。
+    [[nodiscard]] contracts::HttpRequest makeDailySongsRequest(const std::string &baseUrl,
+                                                               const std::string &cookie,
+                                                               std::chrono::milliseconds timeout);
+
+    // 收藏/取消收藏：`/api/playlist/manipulate/tracks`，表单 POST。
+    // `add == true` 是加入，`false` 是移除。
+    [[nodiscard]] contracts::HttpRequest makeFavoriteToggleRequest(const std::string &baseUrl,
+                                                                   const std::string &playlistId,
+                                                                   const std::string &songId, bool add,
+                                                                   const std::string &csrf,
+                                                                   const std::string &cookie,
+                                                                   std::chrono::milliseconds timeout);
+
     inline constexpr int kMaxSearchLimit = 100;
     inline constexpr int kMaxSongIds = 200;
     // `/api/song/detail?ids=` 实测 500 首可行；取 500 与 todolist §N1-5 对齐。
     inline constexpr int kMaxSongDetailsPerRequest = 500;
     inline constexpr int kMaxCollectionLimit = 100;
+    // 我的歌单上限：实测账号最多几十张，1000 是"一次拿全"的保险值。
+    inline constexpr int kMaxUserPlaylistsLimit = 1000;
 
 } // namespace sonora::online::core::provider

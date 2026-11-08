@@ -119,6 +119,7 @@ Item {
                     cols: page.cols
                     rowHeight: page.rowHeight
                     onActivated: Online.play(index)
+                    onFavoriteRequested: Online.requestFavorite(index)
                 }
 
                 Text {

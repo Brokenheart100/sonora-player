@@ -1049,3 +1049,50 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 
 - 端点的参数里带 `[`/`]`（数组字面量）时必须编码，否则网易云回 `code 400 参数错误`；这类错误和"参数真的错了"长得一模一样，容易在解析层找半天。
 - 一个 token 被反复复用（翻页）时，任何 `begin()`/`reset()` 都要先想"上一页的数据还在不在"。
 - 列表接口的正确形状是"命令要一次 + 轮询读"：`LoadCollections` 负责触发，`FetchCollections` 负责排水与读值，二者都不该假装自己同步完成。
+
+## 21. N2 实施记录：登录侧（2026-11-08）
+
+### 21.1 接通的端点
+
+| 用途 | 端点 | 方法 | 匿名 |
+| --- | --- | --- | --- |
+| 我的歌单 | `/api/user/playlist?uid=…&limit=1000` | GET | 需要登录（uid 从账号接口拿） |
+| 每日推荐 | `/api/v3/discovery/recommend/songs` | GET | **匿名也返回**（实测 31 首） |
+| 收藏 / 取消收藏 | `/api/playlist/manipulate/tracks` | POST | 需要登录 + `__csrf` |
+
+`specialType == 5` 的那张歌单在界面上显示为「我喜欢的音乐」——服务端返回的名字可能是用户自己改过的，不能靠名字认。
+
+### 21.2 代码落点
+
+- 契约：`Commands.h` 加 `LoadMyPlaylists{}` 与 `ToggleFavorite{songId, playlistId, add}`；`Types.h` 的 `OnlineDiagnosticsDto` 加 `favoriteWrites` / `favoriteFailures`。
+- URL：`NeteaseUrls` 加 `makeUserPlaylistsRequest` / `makeDailySongsRequest` / `makeFavoriteToggleRequest`（POST，body 为 `op=add|del&pid=…&trackIds=[…]&csrf_token=…`）。
+- 解码：`NeteaseJson` 加 `decodeUserPlaylists`（`playlist[]`，`specialType==5` 改名）/ `decodeDailySongs`（`data.dailySongs[]`，缺 `data` 报「接口可能已变更」）/ `decodeFavoriteToggle`（**只认顶层 code**，不看 `status`）。
+- 服务：`OnlineService` 的 `handle(LoadMyPlaylists)` 在未登录时**直接返回、不发请求、不取令牌**；`handle(ToggleFavorite)` 未登录回 `Unauthenticated`；`csrfToken()` 从会话 cookie 里取 `__csrf`；`drainMyPlaylists()` / `drainFavorite()` 挂在 `drainPages()` 的末尾，仍由 50 ms 轮询驱动。
+- 持久化：`online_session` 迁移 **v3 只加列**（`user_id TEXT NOT NULL DEFAULT ''`），登录成功时写回、登出时清空。
+- 表现层：`OnlineViewModel` 的 `myPlaylists` / `loadMyPlaylists()` / `openDailyRecommend()` / `requestFavorite(row)` / `confirmFavorite()` / `cancelFavorite()`。
+- 界面：在线页顶栏加「每日推荐」「我的」两个胶囊；「我的」是一面卡片墙（未登录时只有一行「登录后可见」）；结果行与详情行的**右键**触发收藏确认面板。
+
+### 21.3 真机实测
+
+| 项 | 结果 |
+| --- | --- |
+| 每日推荐（匿名） | `rows=31`、状态「31 首」、`[qml]` 告警 0 |
+| 我的歌单（未登录） | `mine=0 signedIn=false`，且 `rateLimited=0 / unauthenticated=0 / totalErrors=0`——**没发请求、没吃令牌** |
+| 收藏（未登录） | 右键后 `favoritePromptVisible=false`、错误文案「登录后才能收藏」，不产生写命令 |
+| 详情页渲染 | 与 N1 详情页同构（深色像素 3.0% vs 3.3%，非纸色 5.4% vs 5.5%），行区确实画满了 |
+| 门禁 | `sonora_tests` **168 用例 / 5182 断言**；`boundaries.py` 218 文件；字体 1011 字 / 168 KB `--verify` 覆盖完整 |
+
+截图证据：`.demo/n2_daily.png`（每日推荐详情页）。
+
+### 21.4 没做的，以及为什么
+
+- **登录态的三个端点没有真机验证**：本机没有任何可用的网易云 cookie，扫描登录需要人守着手机。写操作（收藏）与「我的歌单」只能用解码器单测 + 未登录路径的可计算判据来兜。文档在这里必须说实话：这三条是"代码通了、真实账号没跑过"。
+- **没有服务层假 transport 的端到端测试**（比如"登录后 LoadMyPlaylists 会发出 1 个请求"）：现有测试目录里还没有 OnlineService 级别的夹具，造一个需要 transport + executor + 临时库 + 假时钟四件套，留给 N3 一起做。
+- **收藏按钮的"失败回滚"**：现在不做乐观更新，成功前界面本来就不变，失败只把原因写进状态行——这比"先变红再变回来"更不容易出现状态错乱，也不算违背清单（清单要的是"别让按钮骗人"）。
+
+### 21.5 给下一轮的教训
+
+- **在 QML 绑定里调用会改绑定的函数**会立刻得到 `Binding loop detected`：诊断面板最初把 `Online.refreshDiagnostics()` 写在 `text:` 表达式里，整页刷了 10 条告警；改成 `Timer` 驱动才干净。
+- `Commands.h` 里用脚本按 `s.index('};', …)` 插新结构体是危险的——`SourceKind kind{SourceKind::Playlist};` 这一行里也有 `};`。要么按整段匹配，要么手工插。
+- `Theme.fontBody` 不存在（真实属性是 `fontDisplay` / `fontText`），QML 里写到不存在的属性只会得到一条 `Unable to assign [undefined] to QString`，不会告诉你写错了名字。
+- 每日推荐是**匿名可用**的（31 首），所以"未登录 → 登录后可见"这条只对「我的歌单」成立；文档里别把两者混成一句。

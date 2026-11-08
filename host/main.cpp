@@ -404,6 +404,10 @@ int main(int argc, char *argv[])
                                    { return onlineService.handle(command); });
         commands.on<LoadCollections>([&onlineService](const LoadCollections &command)
                                      { return onlineService.handle(command); });
+        commands.on<LoadMyPlaylists>([&onlineService](const LoadMyPlaylists &command)
+                                     { return onlineService.handle(command); });
+        commands.on<ToggleFavorite>([&onlineService](const ToggleFavorite &command)
+                                    { return onlineService.handle(command); });
 
         queries.on<GetOnlineJob, OnlineJobState>(
             [&onlineService](const GetOnlineJob &query)

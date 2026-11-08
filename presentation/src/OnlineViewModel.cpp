@@ -458,6 +458,20 @@ namespace sonora::presentation
         }
 
         // 卡片列表（推荐歌单 / 榜单）：界面切到哪个标签页就只轮询哪一类。
+        if (myPlaylistsWanted_ && signedIn())
+        {
+            // 每 4 帧问一次服务层（约 200ms）：服务层在排水，这里只读缓存。
+            if (++myPlaylistsTick_ % 4 == 0)
+            {
+                const auto playlists = queries_.ask<std::vector<online::contracts::PlaylistDto>>(
+                    online::contracts::GetMyPlaylists{});
+                if (playlists)
+                {
+                    publishMyPlaylists(playlists.value());
+                }
+            }
+        }
+
         if (collectionsWanted_ >= 0)
         {
             const auto wanted = static_cast<online::contracts::SourceKind>(collectionsWanted_);
@@ -793,6 +807,138 @@ namespace sonora::presentation
         emit collectionChanged();
     }
 
+    void OnlineViewModel::publishMyPlaylists(const std::vector<online::contracts::PlaylistDto> &items)
+    {
+        QVariantList next;
+        next.reserve(static_cast<qsizetype>(items.size()));
+        for (const auto &item : items)
+        {
+            QVariantMap row;
+            row.insert(QStringLiteral("playlistId"), QString::fromStdString(item.playlistId));
+            row.insert(QStringLiteral("name"), QString::fromStdString(item.name));
+            row.insert(QStringLiteral("cover"), QString::fromStdString(item.coverUrl));
+            row.insert(QStringLiteral("trackCount"), item.trackCount);
+            next.append(row);
+        }
+        if (next.size() == myPlaylists_.size())
+        {
+            return;
+        }
+        myPlaylists_ = std::move(next);
+        emit myPlaylistsChanged();
+    }
+
+    void OnlineViewModel::loadMyPlaylists()
+    {
+        // 只发一次"拉"的命令；真正的回包由 onTick 的 50ms 轮询搬进来。
+        myPlaylistsWanted_ = true;
+        myPlaylistsTick_ = 0;
+        commands_.dispatch(online::contracts::LoadMyPlaylists{});
+    }
+
+    void OnlineViewModel::openDailyRecommend()
+    {
+        // 每日推荐走详情页，但没有具体歌单 id：服务层按 kind 自己发请求。
+        pageKind_ = online::contracts::SourceKind::DailyRecommend;
+        pageCollectionId_.clear();
+        collectionTitle_ = QStringLiteral("每日推荐");
+        collectionSubtitle_.clear();
+        model_.clearRows();
+        ++token_;
+        seenRevision_ = 0;
+        busy_ = true;
+        hasMore_ = false;
+        retryable_ = false;
+        errorText_.clear();
+        statusText_ = QStringLiteral("正在取每日推荐…");
+        emit statusChanged();
+        emit collectionChanged();
+
+        online::contracts::RequestOnlinePage command;
+        command.token = token_;
+        command.kind = online::contracts::SourceKind::DailyRecommend;
+        command.offset = 0;
+        command.limit = 100;
+        dispatchQuietly([this, command] { return commands_.dispatch(command); });
+    }
+
+    void OnlineViewModel::requestFavorite(int rowIndex)
+    {
+        const auto &rows = model_.rows();
+        if (rowIndex < 0 || static_cast<std::size_t>(rowIndex) >= rows.size())
+        {
+            return;
+        }
+        if (!signedIn())
+        {
+            errorText_ = QStringLiteral("登录后才能收藏");
+            emit statusChanged();
+            return;
+        }
+        if (myPlaylists_.isEmpty())
+        {
+            // 喜欢列表的 id 只能从"我的歌单"里拿：没有任何歌单时先拉一次。
+            loadMyPlaylists();
+            errorText_ = QStringLiteral("正在取「我喜欢的音乐」，稍后再试");
+            emit statusChanged();
+            return;
+        }
+
+        const auto &row = rows[static_cast<std::size_t>(rowIndex)];
+        favoriteSongId_ = row.songId;
+        favoritePlaylistId_.clear();
+        for (const auto &item : myPlaylists_)
+        {
+            const auto map = item.toMap();
+            if (map.value(QStringLiteral("name")).toString() == QStringLiteral("我喜欢的音乐"))
+            {
+                favoritePlaylistId_ = map.value(QStringLiteral("playlistId")).toString().toStdString();
+                break;
+            }
+        }
+        if (favoritePlaylistId_.empty())
+        {
+            const auto first = myPlaylists_.first().toMap();
+            favoritePlaylistId_ = first.value(QStringLiteral("playlistId")).toString().toStdString();
+        }
+
+        favoritePromptText_ = QStringLiteral("收藏《%1》到「我喜欢的音乐」？").arg(fromUtf8(row.title));
+        favoritePromptVisible_ = true;
+        emit favoriteChanged();
+    }
+
+    void OnlineViewModel::confirmFavorite()
+    {
+        favoritePromptVisible_ = false;
+        emit favoriteChanged();
+        if (favoriteSongId_.empty() || favoritePlaylistId_.empty())
+        {
+            return;
+        }
+
+        online::contracts::ToggleFavorite command;
+        command.songId = favoriteSongId_;
+        command.playlistId = favoritePlaylistId_;
+        command.add = true;
+        const auto result = commands_.dispatch(command);
+        if (!result)
+        {
+            // 写失败：不做回滚（本来就没改过界面），只把原因摆出来。
+            errorText_ = fromUtf8(result.error().message());
+            emit statusChanged();
+            return;
+        }
+        errorText_.clear();
+        statusText_ = QStringLiteral("已收藏");
+        emit statusChanged();
+    }
+
+    void OnlineViewModel::cancelFavorite()
+    {
+        favoritePromptVisible_ = false;
+        emit favoriteChanged();
+    }
+
     void OnlineViewModel::dispatchQuietly(
         const std::function<kernel::Result<void>()> &action)
     {
@@ -888,6 +1034,9 @@ namespace sonora::presentation
             recent.append(item);
         }
         out.insert(QStringLiteral("recentErrors"), recent);
+        // 写操作单独两个数：收藏成功/失败不混进读路径的降级统计。
+        out.insert(QStringLiteral("favoriteWrites"), value.favoriteWrites);
+        out.insert(QStringLiteral("favoriteFailures"), value.favoriteFailures);
 
         diagnostics_ = std::move(out);
         emit diagnosticsChanged();

@@ -409,4 +409,64 @@ namespace sonora::online::adapters
             std::move(onDone));
     }
 
+    // ------------------------------------------------------------------ N2
+
+    std::uint64_t NeteaseProvider::startUserPlaylists(const std::string &userId, PlaylistsCallback onDone)
+    {
+        return startGet<codec::PlaylistsResult>(
+            provider::makeUserPlaylistsRequest(baseUrl_, userId, cookie_, provider::kMaxUserPlaylistsLimit,
+                                               std::chrono::milliseconds{8000})
+                .url.substr(baseUrl_.size()),
+            [](const std::string &body) { return codec::decodeUserPlaylists(body); }, std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startDailySongs(PageCallback onDone)
+    {
+        return startGet<codec::DecodeResult>(
+            "/api/v3/discovery/recommend/songs",
+            [](const std::string &body) { return codec::decodeDailySongs(body); }, std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startToggleFavorite(const std::string &playlistId,
+                                                      const std::string &songId, bool add,
+                                                      const std::string &csrf, FavoriteCallback onDone)
+    {
+        const std::uint64_t requestId = nextId_.fetch_add(1, std::memory_order_relaxed);
+        const std::string baseUrl = baseUrl_;
+        const std::string cookie = cookie_;
+
+        // 写操作不能走 startGet 的 GET 骨架：它是表单 POST，而且要求 cookie。
+        executor_.post([this, requestId, playlistId, songId, add, csrf, baseUrl, cookie,
+                        onDone = std::move(onDone)]() mutable {
+            const auto request = provider::makeFavoriteToggleRequest(
+                baseUrl, playlistId, songId, add, csrf, cookie, std::chrono::milliseconds{8000});
+            transport_.send(
+                requestId, request,
+                [onDone = std::move(onDone)](kernel::Result<c::HttpResponse> response) {
+                    codec::FavoriteResult out{};
+                    if (!response)
+                    {
+                        fillTransportError(out, response.error());
+                    }
+                    else
+                    {
+                        const c::HttpResponse &http = response.value();
+                        if (http.statusCode != 200)
+                        {
+                            fillStatusError(out, http.statusCode);
+                        }
+                        else
+                        {
+                            out = codec::decodeFavoriteToggle(http.body);
+                        }
+                    }
+                    if (onDone)
+                    {
+                        onDone(std::move(out));
+                    }
+                });
+        });
+        return requestId;
+    }
+
 } // namespace sonora::online::adapters

@@ -30,6 +30,11 @@ Item {
     // 所以这一列对曲库页是零成本的。
     property string badge: ""
 
+    // 右键 = 请求收藏（只有在线页会接这个信号；曲库行没人接，等于没有）。
+    // 用右键而不是再加一行按钮：行高 46 没有多余空间，多一个按钮会把
+    // "哪一列是曲名"这件事挤歪。
+    signal favoriteRequested()
+
     signal activated()
 
     width: parent ? parent.width : 0

@@ -108,6 +108,7 @@ namespace sonora::online::adapters
             case c::SourceKind::Album:
             case c::SourceKind::Artist:
             case c::SourceKind::NewSongs:
+            case c::SourceKind::DailyRecommend:
             {
                 // 这三类一次取全（都 ≤ 100 行），分页在内存里切片；重进同一页不再发请求。
                 if (const auto full = fullPages_.find(key); full != fullPages_.end())
@@ -141,6 +142,9 @@ namespace sonora::online::adapters
                     return {};
                 case c::SourceKind::Artist:
                     provider_.startArtist(request.collectionId, onPage);
+                    return {};
+                case c::SourceKind::DailyRecommend:
+                    provider_.startDailySongs(onPage);
                     return {};
                 default:
                     provider_.startNewSongs(request.limit, onPage);
@@ -302,6 +306,11 @@ namespace sonora::online::adapters
         provider_.setCookie({});
         pendingCookie_.clear();
         clearSession();
+        sessionCookie_.clear();
+        userId_.clear();
+        myPlaylists_.clear();
+        myPlaylistsLoaded_ = false;
+        ++myPlaylistsRevision_;
         status_.signedIn = false;
         status_.nickname.clear();
         status_.accountPhase = c::AccountPhase::Guest;
@@ -430,9 +439,135 @@ namespace sonora::online::adapters
         return kernel::Result<c::QrLoginDto>::ok(qr_);
     }
 
-    kernel::Result<std::vector<c::PlaylistDto>> OnlineService::handle(const c::GetMyPlaylists &) const
+    kernel::Result<std::vector<c::PlaylistDto>> OnlineService::handle(const c::GetMyPlaylists &)
     {
-        return kernel::Result<std::vector<c::PlaylistDto>>::ok({});
+        // 与 GetOnlineJob 同一个道理：界面 50ms 轮询这个查询，顺手把回包搬进缓存。
+        drainMyPlaylists();
+        return kernel::Result<std::vector<c::PlaylistDto>>::ok(myPlaylists_);
+    }
+
+    kernel::Result<void> OnlineService::handle(const c::LoadMyPlaylists &)
+    {
+        if (!status_.signedIn || userId_.empty())
+        {
+            // 游客：不发请求、不取令牌、不记错误。界面上"我的"页显示"登录后可见"。
+            myPlaylists_.clear();
+            myPlaylistsError_ = {};
+            myPlaylistsLoaded_ = true;
+            ++myPlaylistsRevision_;
+            return {};
+        }
+        if (myPlaylistsLoading_)
+        {
+            return {};
+        }
+
+        const std::int64_t now = nowMs();
+        if (failures_.blocked(now))
+        {
+            const std::int64_t waitMs = failures_.nextRetryAtMs - now;
+            myPlaylistsError_ = c::OnlineError{kernel::ErrorCode::Unavailable,
+                                               "连续失败，约 " + std::to_string((waitMs + 999) / 1000) +
+                                                   " 秒后自动重试",
+                                               true, 0};
+            ++myPlaylistsRevision_;
+            return {};
+        }
+        if (!bucket_.take(now))
+        {
+            myPlaylistsError_ = c::OnlineError{kernel::ErrorCode::RateLimited, "请求太频繁，稍后再试", true, 300};
+            ++myPlaylistsRevision_;
+            return {};
+        }
+
+        myPlaylistsLoading_ = true;
+        provider_.startUserPlaylists(userId_, [this](core::codec::PlaylistsResult result) {
+            const std::scoped_lock lock{pageMutex_};
+            userPlaylistsPending_.push_back({std::move(result)});
+        });
+        return {};
+    }
+
+    kernel::Result<void> OnlineService::handle(const c::ToggleFavorite &command)
+    {
+        if (!status_.signedIn)
+        {
+            return kernel::Error{kernel::ErrorCode::Unauthenticated, "登录后才能收藏"};
+        }
+        if (command.songId.empty() || command.playlistId.empty())
+        {
+            return kernel::Error{kernel::ErrorCode::InvalidArgument, "没有指定歌曲或歌单"};
+        }
+
+        diag_.recordFavoriteWrite();
+        // `csrf` 只作为表单字段进请求；它不缓存、不进日志、不进任何 DTO。
+        const std::string csrf = csrfToken();
+        provider_.startToggleFavorite(
+            command.playlistId, command.songId, command.add, csrf, [this](core::codec::FavoriteResult result) {
+                const std::scoped_lock lock{pageMutex_};
+                favoritePending_.push_back({std::move(result), true});
+            });
+        return {};
+    }
+
+    std::string OnlineService::csrfToken() const
+    {
+        // cookie 形如 `MUSIC_U=…; __csrf=abc123; ...`，取出 `__csrf` 的值。
+        const std::string key = "__csrf=";
+        const std::size_t at = sessionCookie_.find(key);
+        if (at == std::string::npos)
+        {
+            return {};
+        }
+        const std::size_t begin = at + key.size();
+        const std::size_t end = sessionCookie_.find(';', begin);
+        return sessionCookie_.substr(begin, end == std::string::npos ? std::string::npos : end - begin);
+    }
+
+    void OnlineService::drainMyPlaylists()
+    {
+        std::vector<PendingUserPlaylists> incoming;
+        {
+            const std::scoped_lock lock{pageMutex_};
+            incoming.swap(userPlaylistsPending_);
+        }
+        for (auto &item : incoming)
+        {
+            myPlaylistsLoading_ = false;
+            if (item.result.ok)
+            {
+                myPlaylists_ = std::move(item.result.items);
+                myPlaylistsError_ = {};
+                myPlaylistsLoaded_ = true;
+                noteSuccess();
+            }
+            else
+            {
+                noteFailure(item.result.error, "我的歌单");
+                myPlaylistsError_ = withHint(item.result.error);
+            }
+            ++myPlaylistsRevision_;
+        }
+    }
+
+    void OnlineService::drainFavorite()
+    {
+        std::vector<PendingFavorite> incoming;
+        {
+            const std::scoped_lock lock{pageMutex_};
+            incoming.swap(favoritePending_);
+        }
+        for (auto &item : incoming)
+        {
+            if (item.result.ok)
+            {
+                noteSuccess();
+                continue;
+            }
+            // 写操作的失败**单独计数**，并且只留最后一条错误给界面回滚用。
+            diag_.recordFavoriteFailure();
+            status_.lastError = withHint(item.result.error);
+        }
     }
 
     kernel::Result<void> OnlineService::handle(const c::LoadCollections &command)
@@ -532,6 +667,8 @@ namespace sonora::online::adapters
         out.cache.capRows = static_cast<std::int32_t>(SqliteOnlineStore::kMaxSearchRows);
         out.cache.capBytes = SqliteOnlineStore::kMaxSearchBytes;
 
+        out.favoriteWrites = diag_.favoriteWrites();
+        out.favoriteFailures = diag_.favoriteFailures();
         out.recentErrors = diag_.recent();
         return kernel::Result<c::OnlineDiagnosticsDto>::ok(std::move(out));
     }
@@ -637,6 +774,8 @@ namespace sonora::online::adapters
             return "歌手";
         case c::SourceKind::NewSongs:
             return "新歌";
+        case c::SourceKind::DailyRecommend:
+            return "每日推荐";
         default:
             return "在线";
         }
@@ -819,6 +958,9 @@ namespace sonora::online::adapters
         {
             applyPage(item);
         }
+        // 登录侧的两条回包通道：与页面结果同一个排水口。
+        drainMyPlaylists();
+        drainFavorite();
     }
 
     void OnlineService::drain()
@@ -985,6 +1127,8 @@ namespace sonora::online::adapters
                     continue;
                 }
                 provider_.setCookie(item.cookie);
+                sessionCookie_ = item.cookie;
+                userId_ = item.result.account.userId;
                 status_.signedIn = true;
                 status_.nickname = item.result.account.nickname;
                 status_.accountPhase = c::AccountPhase::LoggedIn;
@@ -1030,8 +1174,8 @@ namespace sonora::online::adapters
         }
 
         auto insert = db_.prepare(
-            "INSERT OR REPLACE INTO online_session(provider, secret_ref, nickname, updated_at) "
-            "VALUES(?1, ?2, ?3, ?4)");
+            "INSERT OR REPLACE INTO online_session(provider, secret_ref, nickname, updated_at, user_id) "
+            "VALUES(?1, ?2, ?3, ?4, ?5)");
         if (!insert)
         {
             secrets_.erase(kProvider);
@@ -1045,6 +1189,7 @@ namespace sonora::online::adapters
         statement.bind(2, std::string_view{kProvider});
         statement.bind(3, std::string_view{account.nickname});
         statement.bind(4, static_cast<std::int64_t>(nowMs));
+        statement.bind(5, std::string_view{account.userId});
         auto stepped = statement.step();
         if (!stepped || stepped.value())
         {

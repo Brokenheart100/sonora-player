@@ -52,6 +52,10 @@ namespace sonora::online::adapters
         // `collections_`，界面随后用 FetchCollections 取——中间不做分页，
         // 这三类一屏就是全部（推荐 30 张、榜单 65 张、新歌 30 首）。
         kernel::Result<void> handle(const contracts::LoadCollections &command);
+        // 拉一次"我的歌单"。未登录时**直接把任务挡在门外**（不消耗令牌、不记错误），
+        // 界面据此显示"登录后可见"。写操作收藏/取消收藏同在这条通道上。
+        kernel::Result<void> handle(const contracts::LoadMyPlaylists &command);
+        kernel::Result<void> handle(const contracts::ToggleFavorite &command);
         kernel::Result<void> handle(const contracts::CancelOnlineJob &command);
         kernel::Result<void> handle(const contracts::RetryOnlineJob &command);
         kernel::Result<void> handle(const contracts::ResolveAndPlayOnline &command);
@@ -70,8 +74,9 @@ namespace sonora::online::adapters
         [[nodiscard]] kernel::Result<contracts::SourceStatusDto> handle(const contracts::GetSourceStatus &query);
         // 也不再是 const：它顺带按 1.5 秒节奏发下一次扫码轮询。
         [[nodiscard]] kernel::Result<contracts::QrLoginDto> handle(const contracts::GetQrLoginState &query);
+        // 这个查询也不再是 const：它顺带排空"我的歌单"回包（仍在同一个 50ms 轮询里）。
         [[nodiscard]] kernel::Result<std::vector<contracts::PlaylistDto>> handle(
-            const contracts::GetMyPlaylists &query) const;
+            const contracts::GetMyPlaylists &query);
         // 卡片列表与详情都是纯内存读：`LoadCollections` / `RequestOnlinePage` 已经
         // 把结果放在服务里了，这里只是换个形状交出去。
         [[nodiscard]] kernel::Result<contracts::CollectionPageDto> handle(
@@ -158,10 +163,35 @@ namespace sonora::online::adapters
         std::unordered_map<std::string, contracts::CollectionDetailDto> details_;
         std::unordered_map<int, contracts::CollectionPageDto> collections_; // key: SourceKind 的整数
 
+        // ---- N2：登录侧 ----
+        struct PendingUserPlaylists
+        {
+            core::codec::PlaylistsResult result;
+        };
+        struct PendingFavorite
+        {
+            core::codec::FavoriteResult result;
+            bool add{true};
+        };
+        void drainMyPlaylists();
+        void drainFavorite();
+        // 从当前会话 cookie 里取 `__csrf`。**只用于拼表单字段**，不缓存、不写日志。
+        [[nodiscard]] std::string csrfToken() const;
+
+        std::string sessionCookie_;
+        std::string userId_;
+        std::vector<contracts::PlaylistDto> myPlaylists_;
+        contracts::OnlineError myPlaylistsError_;
+        bool myPlaylistsLoading_{false};
+        bool myPlaylistsLoaded_{false};
+        std::uint64_t myPlaylistsRevision_{0};
+
         std::mutex pageMutex_;
         std::vector<PendingPage> pagePending_;
         std::vector<PendingCollection> collectionPending_;
         std::vector<PendingPlaylistDetail> playlistDetailPending_;
+        std::vector<PendingUserPlaylists> userPlaylistsPending_;
+        std::vector<PendingFavorite> favoritePending_;
 
         void drain();
         // 失败留痕的唯一入口：计数器 + 环形缓冲 + 退避闸门，三件事一起做，

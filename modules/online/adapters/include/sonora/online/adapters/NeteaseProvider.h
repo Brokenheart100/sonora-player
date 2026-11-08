@@ -60,6 +60,8 @@ namespace sonora::online::adapters
         // 只读资源。回调同样在 worker 线程执行，调用方只许把结果塞进队列
         // （与 startSearch 的约定一字不差）。
         using PageCallback = std::function<void(core::codec::DecodeResult)>;
+        using PlaylistsCallback = std::function<void(core::codec::PlaylistsResult)>;
+        using FavoriteCallback = std::function<void(core::codec::FavoriteResult)>;
         using CollectionCallback = std::function<void(core::codec::CollectionListResult)>;
         using PlaylistDetailCallback = std::function<void(core::codec::PlaylistDetailResult)>;
 
@@ -72,6 +74,15 @@ namespace sonora::online::adapters
         std::uint64_t startNewSongs(int limit, PageCallback onDone);
         std::uint64_t startToplist(CollectionCallback onDone);
         std::uint64_t startPersonalizedPlaylists(int limit, CollectionCallback onDone);
+
+        // ---- N2：登录侧 ----
+        std::uint64_t startUserPlaylists(const std::string &userId, PlaylistsCallback onDone);
+        // 每日推荐歌曲：匿名也回数据（N0 实测 31 首），所以这里不判断登录态。
+        std::uint64_t startDailySongs(PageCallback onDone);
+        // 收藏/取消收藏。`csrf` 只进表单字段，不落日志。
+        std::uint64_t startToggleFavorite(const std::string &playlistId, const std::string &songId,
+                                          bool add, const std::string &csrf,
+                                          FavoriteCallback onDone);
 
         void cancel(std::uint64_t requestId);
 

@@ -171,15 +171,15 @@ python xmake/checks/boundaries.py
 
 ### N2 · 登录侧（2 人日）——依赖 N0 结论
 
-- [ ] **N2-1 我的歌单**
+- [x] **N2-1 我的歌单**
   - 文件：`OnlineService.h/.cpp`（把 `handle(GetMyPlaylists)` 的空实现换成真实拉取）、`NeteaseUrls`（`makeUserPlaylistsRequest`）、`NeteaseJson`（解析尾部的 `playlist[]`，取 `id/name/coverImgUrl/trackCount/specialType`）
   - 验收：登录后"我的"页列出歌单；含 `specialType == 5` 的那张显示为"我喜欢的音乐"。
 
-- [ ] **N2-2 每日推荐**
+- [x] **N2-2 每日推荐**
   - 端点：§2 的 #10、#11；进"推荐"页顶部两张卡。未登录时显示"登录后可见"，点了跳登录流程（现有 `startQrLogin` / `signIn`）。
   - 验收：登录态下当天返回 30 首 / N 张歌单；未登录态不发起请求（`Diagnostics` 里不出现新的 `unauthenticated` 计数）。
 
-- [ ] **N2-3 收藏 / 取消收藏（写操作）**
+- [x] **N2-3 收藏 / 取消收藏（写操作）**
   - 文件：`Commands.h` 加 `ToggleFavorite { std::string songId; std::string playlistId; bool add; }`；服务层组 POST body（`op=add/rem`、`pid`、`trackIds`）；
   - 硬要求：
     1. `__csrf` 从 cookie 里取，**只放请求头/表单**，不许进日志、事件、DTO（AGENTS「在线音源」第 2 条）；
@@ -187,11 +187,21 @@ python xmake/checks/boundaries.py
     3. 写操作单独计数（`Diagnostics` 加 `favoriteWrites`），不和读错误混在一起。
   - 验收：收藏后刷新列表出现该曲；断网时按钮回滚并提示；`grep` 全仓确认 `__csrf` 没有出现在任何日志语句里。
 
-- [ ] **N2-4 未登录降级**
+- [x] **N2-4 未登录降级**
   - 校验 §5.3 矩阵里"未登录访问需登录接口"这一行：游客态 + "登录后可见"，且**不消耗令牌**（不请求）。
   - 验收：诊断面板里 `unauthenticated` 计数不因浏览"我的"页而增长。
 
 ---
+
+
+> **N2 实施记录**
+>
+> - 每日推荐匿名可用（实测 31 首），所以"未登录 → 登录后可见"只对「我的歌单」成立；两者别混成一句。
+> - 收藏的交互改成「结果行右键 → 确认面板」而不是行内按钮：行高 46、五列已经排满，多一个按钮会把"曲名在哪一列"挤歪。
+> - 写操作不做乐观更新：成功前界面不变，失败只把原因写进状态行（不存在"回滚"这件事，也就不存在回滚错）。
+> - 登录态的三个端点（我的歌单 / 收藏 / 每日歌单）**没有真实账号跑过**：本机没有 cookie。代码通、解码器有单测、未登录路径有可计算判据，仅此而已。
+> - 迁移 v3 只加 `online_session.user_id` 一列，不回填（沿用 R5 的教训）。
+> - 门禁：`sonora_tests` 168 用例 / 5182 断言、`boundaries.py` 218 文件、字体 1011 字 / 168 KB `--verify` 覆盖完整、`[qml]` 告警 0。
 
 ### N3 · 在线歌词（1 人日）
 

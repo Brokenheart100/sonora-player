@@ -15,7 +15,7 @@ namespace sonora::online::adapters
         //
         // 存原始 JSON 而不是拆成列：解析规则会随接口变，拆了列就得每次跟着迁移；
         // 存原文则"解析器升级"不需要动库，而且夹具测试能直接复用它。
-        constexpr std::array<platform::storage::Migration, 2> kMigrations{{
+        constexpr std::array<platform::storage::Migration, 3> kMigrations{{
             {1,
              "online: 搜索/详情/直链缓存与会话指针",
              R"SQL(
@@ -68,6 +68,14 @@ CREATE TABLE online_session (
              R"SQL(
 ALTER TABLE online_search_cache ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE online_detail_cache ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0;
+)SQL"},
+            // v3（N2-1）：会话行要记 uid。"我的歌单"必须带 uid 才能问
+            // `/api/user/playlist`，而从 cookie 里解不出 uid（MUSIC_U 是一坨密文）。
+            // 只加列、不回填：老库升级后 uid 是空串，"我的"页显示"重新登录一次"。
+            {3,
+             "online: 会话行加 user_id",
+             R"SQL(
+ALTER TABLE online_session ADD COLUMN user_id TEXT NOT NULL DEFAULT '';
 )SQL"},
         }};
     } // namespace

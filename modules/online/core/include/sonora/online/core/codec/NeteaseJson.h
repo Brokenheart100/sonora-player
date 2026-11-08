@@ -166,4 +166,34 @@ namespace sonora::online::core::codec
     // `/api/personalized/playlist?limit=`：`result[]`。
     [[nodiscard]] CollectionListResult decodePersonalizedPlaylists(const std::string &body);
 
+    // ------------------------------------------------------------------ N2
+    //
+    // 登录侧。三个解码器共用同一条规矩：**只认顶层 code**。
+
+    struct PlaylistsResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        std::vector<contracts::PlaylistDto> items;
+        std::string raw;
+    };
+
+    struct FavoriteResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+    };
+
+    // `/api/user/playlist?uid=`：顶层 `playlist[]`，每项 `id/name/coverImgUrl/
+    // trackCount/specialType`。`specialType == 5` 是"我喜欢的音乐"，名字统一改写成
+    // 这一句——上游返回的名字在中文/英文账号下不一样，界面上不该跟着变。
+    [[nodiscard]] PlaylistsResult decodeUserPlaylists(const std::string &body);
+
+    // `/api/v3/discovery/recommend/songs`：曲目在 `data.dailySongs[]`（旧版字段）。
+    [[nodiscard]] DecodeResult decodeDailySongs(const std::string &body);
+
+    // `/api/playlist/manipulate/tracks`：`{"code":200,"status":1}` 之类，
+    // 只关心 code；`status` 不参与判定（它表示"这首歌当时是否可收藏"）。
+    [[nodiscard]] FavoriteResult decodeFavoriteToggle(const std::string &body);
+
 } // namespace sonora::online::core::codec

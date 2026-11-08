@@ -85,7 +85,8 @@ std::unique_ptr<Stack> openStack(const Sandbox &sandbox, const kernel::IClock &c
     platform::storage::Migrator migrator{stack->connection, adapters::kModuleName};
     const auto version = migrator.apply(adapters::migrations());
     REQUIRE(version.hasValue());
-    CHECK(version.value() == 2);
+    // 迁移条数就是"当前 schema 版本"：以后再加 v4，这里会跟着提醒更新。
+    CHECK(version.value() == static_cast<int>(adapters::migrations().size()));
     return stack;
 }
 

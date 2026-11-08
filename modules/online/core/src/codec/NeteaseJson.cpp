@@ -813,4 +813,100 @@ namespace sonora::online::core::codec
         return decodeCollectionArray(body, "result", contracts::SourceKind::Playlist, false);
     }
 
+    // ------------------------------------------------------------------ N2
+
+    PlaylistsResult decodeUserPlaylists(const std::string &body)
+    {
+        PlaylistsResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "响应不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+
+        const json &array = member(root, "playlist");
+        if (!array.is_array())
+        {
+            // 301/未登录已经由 topCodeOk 拦住了；走到这里说明形状变了。
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "接口可能已变更，稍后再试", true, 0};
+            return out;
+        }
+
+        out.items.reserve(array.size());
+        for (const auto &item : array)
+        {
+            if (!item.is_object())
+            {
+                continue;
+            }
+            contracts::PlaylistDto dto;
+            dto.playlistId = asText(member(item, "id"));
+            if (dto.playlistId.empty())
+            {
+                continue;
+            }
+            dto.name = asText(member(item, "name"));
+            dto.trackCount = static_cast<std::int32_t>(asInt(member(item, "trackCount")));
+            dto.coverUrl = asText(member(item, "coverImgUrl"));
+            // specialType 只在这里用一次：5 就是"我喜欢的音乐"。
+            if (asInt(member(item, "specialType")) == 5)
+            {
+                dto.name = "我喜欢的音乐";
+            }
+            out.items.push_back(std::move(dto));
+        }
+        out.ok = true;
+        out.raw = body;
+        return out;
+    }
+
+    DecodeResult decodeDailySongs(const std::string &body)
+    {
+        DecodeResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "响应不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+
+        const json *dataPtr = findMember(root, "data");
+        if (dataPtr == nullptr)
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "接口可能已变更，稍后再试", true, 0};
+            return out;
+        }
+        appendTracks(member(*dataPtr, "dailySongs"), out);
+        out.ok = true;
+        out.total = static_cast<int>(out.rows.size());
+        out.raw = body;
+        return out;
+    }
+
+    FavoriteResult decodeFavoriteToggle(const std::string &body)
+    {
+        FavoriteResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "响应不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+        out.ok = true;
+        return out;
+    }
+
 } // namespace sonora::online::core::codec

@@ -108,6 +108,7 @@ namespace sonora::presentation
         Q_PROPERTY(QString qrMessage READ qrMessage NOTIFY qrChanged)
         Q_PROPERTY(int qrSize READ qrSize NOTIFY qrChanged)
         // 诊断面板：一次性快照，不进 50ms 轮询（取一次要查两次 COUNT）。
+        Q_PROPERTY(QVariantList myPlaylists READ myPlaylists NOTIFY myPlaylistsChanged)
         Q_PROPERTY(QVariantMap diagnostics READ diagnostics NOTIFY diagnosticsChanged)
         // 推荐歌单 / 榜单两种卡片列表。卡片本身很少（≤ 65），一张模型够用；
         // 界面按当前标签页决定给 model 换哪一页数据。
@@ -168,11 +169,30 @@ namespace sonora::presentation
         Q_INVOKABLE void openCollection(const QString &kind, const QString &id, const QString &title);
         Q_INVOKABLE void closeCollection();
 
+        // "我的歌单"：未登录时界面自己显示"登录后可见"，这里仍然可以调，
+        // 服务层会直接返回空列表而不发请求。
+        [[nodiscard]] QVariantList myPlaylists() const { return myPlaylists_; }
+        Q_INVOKABLE void loadMyPlaylists();
+        // 每日推荐：和"推荐/榜单"一样进详情页，只是不需要 collectionId。
+        Q_INVOKABLE void openDailyRecommend();
+
+        // 收藏：右键某一行 → 先弹确认，再发写命令。不做"乐观更新"，
+        // 失败时界面本来就没改过，只需要把错误摆出来。
+        Q_PROPERTY(bool favoritePromptVisible READ favoritePromptVisible NOTIFY favoriteChanged)
+        Q_PROPERTY(QString favoritePromptText READ favoritePromptText NOTIFY favoriteChanged)
+        [[nodiscard]] bool favoritePromptVisible() const { return favoritePromptVisible_; }
+        [[nodiscard]] QString favoritePromptText() const { return favoritePromptText_; }
+        Q_INVOKABLE void requestFavorite(int rowIndex);
+        Q_INVOKABLE void confirmFavorite();
+        Q_INVOKABLE void cancelFavorite();
+
     signals:
         void statusChanged();
         void qrChanged();
         void diagnosticsChanged();
         void collectionChanged();
+        void myPlaylistsChanged();
+        void favoriteChanged();
 
     private:
         void commitSearch(const QString &keywords);
@@ -229,6 +249,17 @@ namespace sonora::presentation
         QHash<int, std::uint64_t> seenCollectionRevisions_;
         // 当前要看哪一类卡片（-1 = 不看）；界面切标签页时改它。
         int collectionsWanted_ = -1;
+
+        // "我的歌单"：登录后才拉；未登录时这个列表保持空，界面显示"登录后可见"。
+        QVariantList myPlaylists_;
+        bool myPlaylistsWanted_ = false;
+        int myPlaylistsTick_ = 0;
+        bool favoritePromptVisible_ = false;
+        QString favoritePromptText_;
+        std::string favoriteSongId_;
+        std::string favoritePlaylistId_;
+        std::size_t myPlaylistsSeen_ = 0;
+        void publishMyPlaylists(const std::vector<online::contracts::PlaylistDto> &items);
 
         OnlineListModel model_;
         OnlineCollectionModel collections_;

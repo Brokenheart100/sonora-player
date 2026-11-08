@@ -22,7 +22,10 @@ using sonora::online::core::codec::decodeNewSongs;
 using sonora::online::core::codec::decodePersonalizedPlaylists;
 using sonora::online::core::codec::decodePlaylistDetail;
 using sonora::online::core::codec::decodeSongDetails;
+using sonora::online::core::codec::decodeDailySongs;
+using sonora::online::core::codec::decodeFavoriteToggle;
 using sonora::online::core::codec::decodeToplist;
+using sonora::online::core::codec::decodeUserPlaylists;
 
 namespace {
 
@@ -194,5 +197,74 @@ TEST_CASE("在线资源解码：上游返回 301/400 时是错误，不是空列
     CHECK(notSignedIn.error.code == sonora::kernel::ErrorCode::Unauthenticated);
 
     const auto badParam = decodePersonalizedPlaylists(R"({"code": 400, "msg": "参数错误"})");
+    CHECK(!badParam.ok);
+}
+
+// ── N2：登录侧（我的歌单 / 每日推荐 / 收藏） ─────────────────────────────
+
+TEST_CASE("我的歌单：specialType 5 就是「我喜欢的音乐」")
+{
+    const char *body = R"json({
+      "code": 200,
+      "playlist": [
+        {"id": 501, "name": "每日私藏", "coverImgUrl": "https://p1.music.126.net/a.jpg", "trackCount": 88},
+        {"id": 502, "name": "我喜欢的音乐", "coverImgUrl": "https://p1.music.126.net/b.jpg", "trackCount": 213, "specialType": 5}
+      ]
+    })json";
+
+    const auto result = decodeUserPlaylists(body);
+
+    CHECK(result.ok);
+    REQUIRE(result.items.size() == 2);
+    CHECK(result.items[0].playlistId == "501");
+    CHECK(result.items[0].trackCount == 88);
+    // 服务端也会给个名字，但那是"用户自定义的歌单名"；喜欢列表要按 specialType 认。
+    CHECK(result.items[1].name == "我喜欢的音乐");
+    CHECK(result.items[1].playlistId == "502");
+}
+
+TEST_CASE("每日推荐：曲目在 data.dailySongs[]，不是顶层 songs[]")
+{
+    const char *body = R"json({
+      "code": 200,
+      "data": {
+        "dailySongs": [
+          {"id": 11, "name": "麻雀", "ar": [{"id": 1, "name": "李荣浩"}],
+           "al": {"id": 2, "name": "麻雀", "picUrl": "https://p/a.jpg"}, "dt": 221000},
+          {"id": 12, "name": "晴天", "ar": [{"id": 3, "name": "周杰伦"}],
+           "al": {"id": 4, "name": "叶惠美", "picUrl": "https://p/b.jpg"}, "dt": 269000}
+        ]
+      }
+    })json";
+
+    const auto result = decodeDailySongs(body);
+
+    CHECK(result.ok);
+    REQUIRE(result.rows.size() == 2);
+    CHECK(result.rows[0].songId == "11");
+    CHECK(result.rows[0].title == "麻雀");
+    CHECK(result.rows[0].artists == "李荣浩");
+    CHECK(result.rows[1].durationMs == 269000);
+}
+
+TEST_CASE("每日推荐：少了 data 就报「接口可能已变更」，不要当成空列表")
+{
+    const auto result = decodeDailySongs(R"({"code": 200, "songs": []})");
+
+    CHECK(!result.ok);
+    CHECK(result.error.code == sonora::kernel::ErrorCode::Upstream);
+    CHECK(result.error.retryable);
+}
+
+TEST_CASE("收藏：只看顶层 code，不看 body 里的 status")
+{
+    const auto added = decodeFavoriteToggle(R"({"code": 200, "status": 1})");
+    CHECK(added.ok);
+
+    const auto notSignedIn = decodeFavoriteToggle(R"({"code": 301, "msg": "需要登录"})");
+    CHECK(!notSignedIn.ok);
+    CHECK(notSignedIn.error.code == sonora::kernel::ErrorCode::Unauthenticated);
+
+    const auto badParam = decodeFavoriteToggle(R"({"code": 400, "msg": "参数错误"})");
     CHECK(!badParam.ok);
 }

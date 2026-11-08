@@ -254,6 +254,10 @@ namespace sonora::online::contracts
         double tokensLeft{0.0};
         double tokenBurst{0.0};
         OnlineCacheStats cache;
+        // 写操作单独计数：收藏次数与失败次数分开放，不和读路径的降级混在一起
+        // （否则"收藏失败"会被读侧的 upstream/timeout 计数吃掉）。
+        std::int32_t favoriteWrites{0};
+        std::int32_t favoriteFailures{0};
         // 最新在前，最多 10 条。
         std::vector<OnlineErrorRecord> recentErrors;
     };

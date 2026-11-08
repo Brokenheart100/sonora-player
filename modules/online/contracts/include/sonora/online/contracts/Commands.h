@@ -39,6 +39,22 @@ namespace sonora::online::contracts
         std::int32_t limit{30};
     };
 
+    // 拉一次"我的歌单"。结果缓存进服务里，界面用 `GetMyPlaylists` 取。
+    // 未登录时**不把任务发出去**：游客点"我的"看到的应该是"登录后可见"，
+    // 而不是一条"未登录"错误（AGENTS：降级不消耗令牌）。
+    struct LoadMyPlaylists
+    {
+    };
+
+    // 收藏 / 取消收藏。写操作只有这一个，参数就是"哪张歌单、哪首歌、加还是删"。
+    // `playlistId` 在"我喜欢"场景下是用户的喜欢歌单 id（由界面传入）。
+    struct ToggleFavorite
+    {
+        std::string songId;
+        std::string playlistId;
+        bool add{true};
+    };
+
     struct CancelOnlineJob
     {
         std::uint64_t token{0};

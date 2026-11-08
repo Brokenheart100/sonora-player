@@ -28,6 +28,12 @@ namespace sonora::online::core::app
         void recordError(const contracts::OnlineError &error, std::int64_t nowMs, std::string where) noexcept;
 
         void recordCacheHit() noexcept { ++counters_.cacheHits; }
+        // 写操作单独计数：收藏/取消收藏是用户主动动作，成功与失败都要留痕，
+        // 但不能混进读路径的降级（"收藏失败"不是"搜索失败"）。
+        void recordFavoriteWrite() noexcept { ++favoriteWrites_; }
+        void recordFavoriteFailure() noexcept { ++favoriteFailures_; }
+        [[nodiscard]] std::int32_t favoriteWrites() const noexcept { return favoriteWrites_; }
+        [[nodiscard]] std::int32_t favoriteFailures() const noexcept { return favoriteFailures_; }
         void recordUrlExpired() noexcept { ++counters_.urlExpired; }
 
         [[nodiscard]] const contracts::DegradationCounters &counters() const noexcept { return counters_; }
@@ -38,12 +44,16 @@ namespace sonora::online::core::app
         void clear() noexcept
         {
             counters_ = {};
+            favoriteWrites_ = 0;
+            favoriteFailures_ = 0;
             next_ = 0;
             filled_ = 0;
         }
 
     private:
         contracts::DegradationCounters counters_{};
+        std::int32_t favoriteWrites_{0};
+        std::int32_t favoriteFailures_{0};
         std::array<contracts::OnlineErrorRecord, kRecentLimit> ring_{};
         std::size_t next_{0}; // 下一条写哪
         std::size_t filled_{0};

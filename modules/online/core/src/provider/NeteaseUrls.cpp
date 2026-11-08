@@ -218,4 +218,61 @@ namespace sonora::online::core::provider
                           {}, timeout);
     }
 
+    // ------------------------------------------------------------------ N2
+    //
+    // 登录侧。三个端点都要求 cookie，参数与路径来自 docs/ONLINE.md §19/§20 的实测。
+
+    contracts::HttpRequest makeUserPlaylistsRequest(const std::string &baseUrl, const std::string &userId,
+                                                    const std::string &cookie, int limit,
+                                                    std::chrono::milliseconds timeout)
+    {
+        // uid 是数字，但仍然编码：万一有人把空串传进来，宁可服务端回 301 也不要拼出
+        // `?uid=&limit=` 这种看起来正常的 URL。
+        const int clamped = std::clamp(limit, 1, kMaxUserPlaylistsLimit);
+        return getRequest(baseUrl + "/api/user/playlist?uid=" + encodeUrlComponent(userId) +
+                              "&limit=" + std::to_string(clamped),
+                          cookie, timeout);
+    }
+
+    contracts::HttpRequest makeDailySongsRequest(const std::string &baseUrl, const std::string &cookie,
+                                                 std::chrono::milliseconds timeout)
+    {
+        // 每日推荐歌曲。N0 实测**匿名也回 31 首**（与旧文档"需登录"不符），
+        // 所以这里不判断登录态——匿名能拿到就当匿名可用，拿不到再降级。
+        return getRequest(baseUrl + "/api/v3/discovery/recommend/songs", cookie, timeout);
+    }
+
+    contracts::HttpRequest makeFavoriteToggleRequest(const std::string &baseUrl,
+                                                     const std::string &playlistId,
+                                                     const std::string &songId, bool add,
+                                                     const std::string &csrf,
+                                                     const std::string &cookie,
+                                                     std::chrono::milliseconds timeout)
+    {
+        // 写操作：表单 POST。`trackIds` 是 JSON 数组字面量，**放在 body 里**，
+        // 不需要 URL 编码（编码会把 `[` 变成 %5B，服务端照样认，但 body 里没必要）。
+        // `__csrf` 从 cookie 里取出来只放表单字段，不进日志、不进任何 DTO。
+        std::string body = "op=";
+        body += add ? "add" : "del";
+        body += "&pid=";
+        body += encodeUrlComponent(playlistId);
+        body += "&trackIds=[";
+        body += songId;
+        body += "]";
+        if (!csrf.empty())
+        {
+            body += "&csrf_token=";
+            body += encodeUrlComponent(csrf);
+        }
+
+        contracts::HttpRequest request;
+        request.method = contracts::HttpMethod::Post;
+        request.url = baseUrl + "/api/playlist/manipulate/tracks";
+        request.headers = defaultHeaders(cookie);
+        request.headers.emplace_back("Content-Type", "application/x-www-form-urlencoded");
+        request.body = std::move(body);
+        request.transferTimeout = timeout;
+        return request;
+    }
+
 } // namespace sonora::online::core::provider

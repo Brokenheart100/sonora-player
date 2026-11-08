@@ -217,6 +217,8 @@ Item {
                         cols: page.cols
                         rowHeight: page.rowHeight
                         onActivated: Online.play(index)
+                        // 右键收藏：TrackRow 只负责喊一声，确认与发送在 ViewModel 里。
+                        onFavoriteRequested: Online.requestFavorite(index)
                     }
 
                     // 空态：加载中 / 出错 / 真的没有结果，三种文案分开写。
@@ -675,6 +677,22 @@ Item {
                     tone: "paper"
                     onClicked: Online.openCollection("newsongs", "latest", qsTr("新歌速递"))
                 }
+
+                ComicButton {
+                    text: qsTr("每日推荐")
+                    tone: "paper"
+                    onClicked: Online.openDailyRecommend()
+                }
+
+                ComicButton {
+                    text: qsTr("我的")
+                    tone: page.browseMode === "mine" ? "accent" : "paper"
+                    onClicked: {
+                        page.browseMode = "mine"
+                        Online.closeCollection()
+                        Online.loadMyPlaylists()
+                    }
+                }
             }
 
             ComicButton {
@@ -692,6 +710,7 @@ Item {
 
         GridView {
             id: cardGrid
+            visible: page.browseMode !== "mine"
             anchors.top: browseBar.bottom
             anchors.left: parent.left
             anchors.right: parent.right
@@ -706,6 +725,83 @@ Item {
             delegate: CollectionCard {
                 onActivated: Online.openCollection(page.browseMode, collectionId, name)
             }
+        }
+
+        // "我的歌单"：登录后从 playlist[] 拉下来的，卡片样式与推荐/榜单一致。
+        GridView {
+            id: mineGrid
+            visible: page.browseMode === "mine" && Online.myPlaylists.length > 0
+            anchors.top: browseBar.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 20
+            clip: true
+            cellWidth: 188
+            cellHeight: 248
+            model: Online.myPlaylists
+
+            delegate: Item {
+                width: 168
+                height: 228
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: Theme.paperHigh
+                    border.width: 3
+                    border.color: Theme.ink
+                }
+
+                Image {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 10
+                    height: 140
+                    source: modelData.cover
+                    sourceSize: Qt.size(320, 320)
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
+
+                Text {
+                    anchors.top: parent.top
+                    anchors.topMargin: 158
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 10
+                    text: modelData.name
+                    elide: Text.ElideRight
+                    color: Theme.ink
+                    font.family: Theme.fontText
+                    font.pixelSize: 16
+                }
+
+                Text {
+                    anchors.bottom: parent.bottom
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.margins: 10
+                    text: modelData.trackCount > 0 ? qsTr("%1 首").arg(modelData.trackCount) : ""
+                    color: Theme.inkSoft
+                    font.family: Theme.fontText
+                    font.pixelSize: 13
+                }
+
+                TapHandler {
+                    onTapped: Online.openCollection("playlist", modelData.playlistId, modelData.name)
+                }
+            }
+        }
+
+        Text {
+            id: mineEmpty
+            anchors.centerIn: parent
+            visible: page.browseMode === "mine" && Online.myPlaylists.length === 0
+            text: Online.signedIn ? qsTr("还没有歌单") : qsTr("登录后可见")
+            color: Theme.inkSoft
+            font.family: Theme.fontText
+            font.pixelSize: 18
         }
 
         Text {
@@ -725,5 +821,60 @@ Item {
     CollectionPage {
         anchors.fill: parent
         visible: Online.collectionActive
+    }
+
+    // ── 收藏确认（只在线页有；右键行触发） ─────────────────────────
+    Rectangle {
+        anchors.fill: parent
+        visible: Online.favoritePromptVisible
+        color: Theme.ink
+        opacity: 0.42
+        z: 40
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: Online.cancelFavorite()
+        }
+    }
+
+    MangaPanel {
+        anchors.centerIn: parent
+        visible: Online.favoritePromptVisible
+        z: 41
+        width: Math.min(460, parent.width - 96)
+        height: 196
+
+        Column {
+            anchors.centerIn: parent
+            width: parent.width - 48
+            spacing: 16
+
+            Text {
+                width: parent.width
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
+                text: Online.favoritePromptText
+                color: Theme.ink
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textBody
+            }
+
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 14
+
+                ComicButton {
+                    text: qsTr("收藏")
+                    strong: true
+                    onClicked: Online.confirmFavorite()
+                }
+
+                ComicButton {
+                    text: qsTr("取消")
+                    tone: "paper"
+                    onClicked: Online.cancelFavorite()
+                }
+            }
+        }
     }
 }

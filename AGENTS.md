@@ -128,6 +128,9 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - 降级必须留痕：失败走 `Diagnostics::recordError()`（分类计数 + 最近 10 条），取消（`Internal` + `"已取消"`）不计数，否则打字时每敲一个字就多一条"错误"。
 - 判断 JSON 里"有没有这个键"**不要用 `member(...).is_object()`**：`member()` 对缺失键返回共享的空对象，空对象也是 object。要判存在性用返回指针的 `findMember()`——否则平铺的歌曲对象会被当成 `{"song":{…}}` 的外层，整页解析成 0 行。
 - 请求参数里带 `[`/`]`（数组字面量）**必须 URL 编码**：裸方括号会让 `/api/song/detail` 回 `{"code":400,"msg":"参数错误"}`，和"参数真的错"长得一模一样。
+- 「我喜欢的音乐」只能靠 `specialType == 5` 认，**不要按名字匹配**——用户可以把歌单改名。
+- 收藏是唯一的写操作：`__csrf` 从 cookie 里取、只进 POST body，**不进日志/事件/DTO**；失败单独记 `favoriteFailures`，不要混进读路径的降级计数。
+- 在 QML 绑定表达式里调用会改绑定的函数（如 `Online.refreshDiagnostics()`）会立刻换来 `Binding loop detected`：要刷新就挂 `Timer`，别写在 `text:` 里。
 
 **打包 / 发布**
 
