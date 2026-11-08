@@ -337,4 +337,8 @@ add_deps({
     -- 适配器的 Qt 部分（transport、worker）由 Sonora.Platform.Net 提供，不进这个二进制。
     "Sonora.Online.Contracts",
     "Sonora.Online.Core",
+    -- R5：缓存淘汰规则写在 SQL 里，只有链上适配器才能用真库证明它。
+    -- Online.Adapters 自身零 Qt（传输由 Platform.Net 注入），所以这个二进制
+    -- 仍然不拖 Qt DLL——这一条正是"适配器层零 Qt"的直接好处。
+    "Sonora.Online.Adapters",
 })

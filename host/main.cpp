@@ -359,11 +359,19 @@ int main(int argc, char *argv[])
             [&onlineService](const GetMyPlaylists &query) { return onlineService.handle(query); });
         queries.on<GetOnlinePlayback, OnlinePlaybackDto>(
             [&onlineService](const GetOnlinePlayback &query) { return onlineService.handle(query); });
+        queries.on<GetOnlineDiagnostics, OnlineDiagnosticsDto>(
+            [&onlineService](const GetOnlineDiagnostics &query) { return onlineService.handle(query); });
     }
 
     // 查询都注册好了再恢复会话：回包要靠 GetSourceStatus 才能被界面读到，
     // 早于注册去问网易云，结果会落空。
     onlineService.restoreSession();
+
+    // 打包冒烟要有一条能 grep 的"在线链路真的起来了"的证据：只看到窗口出现
+    // 不能证明 Qt6Network 与 TLS 后端被正确部署（缺 tls/qschannelbackend.dll
+    // 时窗口照常开，只是所有请求 SYSLIB 失败）。release.yml 的冒烟断言这行。
+    std::fprintf(stderr, "[info] 在线音源就绪：transport=QtHttpTransport, provider=ncm\n");
+    std::fflush(stderr);
 
     audio::FfmpegOutput audioOutput;
     playback::core::PlaybackService playbackService{audioOutput, &logger, &audioOutput, &events};

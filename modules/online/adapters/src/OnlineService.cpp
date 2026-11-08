@@ -1,4 +1,5 @@
 #include "sonora/online/adapters/OnlineService.h"
+#include "sonora/online/core/app/Hint.h"
 
 #include "sonora/online/core/auth/QrCode.h"
 
@@ -46,6 +47,7 @@ namespace sonora::online::adapters
         status_.enabled = true;
         status_.signedIn = false;
         status_.accountPhase = c::AccountPhase::Guest;
+        bucket_.prime(nowMs());
     }
 
     // ---------------------------------------------------------------- 命令
@@ -85,6 +87,7 @@ namespace sonora::online::adapters
         // 的那次 drain() 解码（它本来就要读队列）。
         if (const auto cached = store_.loadSearch(kProvider, request.keywords, request.offset))
         {
+            diag_.recordCacheHit();
             Pending pending;
             pending.token = token;
             pending.keywords = request.keywords;
@@ -94,6 +97,27 @@ namespace sonora::online::adapters
                 std::lock_guard<std::mutex> guard(pendingMutex_);
                 pending_.push_back(std::move(pending));
             }
+            return {};
+        }
+
+        // 两道闸门挡在真正发请求之前。顺序有讲究：先退避再限流——退避是"连续失败
+        // 之后别急着再来"，限流是"连打太快"；被退避挡住时不该再去消耗令牌。
+        const std::int64_t now = nowMs();
+        if (failures_.blocked(now))
+        {
+            const std::int64_t waitMs = failures_.nextRetryAtMs - now;
+            c::OnlineError error{kernel::ErrorCode::Unavailable,
+                                 "连续失败，约 " + std::to_string((waitMs + 999) / 1000) + " 秒后自动重试", true, 0};
+            // 只进降级计数，不动连续失败计数：被闸门挡下不是又失败了一次。
+            diag_.recordError(error, now, "搜索");
+            jobs_.fail(token, error);
+            return {};
+        }
+        if (!bucket_.take(now))
+        {
+            c::OnlineError error{kernel::ErrorCode::RateLimited, "请求太频繁，稍后再试", true, 300};
+            diag_.recordError(error, now, "搜索");
+            jobs_.fail(token, error);
             return {};
         }
 
@@ -253,9 +277,15 @@ namespace sonora::online::adapters
 
         if (!item.result.ok)
         {
+            noteFailure(item.result.error, "取地址");
+            // URL 过期（20 分钟 TTL）在矩阵里单独一行：它是唯一"重解析一次就好"的失败。
+            if (item.result.error.code == kernel::ErrorCode::NotFound)
+            {
+                diag_.recordUrlExpired();
+            }
             c::OnlinePlaybackDto next;
             next.revision = playbackRevision_;
-            next.error = item.result.error;
+            next.error = withHint(item.result.error);
             next.startIndex = item.startIndex;
             playback_ = std::move(next);
             return;
@@ -273,6 +303,7 @@ namespace sonora::online::adapters
             out.bitrateKbps = entry.bitrate;
             next.entries.push_back(std::move(out));
         }
+        noteSuccess();
         playback_ = std::move(next);
     }
 
@@ -306,7 +337,54 @@ namespace sonora::online::adapters
         return kernel::Result<std::vector<c::PlaylistDto>>::ok({});
     }
 
+    kernel::Result<c::OnlineDiagnosticsDto> OnlineService::handle(const c::GetOnlineDiagnostics &query)
+    {
+        const std::int64_t now = nowMs();
+        c::OnlineDiagnosticsDto out;
+        out.provider = query.provider.empty() ? std::string{kProvider} : query.provider;
+        out.degradations = diag_.counters();
+        out.consecutiveFailures = failures_.consecutive;
+        out.nextRetryAtUnix = failures_.nextRetryAtMs > 0 ? (failures_.nextRetryAtMs + 999) / 1000 : 0;
+        out.tokensLeft = bucket_.tokens(now);
+        out.tokenBurst = 6.0;
+
+        const auto stats = store_.stats();
+        out.cache.searchRows = stats.searchRows;
+        out.cache.searchBytes = stats.searchBytes;
+        out.cache.songRows = stats.songRows;
+        out.cache.detailRows = stats.detailRows;
+        out.cache.capRows = static_cast<std::int32_t>(SqliteOnlineStore::kMaxSearchRows);
+        out.cache.capBytes = SqliteOnlineStore::kMaxSearchBytes;
+
+        out.recentErrors = diag_.recent();
+        return kernel::Result<c::OnlineDiagnosticsDto>::ok(std::move(out));
+    }
+
     // ---------------------------------------------------------------- 内部
+
+    std::int64_t OnlineService::nowMs() const noexcept
+    {
+        return nowMillis(clock_);
+    }
+
+    void OnlineService::noteFailure(const c::OnlineError &error, std::string where)
+    {
+        const std::int64_t now = nowMs();
+        diag_.recordError(error, now, std::move(where));
+
+        // 取消不算失败：记录里已经跳过，这里也不能让退避闸门关起来——
+        // 否则用户连打三个字又删掉，就会触发一次"连续失败 3 次"。
+        if (error.code == kernel::ErrorCode::Internal && error.message == "已取消")
+        {
+            return;
+        }
+        failures_.recordFailure(now, backoff_);
+    }
+
+    c::OnlineError OnlineService::withHint(c::OnlineError error) const
+    {
+        return core::app::withInterfaceHint(std::move(error), failures_.consecutive);
+    }
 
     void OnlineService::submit(const c::RequestOnlinePage &command, bool bypassCache)
     {
@@ -340,7 +418,8 @@ namespace sonora::online::adapters
     {
         if (!result.ok)
         {
-            jobs_.fail(token, result.error);
+            noteFailure(result.error, "搜索");
+            jobs_.fail(token, withHint(result.error));
             return;
         }
 
@@ -357,6 +436,8 @@ namespace sonora::online::adapters
             store_.saveSearch(kProvider, keywords, offset, result.raw);
             store_.trimSearch();
         }
+        // 能解码出结果就算业务成功：空结果也是上游在正常说话，不该继续退避。
+        noteSuccess();
     }
 
     void OnlineService::drain()
@@ -429,6 +510,8 @@ namespace sonora::online::adapters
 
     void OnlineService::applyQrKey(const core::codec::QrKeyResult &result)
     {
+        fprintf(stderr, "[qr] key ok=%d unikey=%s err=%s\n", result.ok ? 1 : 0,
+                result.unikey.c_str(), result.error.message.c_str());
         if (!result.ok)
         {
             qr_.phase = c::AccountPhase::Failed;
@@ -446,10 +529,13 @@ namespace sonora::online::adapters
 
     void OnlineService::applyQrPoll(const core::codec::QrPollResult &result)
     {
+        fprintf(stderr, "[qr] poll ok=%d code=%d msg=%s cookieLen=%zu\n", result.ok ? 1 : 0,
+                result.code, result.message.c_str(), result.cookie.size());
         qrPollInFlight_ = false;
         if (!result.ok)
         {
             // 网络抖动不算扫码失败：留在等待态，下一次轮询继续。
+            noteFailure(result.error, "扫码");
             qr_.message = result.error.retryable ? "网络不稳，正在重试…" : result.error.message;
             return;
         }
@@ -525,12 +611,16 @@ namespace sonora::online::adapters
                 status_.accountPhase = c::AccountPhase::LoggedIn;
                 status_.nextRetryAtUnix = 0;
                 status_.lastError = c::OnlineError{};
+                noteSuccess();
                 continue;
             }
 
             if (item.result.ok)
             {
                 // cookie 能发，但网易云说这不是登录态（在浏览器里退出了）。
+                noteFailure(c::OnlineError{kernel::ErrorCode::Unauthenticated,
+                                           "这个 cookie 已经失效，请重新复制一次", false, 0},
+                            "登录校验");
                 status_.signedIn = false;
                 status_.accountPhase = c::AccountPhase::Guest;
                 status_.lastError.code = kernel::ErrorCode::Unauthenticated;
@@ -538,6 +628,7 @@ namespace sonora::online::adapters
             }
             else
             {
+                noteFailure(item.result.error, "登录校验");
                 status_.signedIn = false;
                 status_.accountPhase = item.result.error.code == kernel::ErrorCode::Unauthenticated
                                            ? c::AccountPhase::Guest

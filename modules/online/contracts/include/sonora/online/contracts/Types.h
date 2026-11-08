@@ -160,4 +160,56 @@ namespace sonora::online::contracts
         OnlineError error;
     };
 
+    // 降级矩阵（docs/ONLINE.md §5.3）的计数器：每出现一次就 +1，不允许"静默为空"。
+    // 字段是**按用户可见的降级形态**分的，不是按 ErrorCode 分的——同一个 code 可能
+    // 对应两种不同处置（比如 Unavailable 既可能是断网，也可能是接口 5xx）。
+    struct DegradationCounters
+    {
+        std::int32_t offline{0};         // 连不上：DNS/TLS/连接重置
+        std::int32_t timeout{0};         // 超时（含重试用尽）
+        std::int32_t rateLimited{0};     // 429 / 风控提示
+        std::int32_t unauthenticated{0}; // 登录失效或未登录访问私有接口
+        std::int32_t upstream{0};        // 200 但结构不符——"接口可能已变更"
+        std::int32_t urlExpired{0};      // 直链 403/404 后自动重解析
+        std::int32_t cacheHits{0};       // 命中搜索缓存（不算降级，但同一个快照里看）
+        std::int32_t totalErrors{0};     // 上面各项之和（含 cancelled 之类不单列的）
+    };
+
+    // 缓存现状。`bytes` 是 payload 的文本字节数，不查 sqlite 的页大小——
+    // 目的是"证明上限在起效"，不是精确的磁盘占用。
+    struct OnlineCacheStats
+    {
+        std::int32_t searchRows{0};
+        std::int64_t searchBytes{0};
+        std::int32_t songRows{0};
+        std::int32_t detailRows{0};
+        std::int32_t capRows{0};      // 上限常量，界面照实显示
+        std::int64_t capBytes{0};
+    };
+
+    // 最近一次失败。`atUnix` 让界面能写"3 分钟前"，`where` 是唯一允许出现
+    // 内部字符串的字段（"搜索" / "取地址" / "登录校验"），不含 URL 与 cookie。
+    struct OnlineErrorRecord
+    {
+        std::int64_t atUnix{0};
+        std::string where; // 见上
+        OnlineError error;
+    };
+
+    // 一次性诊断快照。只在用户点开"诊断"时取，不进 50ms 轮询。
+    struct OnlineDiagnosticsDto
+    {
+        std::string provider{"ncm"};
+        DegradationCounters degradations;
+        // 连续失败与退避闸门（policy::FailureCounter 的投影）。
+        std::int32_t consecutiveFailures{0};
+        std::int64_t nextRetryAtUnix{0};
+        // 令牌桶余量（3 req/s、burst 6）。`fromCache` 的请求不取令牌。
+        double tokensLeft{0.0};
+        double tokenBurst{0.0};
+        OnlineCacheStats cache;
+        // 最新在前，最多 10 条。
+        std::vector<OnlineErrorRecord> recentErrors;
+    };
+
 } // namespace sonora::online::contracts

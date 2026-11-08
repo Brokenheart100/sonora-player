@@ -15,7 +15,7 @@ namespace sonora::online::adapters
         //
         // 存原始 JSON 而不是拆成列：解析规则会随接口变，拆了列就得每次跟着迁移；
         // 存原文则"解析器升级"不需要动库，而且夹具测试能直接复用它。
-        constexpr std::array<platform::storage::Migration, 1> kMigrations{{
+        constexpr std::array<platform::storage::Migration, 2> kMigrations{{
             {1,
              "online: 搜索/详情/直链缓存与会话指针",
              R"SQL(
@@ -48,6 +48,26 @@ CREATE TABLE online_session (
     nickname   TEXT NOT NULL DEFAULT '',
     updated_at INTEGER NOT NULL DEFAULT 0
 );
+)SQL"},
+            // v2（R5-3）：淘汰改成 LRU。`fetched_at` 只能回答"什么时候抓的"，
+            // 回答不了"还有没有人用"——一个天天被搜的老词会被当成最旧的行删掉。
+            // 存量行按 fetched_at 回填，老库升级后第一次 trim 的行为与以前一致。
+            // v2（R5-3）：淘汰改成 LRU。`fetched_at` 只能回答"什么时候抓的"，
+            // 回答不了"还有没有人用"——一个天天被搜的老词会被当成最旧的行删掉。
+            //
+            // 只加列、不回填：存量行的 last_used_at 保持 0，排序时用
+            // `CASE WHEN last_used_at = 0 THEN fetched_at ELSE last_used_at END`
+            // 兜底（见 SqliteOnlineStore::trimSearch），语义与"回填成 fetched_at"
+            // 完全一样，但迁移只改 schema 不动行。
+            //
+            // 这不是洁癖：200 条大 payload 的 UPDATE 在 3.54 的 amalgamation 里
+            // 会因语句日志落盘失败报 `unable to open database file`，把整个迁移
+            // 卡死（实测复现）。ALTER 是 O(1) 的 schema 变更，永远不受数据量影响。
+            {2,
+             "online: 缓存加 last_used_at（按最近使用淘汰）",
+             R"SQL(
+ALTER TABLE online_search_cache ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE online_detail_cache ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0;
 )SQL"},
         }};
     } // namespace

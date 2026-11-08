@@ -13,6 +13,7 @@
 #include <QString>
 #include <QTimer>
 #include <QVariant>
+#include <QVariantMap>
 
 #include <cstdint>
 #include <functional>
@@ -78,6 +79,8 @@ namespace sonora::presentation
         Q_PROPERTY(bool qrActive READ qrActive NOTIFY qrChanged)
         Q_PROPERTY(QString qrMessage READ qrMessage NOTIFY qrChanged)
         Q_PROPERTY(int qrSize READ qrSize NOTIFY qrChanged)
+        // 诊断面板：一次性快照，不进 50ms 轮询（取一次要查两次 COUNT）。
+        Q_PROPERTY(QVariantMap diagnostics READ diagnostics NOTIFY diagnosticsChanged)
 
     public:
         OnlineViewModel(kernel::ICommandBus &commands, kernel::IQueryBus &queries,
@@ -96,6 +99,7 @@ namespace sonora::presentation
         [[nodiscard]] bool qrActive() const { return qrActive_; }
         [[nodiscard]] QString qrMessage() const { return qrMessage_; }
         [[nodiscard]] int qrSize() const { return qrSize_; }
+        [[nodiscard]] QVariantMap diagnostics() const { return diagnostics_; }
         Q_INVOKABLE [[nodiscard]] bool qrCell(int row, int col) const;
 
         // 回车触发：立刻搜（词没变且有结果时不重发）。
@@ -115,10 +119,13 @@ namespace sonora::presentation
         // 扫码登录：start 之后轮询在 onTick 里进行（1.5s 一次由 OnlineService 掌握）。
         Q_INVOKABLE void startQrLogin();
         Q_INVOKABLE void cancelQrLogin();
+        // 打开诊断面板时调一次；面板关着就不要调（它要查两次 COUNT）。
+        Q_INVOKABLE void refreshDiagnostics();
 
     signals:
         void statusChanged();
         void qrChanged();
+        void diagnosticsChanged();
 
     private:
         void commitSearch(const QString &keywords);
@@ -163,6 +170,7 @@ namespace sonora::presentation
         std::vector<std::string> qrRows_;
         int qrSize_ = 0;
         std::uint64_t qrSession_ = 0;
+        QVariantMap diagnostics_;
 
         OnlineListModel model_;
     };

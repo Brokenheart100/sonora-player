@@ -50,4 +50,12 @@ namespace sonora::online::contracts
     {
     };
 
+    // → OnlineDiagnosticsDto
+    // 一次性快照（连续失败、令牌余量、缓存条数、最近 10 条错误）。刻意不进
+    // 50ms 轮询：它要查两次 COUNT，只在用户点开诊断面板时问。
+    struct GetOnlineDiagnostics
+    {
+        std::string provider{"ncm"};
+    };
+
 } // namespace sonora::online::contracts

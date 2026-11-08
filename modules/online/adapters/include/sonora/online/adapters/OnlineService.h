@@ -25,7 +25,11 @@
 #include "sonora/online/contracts/SecretStore.h"
 #include "sonora/online/contracts/Transport.h"
 #include "sonora/online/contracts/Types.h"
+#include "sonora/online/core/app/Diagnostics.h"
 #include "sonora/online/core/app/JobRegistry.h"
+#include "sonora/online/core/policy/Backoff.h"
+#include "sonora/online/core/policy/FailureCounter.h"
+#include "sonora/online/core/policy/TokenBucket.h"
 #include "sonora/platform/storage/SqliteConnection.h"
 
 namespace sonora::online::adapters
@@ -64,6 +68,9 @@ namespace sonora::online::adapters
         [[nodiscard]] kernel::Result<contracts::QrLoginDto> handle(const contracts::GetQrLoginState &query);
         [[nodiscard]] kernel::Result<std::vector<contracts::PlaylistDto>> handle(
             const contracts::GetMyPlaylists &query) const;
+        // 一次性诊断快照：只在用户点开面板时取（内部要查两次 COUNT，不进轮询）。
+        [[nodiscard]] kernel::Result<contracts::OnlineDiagnosticsDto> handle(
+            const contracts::GetOnlineDiagnostics &query);
 
     private:
         struct Pending
@@ -92,6 +99,15 @@ namespace sonora::online::adapters
                    std::int32_t offset);
 
         void drain();
+        // 失败留痕的唯一入口：计数器 + 环形缓冲 + 退避闸门，三件事一起做，
+        // 免得某个失败分支只记了日志、忘了让退避生效。
+        void noteFailure(const contracts::OnlineError &error, std::string where);
+        void noteSuccess() noexcept { failures_.recordSuccess(); }
+        // 给"上游整体不可达"加一句人话（docs/ONLINE.md §5.3 最后一行）：
+        // 单次失败照旧显示原始消息；连续失败到第二回，多半是接口变了/域名没了，
+        // 而不是用户网断了——这两种情况用户能做的事完全不同。
+        [[nodiscard]] contracts::OnlineError withHint(contracts::OnlineError error) const;
+        [[nodiscard]] std::int64_t nowMs() const noexcept;
 
         // 登录校验的回包（粘贴 cookie 与启动恢复共用一条通道）。
         struct PendingAuth
@@ -130,6 +146,13 @@ namespace sonora::online::adapters
         core::app::JobRegistry jobs_;
         NeteaseProvider provider_;
         SqliteOnlineStore store_;
+        // 降级留痕。放在服务里而不是 provider 里：provider 不知道"用户看到的是什么"，
+        // 而 §5.3 的分类正是按用户可见形态分的。
+        core::app::Diagnostics diag_;
+        // 令牌桶与退避闸门都是纯策略对象，时间由 nowMs() 喂进来（可确定性测试）。
+        core::policy::TokenBucket bucket_{3.0, 6.0};
+        core::policy::FailureCounter failures_;
+        core::policy::BackoffPolicy backoff_{};
         const kernel::IClock &clock_;
         contracts::ISecretStore &secrets_;
         // 会话行的读写在 GUI 线程，与 store_ 共用同一条连接（不做连接池）。
