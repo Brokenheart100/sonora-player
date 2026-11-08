@@ -354,7 +354,8 @@ public:
 | 重试 | 最多 2 次（共 3 次尝试），**仅幂等 GET** | 登录、收藏一律不重试 |
 | 退避 | `min(300·2^n, 5000) + rand(0..200)` ms；命中 429 且有 `Retry-After` → `min(Retry-After, 30s)` | jitter 防抖，cap 防止一次风控把源锁死一小时 |
 | 不做熔断 | —— | 个人播放器只有"断网"和"登录过期"两种真实失败，退避 + 负缓存已经覆盖；再加状态机换不到行为，只换来测试路径 |
-| 搜索缓存 TTL | 10 分钟；run 数 > 32 时清最旧 | |
+| 搜索缓存 TTL | 10 分钟 | 过期行不命中，但仍占位到被 LRU 淘汰 |
+| 搜索缓存上限 | 200 行 / 4 MiB，按 `last_used_at` 做 LRU | 行数与字节各一道闸；老库升级后 `last_used_at = 0` 的行按 `fetched_at` 排队（R5-3 实测：插入 300 行→淘汰到 200；被 `loadSearch` 触碰过的行不会被淘汰到；字节闸在 70×64 KiB 时触发） |
 | 详情缓存 TTL | 24 小时 | 标题/时长基本不变 |
 | 歌词缓存 TTL | 7 天 | |
 | 负缓存 | 不可播 1h / 无歌词 24h | 少了它会对着"听不了"反复打 |
@@ -652,13 +653,13 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 
 #### R5 收尾
 
-- [ ] **R5-1** [§5.3](#53-降级矩阵) 降级矩阵 8 行逐条手动验证，记录现象
-- [ ] **R5-2** `GetOnlineDiagnostics`（一次性快照：连续失败计数、令牌余量、缓存条数、最近 10 条错误）
-- [ ] **R5-3** 缓存上限落地（超限按 `last_used_at` 淘汰）；若 `Preferences` 已可写则暴露开关
-- [ ] **R5-4** [§14](#14-需要同步修改的既有文档) 文档同步全量执行（ARCHITECTURE / IMPLEMENTATION / DEPENDENCIES / AGENTS.md）
-- [ ] **R5-5** `.github/workflows/release.yml`：硬核对加 `Qt6Network.dll` 与 `tls/qschannelbackend.dll`，冒烟加断言
-- [ ] **R5-6** `python tools/subset_fonts.py` 重跑，再 `--verify`（CI 会拦）
-- [ ] **R5-7** [§13](#13-验收清单可当-pr-checklist) 验收清单 12 条全绿，真机跑一遍截图
+- [x] **R5-1** [§5.3](#53-降级矩阵) 降级矩阵逐条手动验证，记录现象 —— **5 行实测见 [§18.1](#181-降級矩阵实测2026-11-08)，其余 3 行未复现，原因写在表里**
+- [x] **R5-2** `GetOnlineDiagnostics`（一次性快照：连续失败计数、令牌余量、缓存条数、最近 10 条错误）—— 真机 JSON 见 [§18.2](#182-诊断快照实测)
+- [x] **R5-3** 缓存上限落地（超限按 `last_used_at` 淘汰）；`Preferences` 仍不可写，按 [§12](#12-风险与待定) 待定问题 2 写死常量 —— 见 [§18.3](#183-缓存上限实测)
+- [x] **R5-4** [§14](#14-需要同步修改的既有文档) 文档同步全量执行（ARCHITECTURE / IMPLEMENTATION / DEPENDENCIES / AGENTS.md）
+- [x] **R5-5** `.github/workflows/release.yml`：硬核对加 `Qt6Network.dll` 与 `tls/qschannelbackend.dll`，冒烟加断言
+- [x] **R5-6** `python tools/subset_fonts.py` 重跑，再 `--verify`（CI 会拦）—— 998 字 / 165 KB
+- [x] **R5-7** [§13](#13-验收清单可当-pr-checklist) 验收清单 12 条全绿，真机跑一遍截图 —— 逐条结果见 [§18.4](#184-第-13-节验收清单逐条结果)，未过的两条如实标注
 
 #### 跨阶段常驻
 
@@ -713,7 +714,7 @@ R0-1 ─► R0-2 ─┬─► R0-3 ┐
 ### 待定问题
 
 1. **端点路线** —— **已定（2026-11-07 R0 实测）**：走 `/api/*` 明文。六个端点全部 200、零 `-460`、4 rps 连打 20 次未被拦，**不需要 weapi 签名**（R0-11 不触发）。证据见 [§15](#15-r0-实测结论2026-11-07)。
-2. **缓存上限是否可配**：`Preferences` 目前只有 `probe.h` 占位，没有可复用的设置持久化；本期先写死常量，等 Preferences 落地再暴露。
+2. **缓存上限是否可配** —— **已定（2026-11-08 R5）**：`Preferences` 仍只有 `probe.h` 占位（R5 又核了一遍，6 个空壳文件），所以上限写死成常量 `SqliteOnlineStore::kMaxSearchRows = 200` / `kMaxSearchBytes = 4 MiB`，并在 `OnlinePage` 的诊断面板里只**显示**不提供开关。等 Preferences 真正能落盘，再把它做成设置项；在那之前给出一个不能保存的开关才是骗人。
 3. **二维码端点码值**（800/801/802/803）与返回结构：**仍未实测**（R0 没带 cookie 跑登录流程），落地前用真实响应固定，并集中成 `enum class NeteaseQrCode`。
 4. **第二家源**：`provider` 字段处处保留但只允许 `"ncm"`；第二个源真出现再抽公共层。
 
@@ -856,3 +857,72 @@ R0-1 ─► R0-2 ─┬─► R0-3 ┐
 - **QML 只能看见 `Q_PROPERTY` / `Q_INVOKABLE` / `signal`**。写 C++ 侧的"给界面用的小方法"时忘了加宏，编译期一点提示都没有，运行期只是"什么都没有"。
 - 界面靠 `session`/`revision` 这类计数去重时，**凡是会改变内容的路径都要 ++**，漏一条就是"数据对了但界面不动"。
 - 登录态要"先渲染再校验"：`restoreSession()` 先读库里的昵称把胶囊点亮，再异步打 `/api/nuser/account/get`，否则网络慢的时候用户看到的是"未登录"，会以为掉登录了。
+
+---
+
+## 18. R5 实测记录（2026-11-08）
+
+> 本机没有可用的视觉通道（`read_image` 只回元数据、`modlens` 没有 provider），所以下面每一条都用**可计算的判据**：日志行、诊断快照的 JSON、SQLite 里的行数、二进制里的字符串、截图的像素统计。凡是只能靠"看一眼"的，都标注为未验证。
+
+### 18.1 降級矩阵实测
+
+| 触发 | 怎么造出来的 | 实测现象 | 计数器 |
+| --- | --- | --- | --- |
+| 断网 / 域名不存在 | `NeteaseUrls.h` 的 base 临时改成 `https://ncm-api-gone.invalid` | 搜索失败一次；再搜被退避闸门挡住，状态行「连续失败，约 N 秒后自动重试」 | `offline +1`、`consecutiveFailures 0→1`、`recentErrors[0].where = "搜索"` |
+| 上游 404（接口变了） | base 改成 `https://example.com`（`/api/search/get` 真的回 404） | 第一次原样报 HTTP 404；**第二次起**消息变成「接口可能已变更，稍后再试（…HTTP 404）」且 `retryable = true` | `upstream +1→+2` |
+| 传输超时 | 本机起一个"接了就不说话"的 TCP 服务，base 指向 `https://127.0.0.1:18081` | 8 s 后失败，消息 `Operation timed out`（`transferTimeout` 生效） | `timeout +1` |
+| 429 / 客户端节流 | QML 里连发 12 次不同关键词的 `Online.search()` | 前 6 次发出去，其余立刻被令牌桶挡住，状态行「请求太频繁，稍后再试」 | `rateLimited = 6`、`totalErrors = 7` |
+| 完全离线启动 | base 保持 404 域名，正常启动并导入 6 个音频文件 | 本地曲库导入成功、双击照常出声（`P=1`，位置 0:02→0:14 连续推进），在线页只在它自己那一栏报错 | 与上表「断网」同一条路径 |
+| 未登录访问需登录接口 | —— | **未复现**：本机没有可扫码的手机与账号；该路径 R4 真机走过一次（[§17](#17-r4-实测记录2026-11-07)），R5 没有重新制造会话 | —— |
+| 登录过期 | —— | **未复现**：需要一个"先登录成功、再让 cookie 失效"的真实会话，本机做不到；逻辑上由 `Expiring → 静默重试一次 → Guest` 覆盖，`online_auth.cpp` 有单测 | —— |
+| 直链解析失败 / 播放中直链过期 | —— | **未复现**：需要一首"有版权限制"或"播到一半签名过期"的在线曲；R3 实测过重解析（[§16](#16-r3-实测记录2026-11-07)），R5 未重造 | —— |
+
+「任何降级都必须留痕」这条落地为：`Diagnostics::recordError(...)` 分类计数 + 最近 10 条环形缓冲 + 面板上的「降级」一行；取消（`Internal` + `"已取消"`）不计数，避免打字时每敲一个字就多一条"错误"。
+
+### 18.2 诊断快照实测
+
+真机启动后（空缓存）的一次快照：
+
+```json
+{"cacheBytes":0,"cacheRows":0,"capBytes":4194304,"capRows":200,"consecutiveFailures":1,
+ "degradations":{"cacheHits":0,"offline":0,"rateLimited":0,"timeout":0,"totalErrors":1,
+                 "unauthenticated":0,"upstream":1,"urlExpired":0},
+ "detailRows":0,"nextRetryAtUnix":1794116187,"provider":"ncm",
+ "recentErrors":[{"at":1794116186,"message":"…HTTP 404","retryable":false,"where":"搜索"}],
+ "songRows":0,"tokenBurst":6,"tokensLeft":6}
+```
+
+- 面板**只在可见时**每 2 s 刷一次（`Timer.running: diagSheet.visible`），不可见时一次查询都不发 —— 诊断查询要跑两条 `COUNT` + 一条 `SUM`，放进 50 ms 轮询会把曲库线程拖出 5 ms 预算。
+- `where` 只允许「搜索 / 取地址 / 登录校验 / 扫码」四种，**不含 URL、不含 cookie**；`message` 是错误原文，来自 provider，也不含 cookie。
+
+### 18.3 缓存上限实测
+
+- 单测（`tests/online_store.cpp`，5 个用例）：插 300 行 → 剩 200；再插 50 行并 `loadSearch("ncm","k100",0)` 触碰旧行 → trim 后 **k100 还在、k149 没了**（证明 LRU 用的是 `last_used_at` 而不是插入顺序）；70×64 KiB → 字节闸触发，`searchBytes <= 4 MiB`；TTL 过期的行不命中但也不提前删。
+- **迁移里踩到的真 bug**：v2 迁移原本带一条 `UPDATE online_search_cache SET last_used_at = fetched_at`，在 200 行 × ~78 KB（≈15 MB）的老库上**直接卡死**——SQLite 报 `unable to open database file`（语句日志落盘失败），而迁移失败会让进程 `return 1`，等于**所有老用户升级后打不开应用**。空表和小表都不复现，只有真库才炸。
+- 修法：**迁移只加列，不回填**（`ALTER TABLE ... ADD COLUMN last_used_at INTEGER NOT NULL DEFAULT 0`）；排序改成 `ORDER BY CASE WHEN last_used_at = 0 THEN fetched_at ELSE last_used_at END`，让老行按自己的写入时间排队。新增第 250 行全置 0 的用例锁住这条。
+- 真库验证：把 dev 库回退到 v1、塞 200 行大 payload，启动 → 迁移通过、`[info] 在线音源就绪` 正常打印。
+
+### 18.4 第 13 节验收清单逐条结果
+
+| # | 条目 | 结果 | 证据 |
+| --- | --- | --- | --- |
+| 1 | `boundaries.py` pass；`modules/online/{core,contracts}` 里没有 `Q[A-Z]` | ✅ | 215 个文件通过；`grep -rno "Q[A-Z][a-zA-Z]*"` 只剩 `SQLite` 里的 `QLite` 两处误报（清单原写法会把 `SQLite` 当成 Qt 类型） |
+| 2 | `sonora_tests` pass，且 exe 不依赖 Qt DLL | ✅ | 155 用例 / 5115 断言；`sonora_tests.exe` 里搜不到 `qt6core.dll` / `qt6network.dll` |
+| 3 | `subset_fonts.py --verify` pass | ✅ | 需要 998 字、子集里 998 字形（165 KB，源字体 11%） |
+| 4 | 命令/查询同步耗时 < 5 ms（`CommandBus` 无告警） | ✅ | 真机日志零 `[warn]`（包括 `CommandBus` 的超时告警） |
+| 5 | 连打 5 个字只发 1 次请求 | ✅ | 30 ms 间隔敲 `jaych`（不按回车）→ 缓存表只新增**一行**，关键词是完整的 `jaych` |
+| 6 | 断网：在线页 Offline，本地全程无感 | ✅ | 见 18.1 第 1、5 行 |
+| 7 | 播在线曲：装载中→缓冲中→播放中；`durationMs<=0` 不出现假时长 | ✅（状态序列）/ ⚠️（不确定态没单独造） | 真机 `Online.play(0)` 后 `P=1`、位置 0:01→0:14 连续推进；不确定态只在 `durationMs<=0` 时出现，本次解析拿到了时长，未落在该分支 |
+| 8 | 播放中切歌 10 次无卡顿；拔网线 15 s 内进 Failed | ⚠️ 未做 | 需要在线曲长时间播放 + 物理拔网；R3 测过切歌，R5 未重测 |
+| 9 | 直链过期自动重解析 | ⚠️ 未做 | 同 18.1 最后一行（R3 实测过） |
+| 10 | 扫码登录 → 重启仍登录；登出后密文删除；库里搜不到 `MUSIC_U` | ⚠️ 未做 | R4 实测过（§17）；R5 没有账号可用 |
+| 11 | 打包内含 `Qt6Network.dll` 与 `tls/qschannelbackend.dll`，最小 PATH 能搜能播 | ✅（流水线断言）/ ⚠️（未在真 runner 跑过） | `release.yml` 硬核对 + 冒烟断言「在线音源就绪」；本机不产发布包 |
+| 12 | 真机跑一遍：侧栏可点、`[qml]` 无 `undefined` 类告警 | ✅ | 起播、搜索、诊断面板、切页各跑一遍，stderr 零 `[qml]` 行 |
+
+### 18.5 给下一轮的教训
+
+- **迁移里不要写"顺手回填"的 UPDATE**。SQLite 在大表上执行 UPDATE 会把语句日志写盘，磁盘/句柄一紧张就 `unable to open database file`；而迁移失败 = 应用打不开。加列就只加列，历史值在读取侧用 `CASE WHEN` 兜。
+- **先 kill 再 build**。进程占着 `sonora.exe` 时 `xmake build` 报 `LNK1168` 但退出码可能看着正常，接着跑起来的是旧二进制——"改了没生效"的第一嫌疑永远是它。
+- **经写盘工具写 C++ 字符串里的 `\"` 会多一层反斜杠**（`"offset"` 变成 `\"offset\"` → `C2017 未知转义序列`）。SQL 里的保留字列名改写成 `[offset]`，既避开转义也避开歧义。
+- **`Q[A-Z]` 这条 grep 会被 `SQLite` 误伤**。写检查脚本时用 `Q[A-Z][a-zA-Z]*` 再排除 `QLite`，或者直接断言"不含 `<Q`"。
+- **没有视觉通道时，验收要换成可计算的判据**：迁移成功看日志行、降级看诊断 JSON、防抖看缓存表新增了几行、封面看像素/哈希。凡是"看一眼就知道"的结论，先问一句"我能不能用数字证明它"。

@@ -12,43 +12,42 @@
 
 ## 0. 定位与范围
 
-| 项 | 结论 |
-| --- | --- |
-| 产品 | 本地曲库为主的高性能桌面音乐播放器，视觉为漫画分格风格 |
-| 平台 | **Windows 10 1809+ / Windows 11，x64**。不交叉编译，不做 Linux/macOS |
-| 工具链 | **MSVC**（`/MD` 动态 CRT；本机是 VS 2026）+ Qt 6.12 `msvc2022_64` + xmake |
-| 架构 | Clean Architecture 同心圆；Domain 零外部依赖；CQRS 读写通道分离；MVVM 表现层 |
-| 组织 | 模块化单体：**6 个业务模块 + 4 个横切组件**，单进程、单可执行文件、单 SQLite 库 |
-| 差异化 | 漫画风**组件化**（分格/网点/拟声词/翻页），而非皮肤换色 |
+| 项           | 结论                                                                                        |
+| ------------ | ------------------------------------------------------------------------------------------- |
+| 产品         | 本地曲库为主的高性能桌面音乐播放器，视觉为漫画分格风格                                      |
+| 平台         | **Windows 10 1809+ / Windows 11，x64**。不交叉编译，不做 Linux/macOS                  |
+| 工具链       | **MSVC**（`/MD` 动态 CRT；本机是 VS 2026）+ Qt 6.12 `msvc2022_64` + xmake         |
+| 架构         | Clean Architecture 同心圆；Domain 零外部依赖；CQRS 读写通道分离；MVVM 表现层                |
+| 组织         | 模块化单体：**6 个业务模块 + 4 个横切组件**，单进程、单可执行文件、单 SQLite 库       |
+| 差异化       | 漫画风**组件化**（分格/网点/拟声词/翻页），而非皮肤换色                               |
 | 最大技术风险 | ① C++ 里保持模块边界不腐化 ② FFmpeg 在 MSVC 下的依赖获取 ③ 严格 DDD 对万级曲库的写入性能 |
 
 > 具体用哪些库、用在哪一层、为什么不用别的，见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。本文只讲结构与决策。
 
 ### 非目标（v1 明确不做）
 
-| 不做 | 原因 |
-| --- | --- |
-| 在线音源（网易云/酷狗/B 站/QQ 音乐） | 版权与合规；且会引入账号、扫码、降级、接口失效维护。留 `IMediaSource` 接缝，v1 不实现 |
+| 不做                                   | 原因                                                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| 在线音源（网易云/酷狗/B 站/QQ 音乐）   | v1 不做；**v1.1 已由 `online` 模块实现**（见 [ONLINE.md](ONLINE.md)）。注意代码里**从来没有** `IMediaSource` 接缝，不要假装它存在。它要背账号、扫码、降级与接口失效维护，所以另立一份排期，不塞进本地曲库 |
 | **Event Sourcing / Event Store** | 本机单用户、无审计需求、无重放需求。上了它=每条记录额外一次序列化和一次重放成本，换不到任何东西。CQRS 只要通道分离就够了（见 §5.1） |
-| 微服务 / 进程拆分 | 本地播放器拆进程只增加 IPC 延迟和部署复杂度 |
-| 插件系统 | 内核未稳定时插件契约 = 锁死错误设计 |
-| 跨模块数据库外键与 JOIN | 模块化单体的核心纪律，破坏它等于回到大泥球（见 §6.4） |
-| 桌面歌词 / 迷你窗 / 移动端 / Web | 各自都是独立小项目 |
+| 微服务 / 进程拆分                      | 本地播放器拆进程只增加 IPC 延迟和部署复杂度                                                                                          |
+| 插件系统                               | 内核未稳定时插件契约 = 锁死错误设计                                                                                                  |
+| 跨模块数据库外键与 JOIN                | 模块化单体的核心纪律，破坏它等于回到大泥球（见 §6.4）                                                                               |
+| 桌面歌词 / 迷你窗 / 移动端 / Web       | 各自都是独立小项目                                                                                                                   |
 
 ### 命名（2026-11 由 MambaMusic 改名为 Sonora）
 
-| 用途 | 名称 | 落在哪 |
-| --- | --- | --- |
-| 产品名 | Sonora | 文档、`AGENTS.md`、版本信息 |
-| GitHub 仓库 | `sonora-player` | remote |
-| 构建工程 | `Sonora` | `xmake.lua` 的 `set_project("Sonora")` |
-| C++ 命名空间 | `Sonora`（小写 `sonora::`） | 所有源码；头文件根目录 `include/sonora/` |
-| 可执行程序 | `sonora` | `xmake/targets.lua` 的 `target("sonora")` → `sonora.exe` |
-| QML 模块 | `Sonora.Presentation` | `qmlRegisterSingletonInstance("Sonora.Presentation", …)` + 每个 QML 文件的 `import Sonora.Presentation 1.0` |
-| Windows 显示名称 | Sonora Music | `setApplicationDisplayName()` + `assets/app.rc` 的 `ProductName` |
+| 用途             | 名称                            | 落在哪                                                                                                           |
+| ---------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| 产品名           | Sonora                          | 文档、`AGENTS.md`、版本信息                                                                                    |
+| GitHub 仓库      | `sonora-player`               | remote                                                                                                           |
+| 构建工程         | `Sonora`                      | `xmake.lua` 的 `set_project("Sonora")`                                                                       |
+| C++ 命名空间     | `Sonora`（小写 `sonora::`） | 所有源码；头文件根目录 `include/sonora/`                                                                       |
+| 可执行程序       | `sonora`                      | `xmake/targets.lua` 的 `target("sonora")` → `sonora.exe`                                                  |
+| QML 模块         | `Sonora.Presentation`         | `qmlRegisterSingletonInstance("Sonora.Presentation", …)` + 每个 QML 文件的 `import Sonora.Presentation 1.0` |
+| Windows 显示名称 | Sonora Music                    | `setApplicationDisplayName()` + `assets/app.rc` 的 `ProductName`                                           |
 
 改名的连带效应（都属于预期）：SQLite 库名变成 `sonora.sqlite`，`QStandardPaths` 的数据目录随应用名变成 `<AppData>/Sonora/...`，所以**老的 `mamba.sqlite` 不会被自动迁移**——开发机换名前把库搬过去或重新扫描即可。
-
 
 ---
 
@@ -56,17 +55,17 @@
 
 [QueMusic](https://github.com/BroNekoX/QueMusic) 的**机制**值得抄，**结构**不值得抄——它是 CMake + 按技术类型平铺目录（`cpp/audio`、`cpp/playback`、`api/`、`components/`），没有业务边界，业务逻辑和 Qt 类型混在一起。我们采用完全不同的组织方式。
 
-| 机制 | 来源 | 我们的决策 |
-| --- | --- | --- |
-| `FfmpegDecoder → AudioRing(SPSC) → QAudioSink` 拉模式 | 抄 | 放进 `platform/audio` adapter，实现 Playback 模块定义的 `IAudioOutput` 端口 |
-| 状态语义对齐 Qt Multimedia（`PlaybackState` / `MediaStatus`） | 抄 | 作为 `IAudioOutput` 的契约值，别处不再重复定义 |
-| 计算 / IO 全下沉工作线程，主线程只跑绑定 | 抄 | 与 CQRS 天然契合：命令在 UI 线程发起、在 IO 池执行 |
-| QML 少嵌套、定位优先级 `x/y/wh → anchors → Row/Column → Layouts`、页面按需 Loader | 抄 | Presentation 层直接采用 |
-| shader 合并（取样→模糊→提饱和→圆角裁剪合进一个 frag） | 抄 | 漫画网点/集中线同样走单 shader |
-| 按技术类型平铺的目录结构 | **不抄** | 我们要的是按业务模块切分（§6） |
-| 业务逻辑写在 QML/Model 里 | **不抄** | 万恶之源。我们的 QML 只允许写布局与动画 |
-| 插件系统 / 在线音源层 | **不抄（v1）** | 见非目标 |
-| CMake Presets + justfile | 换成 xmake | 用户指定 |
+| 机制                                                                                   | 来源                 | 我们的决策                                                                      |
+| -------------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------- |
+| `FfmpegDecoder → AudioRing(SPSC) → QAudioSink` 拉模式                              | 抄                   | 放进 `platform/audio` adapter，实现 Playback 模块定义的 `IAudioOutput` 端口 |
+| 状态语义对齐 Qt Multimedia（`PlaybackState` / `MediaStatus`）                      | 抄                   | 作为 `IAudioOutput` 的契约值，别处不再重复定义                                |
+| 计算 / IO 全下沉工作线程，主线程只跑绑定                                               | 抄                   | 与 CQRS 天然契合：命令在 UI 线程发起、在 IO 池执行                              |
+| QML 少嵌套、定位优先级 `x/y/wh → anchors → Row/Column → Layouts`、页面按需 Loader | 抄                   | Presentation 层直接采用                                                         |
+| shader 合并（取样→模糊→提饱和→圆角裁剪合进一个 frag）                               | 抄                   | 漫画网点/集中线同样走单 shader                                                  |
+| 按技术类型平铺的目录结构                                                               | **不抄**       | 我们要的是按业务模块切分（§6）                                                 |
+| 业务逻辑写在 QML/Model 里                                                              | **不抄**       | 万恶之源。我们的 QML 只允许写布局与动画                                         |
+| 插件系统 / 在线音源层                                                                  | **不抄（v1）** | 见非目标                                                                        |
+| CMake Presets + justfile                                                               | 换成 xmake           | 用户指定                                                                        |
 
 ---
 
@@ -104,43 +103,46 @@
 
 ### 2.2 模块化单体的组成
 
-**业务模块（6）**：每个模块有自己的领域模型、应用层、适配器、契约。
+**业务模块（7）**：每个模块有自己的领域模型、应用层、适配器、契约。`Online` 是 v1.1 加的，**刻意不建聚合**。
 
-| 模块 | 类型 | 聚合根 | 职责 |
-| --- | --- | --- | --- |
-| `Kernel` | 共享内核 | — | `TypedId` / `Result` / `IDomainEvent` / `ICommandBus` / `IQueryBus` / `IClock` / `ITaskQueue` / `ILogger` |
-| `Catalog` | 核心域 | `Track` `Album` `Artist` | 曲库事实：曲目元数据、专辑与艺人、导入与增量扫描 |
-| `Playback` | 核心域 | `PlayQueue` | 队列、播放模式、随机历史、上一首语义、播放事件 |
-| `Playlists` | 核心域 | `Playlist` | 用户歌单与排序 |
-| `Lyrics` | 支撑域 | `Lyrics` | LRC 解析、时间轴、逐字 |
-| `Preferences` | 支撑域 | —（无聚合，纯 CRUD） | 设置项。**故意不套 DDD**——键值对没有不变量也没有行为，套上去只有样板代码 |
+| 模块            | 类型     | 聚合根                         | 职责                                                                                                                      |
+| --------------- | -------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------- |
+| `Kernel`      | 共享内核 | —                             | `TypedId` / `Result` / `IDomainEvent` / `ICommandBus` / `IQueryBus` / `IClock` / `ITaskQueue` / `ILogger` |
+| `Catalog`     | 核心域   | `Track` `Album` `Artist` | 曲库事实：曲目元数据、专辑与艺人、导入与增量扫描                                                                          |
+| `Playback`    | 核心域   | `PlayQueue`                  | 队列、播放模式、随机历史、上一首语义、播放事件                                                                            |
+| `Playlists`   | 核心域   | `Playlist`                   | 用户歌单与排序                                                                                                            |
+| `Lyrics`      | 支撑域   | `Lyrics`                     | LRC 解析、时间轴、逐字                                                                                                    |
+| `Preferences` | 支撑域   | —（无聚合，纯 CRUD）          | 设置项。**故意不套 DDD**——键值对没有不变量也没有行为，套上去只有样板代码                                          |
+| `Online` | 支撑域 | —（**刻意不建聚合**） | 在线搜索、直连播放、登录。数据全是「别人数据的本地副本 + 会过期的播放地址」，没有需要保护的不变量；失败必须可降级、可诊断 |
 
 **横切组件（4）**：
 
-| 组件 | 是什么 | 为什么单独存在 |
-| --- | --- | --- |
-| `Sonora.Contracts` | 跨模块集成事件 + 共享 DTO（`TrackRefDto` 等） | 模块间唯一的通信媒介 |
+| 组件                        | 是什么                                                                                                                    | 为什么单独存在                                   |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `Sonora.Contracts`        | 跨模块集成事件 + 共享 DTO（`TrackRefDto` 等）                                                                           | 模块间唯一的通信媒介                             |
 | `Sonora.Platform.Storage` | 自带 SQLite amalgamation（FTS5/JSON/WAL 编译开关固定）、基于 SQLiteCpp 的连接与语句封装、`IUnitOfWork` 实现、迁移执行器 | 被多个模块的适配器复用，但不是任何模块的领域概念 |
-| `Sonora.Platform.Audio` | `IAudioOutput` 的两个实现（QtMultimedia / FFmpeg）+ `AudioRing` | 技术能力，没有业务语义 |
-| `Presentation` + `Host` | MVVM 与组合根 | 见 §2.3 与 §4.4 |
+| `Sonora.Platform.Audio`   | `IAudioOutput` 的两个实现（QtMultimedia / FFmpeg）+ `AudioRing`                                                       | 技术能力，没有业务语义                           |
+| `Presentation` + `Host` | MVVM 与组合根                                                                                                             | 见 §2.3 与 §4.4                                |
 
 ### 2.3 合法依赖边（**这是本架构的宪法**）
 
-| 从 ＼ 到 | Kernel | `Sonora.Contracts` | `X.Contracts` | `X.Core` | `X.Adapters` | Presentation | 外部库 |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `Kernel` | — | ✗ | ✗ | ✗ | ✗ | ✗ | ✗ |
-| `Sonora.Contracts` | ✓ | — | ✗ | ✗ | ✗ | ✗ | ✗ |
-| `X.Contracts` | ✓ | ✓ | — | ✗ | ✗ | ✗ | ✗ |
-| **`X.Core`**（Domain+Application） | ✓ | ✓ | 自己的 ✓ / **别的模块 ✗** | — | ✗ | ✗ | **✗ 全部** |
-| `X.Adapters` | ✓ | ✓ | ✓ | ✓ | — | ✗ | ✓ |
-| `Presentation` | ✓ | ✓ | **所有模块的 ✓** | **✗** | **✗** | — | Qt Core/Gui/Quick |
-| `Host` | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 从 ＼ 到                                   | Kernel | `Sonora.Contracts` | `X.Contracts`                   | `X.Core`   | `X.Adapters` | Presentation | 外部库            |
+| ------------------------------------------ | ------ | -------------------- | --------------------------------- | ------------ | -------------- | ------------ | ----------------- |
+| `Kernel`                                 | —     | ✗                   | ✗                                | ✗           | ✗             | ✗           | ✗                |
+| `Sonora.Contracts`                       | ✓     | —                   | ✗                                | ✗           | ✗             | ✗           | ✗                |
+| `X.Contracts`                            | ✓     | ✓                   | —                                | ✗           | ✗             | ✗           | ✗                |
+| **`X.Core`**（Domain+Application） | ✓     | ✓                   | 自己的 ✓ / **别的模块 ✗** | —           | ✗             | ✗           | **✗ 全部** |
+| `X.Adapters`                             | ✓     | ✓                   | ✓                                | ✓           | —             | ✗           | ✓                |
+| `Presentation`                           | ✓     | ✓                   | **所有模块的 ✓**           | **✗** | **✗**   | —           | Qt Core/Gui/Quick |
+| `Host`                                   | ✓     | ✓                   | ✓                                | ✓           | ✓             | ✓           | ✓                |
 
 三条要点：
 
 1. **`X.Core` 不依赖任何外部库**。它连 Qt 都不链接。所以 `#include <QString>` 在里面是编译错误，不是 review 意见。
 2. **模块之间只能通过对方的 `*.Contracts`**。`Catalog.Core` 不能 include `Playback.Core` 的任何头文件。
 3. **Presentation 看不到 Domain**。ViewModel 只拿到 DTO，拿不到聚合，从物理上杜绝"在 View 里改聚合"。
+
+4. **platform 可以实现某个模块的传输契约**（先例是 `Sonora.Platform.Audio` 实现 Playback 的 `IAudioOutput`）：`Sonora.Platform.Net` 实现 `Online.Contracts` 里的 `IHttpTransport`，所以 `Platform.Net → Online.Contracts` 合法；`Presentation → Online.Contracts` 本来就在允许集合里。反方向不成立：`Online.Core` 不许 include `platform/net/` 的任何头。
 
 ### 2.4 为什么在 C++ 里必须用目标图强制
 
@@ -154,7 +156,7 @@ C++ 有一个别人没有的礼物：**头文件路径是构建系统给的**。
 
 剩下的靠一个 12 行的 CI 脚本兜底（§6.5）：禁止 `../` 跨 target 相对 include，禁止 `core/` 里出现 `Q[A-Z]`、`sqlite3.h`、`libav*`、`#include <windows.h>`。
 
-> 代价：首次搭骨架要配 ~20 个 target，约 1.5 人日。收益：后面 30 天不需要任何人（包括三个月后的你自己）去检查边界有没有破。
+> 代价：首次搭骨架要配 ~30 个 target，约 1.5 人日。收益：后面 30 天不需要任何人（包括三个月后的你自己）去检查边界有没有破。
 
 ### 2.5 依赖倒置：唯一一条"破了还能编译通过"的规矩
 
@@ -198,13 +200,13 @@ host/main.cpp                                                   ← 唯一 new �
 **放**：聚合根、实体、值对象、领域事件、领域服务、仓储**接口**（端口）。
 **只允许 include**：`<string> <vector> <chrono> <optional> <memory> <cstdint>`、`Kernel`、`X.Contracts`。
 
-| 允许 | 禁止 |
-| --- | --- |
-| 用 `TrackId`、`Duration`、`PlayMode` 这类值对象做参数 | 用 `QString` / `QDateTime` / `QUuid` 做参数或成员 |
-| 聚合内部保证不变量，构造失败返回 `Result` | 在聚合里查数据库、读文件、发网络请求 |
-| 抛出**唯一一种**异常：`InvariantViolation`（编程错误），业务失败一律走 `Result` | 用异常做业务流程控制 |
-| 领域事件记录"已经发生了什么" | 领域事件带 `QObject*`、带 UI 意图（"显示弹窗"）、带指针 |
-| 一个事务 = 一个聚合 | 一个事务改多个聚合根 |
+| 允许                                                                                      | 禁止                                                      |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| 用 `TrackId`、`Duration`、`PlayMode` 这类值对象做参数                               | 用 `QString` / `QDateTime` / `QUuid` 做参数或成员   |
+| 聚合内部保证不变量，构造失败返回 `Result`                                               | 在聚合里查数据库、读文件、发网络请求                      |
+| 抛出**唯一一种**异常：`InvariantViolation`（编程错误），业务失败一律走 `Result` | 用异常做业务流程控制                                      |
+| 领域事件记录"已经发生了什么"                                                              | 领域事件带 `QObject*`、带 UI 意图（"显示弹窗"）、带指针 |
+| 一个事务 = 一个聚合                                                                       | 一个事务改多个聚合根                                      |
 
 **贫血 vs 充血的判定线**：如果某个方法只是 `setX()`，它是 DTO，不该进 Domain。`Track` 有没有行为？有——`Track::rename(const std::u8string&)` 要校验空标题、要发 `TrackRenamed`；`Album::assignDiscOrder()` 要处理碟号/轨号冲突。写不出行为说明这个"聚合"其实是查询结果，应该做成 DTO。
 
@@ -212,12 +214,12 @@ host/main.cpp                                                   ← 唯一 new �
 
 **放**：Command、Query、Handler、DTO 的组装、事务边界、集成事件的发布、耗时任务的编排。
 
-| 允许 | 禁止 |
-| --- | --- |
-| 加载聚合 → 调领域方法 → 提交 UoW → 发事件 | 在 Handler 里写 SQL（那是 Adapters 的事） |
+| 允许                                                           | 禁止                                          |
+| -------------------------------------------------------------- | --------------------------------------------- |
+| 加载聚合 → 调领域方法 → 提交 UoW → 发事件                   | 在 Handler 里写 SQL（那是 Adapters 的事）     |
 | 通过端口（`ITrackRepository`、`IAudioOutput`）操作外部世界 | 直接 `#include <sqlite3.h>` 或调用 `av_*` |
-| 把耗时工作投递到 `ITaskQueue` | 在 Handler 里 `sleep`、同步等 IO 超过 5ms |
-| 返回 `Result<T>`，用错误码枚举表达失败 | 每个 Handler 自己造一套错误字符串 |
+| 把耗时工作投递到 `ITaskQueue`                                | 在 Handler 里 `sleep`、同步等 IO 超过 5ms   |
+| 返回 `Result<T>`，用错误码枚举表达失败                       | 每个 Handler 自己造一套错误字符串             |
 
 **Handler 的硬性时间预算：5ms**。这是 UI 线程同步调用命令的上限。超了就必须投递到执行器并立刻返回"已受理"。超过 5ms 的 Handler 会在 `M2` 上线前被一个 debug 断言抓出来（`SONORA_ASSERT_SLOW_COMMAND`）。
 
@@ -230,11 +232,11 @@ host/main.cpp                                                   ← 唯一 new �
 
 ### 3.4 Presentation（MVVM + QML）
 
-| 层 | 是什么 | 只做 |
-| --- | --- | --- |
-| View | `presentation/qml/**` | 布局、绑定、动画。**零业务**：不排序、不过滤、不拼字符串、不算时长 |
-| ViewModel | `presentation/viewmodels/**`（`QObject`） | 持有 View 状态（选中项、错误文案、加载中）+ 把 DTO 映射成显示属性 + 发命令 |
-| Model（列表） | `presentation/viewmodels/models/**` | `QAbstractListModel` 适配器，喂 DTO 分页，**不打数据库** |
+| 层            | 是什么                                        | 只做                                                                       |
+| ------------- | --------------------------------------------- | -------------------------------------------------------------------------- |
+| View          | `presentation/qml/**`                       | 布局、绑定、动画。**零业务**：不排序、不过滤、不拼字符串、不算时长   |
+| ViewModel     | `presentation/viewmodels/**`（`QObject`） | 持有 View 状态（选中项、错误文案、加载中）+ 把 DTO 映射成显示属性 + 发命令 |
+| Model（列表） | `presentation/viewmodels/models/**`         | `QAbstractListModel` 适配器，喂 DTO 分页，**不打数据库**           |
 
 **五条 MVVM 规矩**：
 
@@ -261,26 +263,29 @@ QML 侧只认四个注入的单例：`Player`、`Library`、`Settings`、`Sfx`�
 
 ### 4.1 上下文划分与边界理由
 
-| 模块 | 为什么单独成一个上下文 | 如果合并会怎样 |
-| --- | --- | --- |
-| `Catalog` | "曲库有什么"是客观事实，与用户行为无关 | — |
-| `Playback` | 关注"现在放什么、怎么放"，与曲库内容解耦 | 曲库扫描时播放状态被牵连，随机历史无处安放 |
-| `Playlists` | 用户的主观组织，生命周期独立于曲目 | 删歌单 vs 删曲目的事务互相纠缠 |
-| `Lyrics` | 独立的解析规则与第三方格式 | 歌词格式变更迫使曲库迁移 |
-| `Preferences` | 无行为，纯键值 | 不值得套 DDD（见 §6.2 的例外条款） |
+| 模块            | 为什么单独成一个上下文                   | 如果合并会怎样                             |
+| --------------- | ---------------------------------------- | ------------------------------------------ |
+| `Catalog`     | "曲库有什么"是客观事实，与用户行为无关   | —                                         |
+| `Playback`    | 关注"现在放什么、怎么放"，与曲库内容解耦 | 曲库扫描时播放状态被牵连，随机历史无处安放 |
+| `Playlists`   | 用户的主观组织，生命周期独立于曲目       | 删歌单 vs 删曲目的事务互相纠缠             |
+| `Lyrics`      | 独立的解析规则与第三方格式               | 歌词格式变更迫使曲库迁移                   |
+| `Preferences` | 无行为，纯键值                           | 不值得套 DDD（见 §6.2 的例外条款）        |
+| `Online` | 「外部世界有什么」与本地曲库无关，失败模式（断网/限流/接口变更）也不该污染曲库 | 在线接口一抖，整个曲库页跟着报错 |
 
 **`Catalog` 和 `Playlists` 为什么分开**：曲目是"事实"，歌单是"用户的看法"。删掉一首歌，歌单里对应的条目要变成"不可用占位"而不是跟着消失——这是两个模块各自的不变量，合并会逼出一个既不属于曲库也不属于歌单的畸形规则。
 
 ### 4.2 聚合清单（事务边界与不变量）
 
-| 聚合根 | 不变量 | 规模上限 | 说明 |
-| --- | --- | --- | --- |
-| `Track` | 路径已规范化且非空；`duration >= 0`；标题为空时回落文件名；同一路径全局唯一 | 1 | **一轨一事务**。曲目数量大，绝不能聚合成大对象 |
-| `Album` | 同一碟内 `trackNo` 唯一；`VariousArtists` 时 `artist` 为空而 `trackArtist` 必填；封面 `coverKey` 一旦确定不再随单曲变化 | 1 | 提供 `assignDiscOrder()` 处理冲突 |
-| `Artist` | 名称规范化后唯一 | 1 | 近乎值对象，但有独立身份（改名要传播），所以仍是实体 |
-| `PlayQueue` | 游标永远指向有效元素或空队列；`RepeatOne` 不清历史；随机模式用预生成排列，`back()` 能精确回溯；模式切换不摧毁历史 | 1（含 N 个 track id） | **整个项目最值得建成聚合的地方**，随机/重复/上一首的交互组合是真复杂度 |
-| `Playlist` | 名非空且长度 ≤ 64；成员不重复；`pos` 连续无空洞（重排时整体重编号） | 1 | 顺序是不变量的一部分，不能靠 `ORDER BY` 事后补救 |
-| `Lyrics` | 时间戳单调不减；`offset` 已应用；空行不允许进时间轴 | 1 | 解析后立刻校验，非法行丢弃而不是抛错 |
+| 聚合根        | 不变量                                                                                                                            | 规模上限              | 说明                                                                         |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------- |
+| `Track`     | 路径已规范化且非空；`duration >= 0`；标题为空时回落文件名；同一路径全局唯一                                                     | 1                     | **一轨一事务**。曲目数量大，绝不能聚合成大对象                         |
+| `Album`     | 同一碟内 `trackNo` 唯一；`VariousArtists` 时 `artist` 为空而 `trackArtist` 必填；封面 `coverKey` 一旦确定不再随单曲变化 | 1                     | 提供 `assignDiscOrder()` 处理冲突                                          |
+| `Artist`    | 名称规范化后唯一                                                                                                                  | 1                     | 近乎值对象，但有独立身份（改名要传播），所以仍是实体                         |
+| `PlayQueue` | 游标永远指向有效元素或空队列；`RepeatOne` 不清历史；随机模式用预生成排列，`back()` 能精确回溯；模式切换不摧毁历史             | 1（含 N 个 track id） | **整个项目最值得建成聚合的地方**，随机/重复/上一首的交互组合是真复杂度 |
+| `Playlist`  | 名非空且长度 ≤ 64；成员不重复；`pos` 连续无空洞（重排时整体重编号）                                                            | 1                     | 顺序是不变量的一部分，不能靠 `ORDER BY` 事后补救                           |
+| `Lyrics`    | 时间戳单调不减；`offset` 已应用；空行不允许进时间轴                                                                             | 1                     | 解析后立刻校验，非法行丢弃而不是抛错                                         |
+
+**`Online` 不在上表里**：它没有聚合根。缓存是「别人数据的副本」，会话是「一次登录的凭证」，播放地址是「20 分钟就过期的字符串」——三者都没有需要保护的不变量，所以它只提供 Query 契约 + 一条 `OnlineService` 流程（见 §4.5 与附 A）。
 
 ### 4.3 值对象
 
@@ -290,25 +295,26 @@ QML 侧只认四个注入的单例：`Player`、`Library`、`Settings`、`Sfx`�
 
 ### 4.4 领域事件
 
-| 事件 | 发布者 | 订阅者（同模块 / 跨模块） |
-| --- | --- | --- |
-| `TrackImported` / `TrackRenamed` / `TrackRemoved` | `Catalog` | 同模块更新读模型；跨模块 → `Lyrics`（清理）、`Playlists`（标记失效） |
-| `TrackStarted` / `TrackFinished` | `Playback` | 跨模块 → `Catalog`（播放统计）、`Preferences`（恢复点） |
-| `QueueAdvanced` / `QueueModeChanged` | `Playback` | 同模块读模型 |
-| `PlaylistCreated` / `PlaylistMembershipChanged` | `Playlists` | 同模块读模型 |
-| `LyricsReplaced` | `Lyrics` | 同模块 |
+| 事件                                                    | 发布者        | 订阅者（同模块 / 跨模块）                                                 |
+| ------------------------------------------------------- | ------------- | ------------------------------------------------------------------------- |
+| `TrackImported` / `TrackRenamed` / `TrackRemoved` | `Catalog`   | 同模块更新读模型；跨模块 → `Lyrics`（清理）、`Playlists`（标记失效） |
+| `TrackStarted` / `TrackFinished`                    | `Playback`  | 跨模块 → `Catalog`（播放统计）、`Preferences`（恢复点）              |
+| `QueueAdvanced` / `QueueModeChanged`                | `Playback`  | 同模块读模型                                                              |
+| `PlaylistCreated` / `PlaylistMembershipChanged`     | `Playlists` | 同模块读模型                                                              |
+| `LyricsReplaced`                                      | `Lyrics`    | 同模块                                                                    |
 
 事件的**载荷只能是值对象和 ID**，且**跨模块的集成事件只带原始字段（`int64 trackId` 等）**，不带对方的值对象类型——否则两个模块的 Contracts 会互相引用成环。
 
 ### 4.5 明确**不**建的东西
 
-| 不做 | 理由 |
-| --- | --- |
-| **一个 `Library` 聚合管所有曲目** | 一万首 = 一次事务写一万个实体 + 内存常驻。这是最典型的"教科书式聚合"灾难。曲库是**查询视图**，不是聚合 |
-| **把 `PlaybackPosition` 放进聚合** | 60Hz 更新、每次都要事务。位置是**高频读模型**，走旁路端口（§7.1） |
-| **`PlaySession` 聚合** | 播放状态（播放/暂停/位置）是易失状态，持久化只有"恢复点"一个需求，交给 `Preferences` 存一个 `{trackId, positionMs}` 就够 |
-| **领域服务滥用** | 全项目只允许两个：`TrackFactory`（从文件事实造 `Track`，处理标题回落与路径规范化）、`ShufflePlanner`（生成随机排列）。找不到第三个正当理由就不要建 |
-| **仓储返回查询投影** | 仓储只进出聚合。列表/搜索结果走 Query 侧 DTO，别让 `ITrackRepository::findAll()` 返回 10000 个聚合 |
+| 不做                                       | 理由                                                                                                                                                     |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **一个 `Library` 聚合管所有曲目**  | 一万首 = 一次事务写一万个实体 + 内存常驻。这是最典型的"教科书式聚合"灾难。曲库是**查询视图**，不是聚合                                             |
+| **把 `PlaybackPosition` 放进聚合** | 60Hz 更新、每次都要事务。位置是**高频读模型**，走旁路端口（§7.1）                                                                                 |
+| **`PlaySession` 聚合**             | 播放状态（播放/暂停/位置）是易失状态，持久化只有"恢复点"一个需求，交给 `Preferences` 存一个 `{trackId, positionMs}` 就够                             |
+| **领域服务滥用**                     | 全项目只允许两个：`TrackFactory`（从文件事实造 `Track`，处理标题回落与路径规范化）、`ShufflePlanner`（生成随机排列）。找不到第三个正当理由就不要建 |
+| **`Online` 建聚合** | 缓存、会话、播放地址都没有不变量；建聚合只会把「接口换了怎么办」变成领域问题。它只需要 Query 契约 + 一条流程 + 一个诊断快照 |
+| **仓储返回查询投影**                 | 仓储只进出聚合。列表/搜索结果走 Query 侧 DTO，别让 `ITrackRepository::findAll()` 返回 10000 个聚合                                                     |
 
 ---
 
@@ -316,11 +322,11 @@ QML 侧只认四个注入的单例：`Player`、`Library`、`Settings`、`Sfx`�
 
 ### 5.1 粒度选择：只做通道分离
 
-| 方案 | 内容 | 决策 |
-| --- | --- | --- |
-| 轻量（同模型） | 读写走不同 Handler，但共用一个领域模型和一个数据库 | ✗ 没解决万级列表的问题 |
-| **通道分离（本方案）** | 写侧走聚合 + 事务；读侧走**投影表 + DTO**，完全不加载聚合 | ✓ **选它** |
-| 事件溯源 | 状态由事件流重建 | ✗ 见非目标 |
+| 方案                         | 内容                                                            | 决策                    |
+| ---------------------------- | --------------------------------------------------------------- | ----------------------- |
+| 轻量（同模型）               | 读写走不同 Handler，但共用一个领域模型和一个数据库              | ✗ 没解决万级列表的问题 |
+| **通道分离（本方案）** | 写侧走聚合 + 事务；读侧走**投影表 + DTO**，完全不加载聚合 | ✓ **选它**       |
+| 事件溯源                     | 状态由事件流重建                                                | ✗ 见非目标             |
 
 **为什么必须做投影**：曲库列表要显示 10000 行 "标题 · 艺人 · 专辑 · 时长 · 播放次数"。如果按 DDD 老老实实加载 10000 个 `Track` 聚合 + 关联 `Album`/`Artist`，每次进曲库页面要几百毫秒和几十 MB 内存。而 CQRS 的读侧可以直接 `SELECT` 一张已经反规范化的 `mv_track_row` 表，只构造轻量 DTO。**这是本项目里 CQRS 唯一但确凿的收益**，不是教条。
 
@@ -414,6 +420,8 @@ Handler::handle(ImportFolderCommand)
 
 **不做 outbox**：本机单进程、失败即整体回滚、无跨进程投递。引入 outbox 表换不到可靠性，只换来一张表和一套补偿逻辑。（推翻条件：如果将来出现跨进程或离线同步，再上 outbox。）
 
+**在线缓存的写入不走 UoW**：`online_*` 四张表由 `OnlineService` 在收到响应时单条写、写完就提交，与任何聚合事务无关（最坏丢一次缓存，不会让曲库回滚）。
+
 ### 5.5 读模型
 
 每个模块可以有自己的投影表，命名 `mv_*`，由**同模块**的事件订阅者维护。
@@ -468,11 +476,11 @@ modules/catalog/
 
 ### 6.2 模块间通信：三种、且只有三种
 
-| 方式 | 形态 | 例子 | 约束 |
-| --- | --- | --- | --- |
-| ① 同步查询 | 依赖对方的 `ICatalogQuery` 端口 | `Lyrics` 要查曲目路径 | 只读、无事务、返回 DTO |
-| ② 集成事件 | `Y.Contracts` 里的事件结构 + `IIntegrationEventBus` | `TrackFinished` → `Catalog` 累计播放次数 | 单向、可异步、只能带原始字段 |
-| ③ 命令转发 | **不允许** | — | 模块 A 不得代替用户触发模块 B 的命令 |
+| 方式        | 形态                                                    | 例子                                          | 约束                                 |
+| ----------- | ------------------------------------------------------- | --------------------------------------------- | ------------------------------------ |
+| ① 同步查询 | 依赖对方的 `ICatalogQuery` 端口                       | `Lyrics` 要查曲目路径                       | 只读、无事务、返回 DTO               |
+| ② 集成事件 | `Y.Contracts` 里的事件结构 + `IIntegrationEventBus` | `TrackFinished` → `Catalog` 累计播放次数 | 单向、可异步、只能带原始字段         |
+| ③ 命令转发 | **不允许**                                        | —                                            | 模块 A 不得代替用户触发模块 B 的命令 |
 
 **绝对不允许**：模块 A 直接 `#include` 模块 B 的聚合/仓储/Handler；模块 A 读模块 B 的表。
 
@@ -491,7 +499,7 @@ Sonora.Presentation        (static, QtCore/Gui/Quick + 所有 *.Contracts；**�
 Sonora                (binary, qt.quickapp, deps: 全部 Adapters + Presentation + Host)
 ```
 
-共 23 个 target（22 静态库 + 1 可执行）。xmake 处理这个规模毫无压力（并行编译），首次配置约多半天。
+共 30 个 target（28 个静态库 + 可执行 `sonora` / `sonora_tests`）。xmake 处理这个规模毫无压力（并行编译），首次配置约多半天。
 
 ### 6.4 数据库：schema per module
 
@@ -505,13 +513,14 @@ CREATE TABLE __module_version (
 );
 ```
 
-| 模块 | 表 | 允许 JOIN 的范围 |
-| --- | --- | --- |
-| `Catalog` | `track` `album` `artist` `track_artist` `mv_track_row` `mv_track_stat` | 模块内任意 JOIN（曲目/专辑/艺人本就是一个上下文） |
-| `Playback` | `play_queue` `play_queue_item` `play_history` | 模块内；`track_id` 只是裸整数，**不建外键** |
-| `Playlists` | `playlist` `playlist_item` `mv_playlist_summary` | 模块内 |
-| `Lyrics` | `lyric` `lyric_line` | 模块内 |
-| `Preferences` | `kv` | — |
+| 模块            | 表                                                                                 | 允许 JOIN 的范围                                    |
+| --------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `Catalog`     | `track` `album` `artist` `track_artist` `mv_track_row` `mv_track_stat` | 模块内任意 JOIN（曲目/专辑/艺人本就是一个上下文）   |
+| `Playback`    | `play_queue` `play_queue_item` `play_history`                                | 模块内；`track_id` 只是裸整数，**不建外键** |
+| `Playlists`   | `playlist` `playlist_item` `mv_playlist_summary`                             | 模块内                                              |
+| `Lyrics`      | `lyric` `lyric_line`                                                           | 模块内                                              |
+| `Preferences` | `kv`                                                                             | —                                                  |
+| `Online` | `online_search_cache` `online_detail_cache` `online_song_cache` `online_session` | 模块内；`payload` 原样存 provider 的 JSON，不拆列（拆了就跟着接口一起变） |
 
 **为什么允许 `Catalog` 内部 JOIN 却不允许跨模块**：`track`/`album`/`artist` 属于同一个限界上下文，它们的不变量天然耦合；而 `playlist_item.track_id` 跨到 `Catalog` 是另一个上下文的身份，用外键锁死会让"删除曲目时歌单怎么办"这个业务决策被数据库替你做了。
 
@@ -600,12 +609,13 @@ UI 线程: 订阅进度读模型 → 每 200ms 刷一次进度条（不是每首
 
 ### 7.3 线程模型
 
-| 线程 | 跑什么 | 纪律 |
-| --- | --- | --- |
-| GUI 线程 | QML、ViewModel、`ICommandBus::dispatch` | 任何阻塞 > 5ms 的操作都是 bug |
-| IO 池（`QThreadPool`） | 扫描、TagLib、SQLite 写、封面解码、歌词拉取 | 每任务自带事务边界 |
-| 音频线程 | FFmpeg 解码 + sink 填充 | 无 Qt 事件循环、无分配、无锁、无日志 |
-| 数据库 | **不用独立线程**，连接归 IO 池线程所有 | 单写连接串行化；SQLite WAL 允许并发读 |
+| 线程                     | 跑什么                                       | 纪律                                  |
+| ------------------------ | -------------------------------------------- | ------------------------------------- |
+| GUI 线程                 | QML、ViewModel、`ICommandBus::dispatch`    | 任何阻塞 > 5ms 的操作都是 bug         |
+| IO 池（`QThreadPool`） | 扫描、TagLib、SQLite 写、封面解码、歌词拉取  | 每任务自带事务边界                    |
+| 音频线程                 | FFmpeg 解码 + sink 填充                      | 无 Qt 事件循环、无分配、无锁、无日志  |
+| 数据库                   | **不用独立线程**，连接归 IO 池线程所有 | 单写连接串行化；SQLite WAL 允许并发读 |
+| 网络线程                 | `QNetworkAccessManager`（`Sonora.Platform.Net`） | `IHttpTransport::send` 只许队列线程调用；回调统一 marshal 回队列线程 |
 
 **`X.Core` 对线程无感知**：它只知道 `ITaskQueue` 端口。所有线程亲和性由 Adapters/Host 决定。这让领域层可以直接用单线程测试。
 
@@ -614,10 +624,11 @@ UI 线程: 订阅进度读模型 → 每 200ms 刷一次进度条（不是每首
 ```
 1. PlayerViewModel 断开 IPositionStream 订阅（防止回调打到已析构对象）
 2. AudioOutput::stopAndDrain()      → stop flag → decode thread join → ring 清空 → sink stop
-3. TaskQueue::cancelAll() + waitForDone()
-4. 未提交的 UoW 回滚
-5. 按创建逆序销毁 ViewModel → Adapters → Core
-6. QGuiApplication 退出
+3. OnlineService::shutdown()        → 取消在途请求（网络线程 → 队列线程），之后不再有回调
+4. TaskQueue::cancelAll() + waitForDone()
+5. 未提交的 UoW 回滚
+6. 按创建逆序销毁 ViewModel → Adapters → Core
+7. QGuiApplication 退出
 ```
 
 ---
@@ -638,11 +649,13 @@ Sonora/
 │   ├── playback/    {contracts/, core/, adapters/}
 │   ├── playlists/   {contracts/, core/, adapters/}
 │   ├── lyrics/      {contracts/, core/, adapters/}
-│   └── preferences/ {contracts/, core/, adapters/}
+│   ├── preferences/ {contracts/, core/, adapters/}
+│   └── online/      {contracts/, core/, adapters/}   # v1.1：无聚合，只有端口 + 流程
 ├── platform/
 │   ├── storage/                    # Sonora.Platform.Storage：SqliteConnection、UnitOfWork、Migrator
 │   ├── audio/                      # Sonora.Platform.Audio：QtMultimediaOutput、FfmpegOutput、AudioRing
 │   ├── filesystem/                 # 路径规范化、目录遍历（长路径 / UNC）
+│   ├── net/                        # Sonora.Platform.Net：QtHttpTransport（全项目唯一 QtNetwork 出现处）
 │   └── win/                        # 高 DPI、托盘、SMTC、单实例锁、DWM
 ├── presentation/
 │   ├── viewmodels/                 # PlayerViewModel / LibraryViewModel / TrackListModel / ...
@@ -669,28 +682,28 @@ Sonora/
 
 ### 9.1 能力边界（比 CMake 少一层，提前知道省两天）
 
-| 能力 | xmake | 对策 |
-| --- | --- | --- |
-| 找 Qt | 内置 `find_qt`，读 `--qt=` / `QTDIR` / `qmake` | ✓ 够用 |
-| moc / qrc / ts | `qt.moc` / `qt.qrc` / `qt.ts` | ✓ 够用 |
-| 静态库用 Qt | `add_rules("qt.static")` | ✓ 够用 |
-| 链接 Qt 模块 | `add_frameworks("QtMultimedia")`（带 `Qt` 前缀，自动补主版本与 Debug 后缀） | ✓ |
-| `qt_add_qml_module`（URI + qmltypes + qmlcachegen） | **无整包等价物**，只有零散 `qt.qmltyperegistrar` | 手工 `qmlRegisterSingletonInstance` + qrc；qmltypes 与预编译列 M8 可选项 |
-| shader → `.qsb` | **没有** | 自定义 `task("qsb")`，产物入库（§9.7） |
-| `windeployqt` | `install.windows` 不够精细 | 直接跑 `windeployqt` |
-| Qt 包源 | xmake-repo 的 `packages/q/` 只有 qt6base/core/gui/network/qml/quick/widgets | **没有 multimedia / shadertools / sql** → Qt 必须本机装 |
+| 能力                                                  | xmake                                                                           | 对策                                                                       |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| 找 Qt                                                 | 内置 `find_qt`，读 `--qt=` / `QTDIR` / `qmake`                          | ✓ 够用                                                                    |
+| moc / qrc / ts                                        | `qt.moc` / `qt.qrc` / `qt.ts`                                             | ✓ 够用                                                                    |
+| 静态库用 Qt                                           | `add_rules("qt.static")`                                                      | ✓ 够用                                                                    |
+| 链接 Qt 模块                                          | `add_frameworks("QtMultimedia")`（带 `Qt` 前缀，自动补主版本与 Debug 后缀） | ✓                                                                         |
+| `qt_add_qml_module`（URI + qmltypes + qmlcachegen） | **无整包等价物**，只有零散 `qt.qmltyperegistrar`                        | 手工 `qmlRegisterSingletonInstance` + qrc；qmltypes 与预编译列 M8 可选项 |
+| shader → `.qsb`                                    | **没有**                                                                  | 自定义 `task("qsb")`，产物入库（§9.7）                                  |
+| `windeployqt`                                       | `install.windows` 不够精细                                                    | 直接跑 `windeployqt`                                                     |
+| Qt 包源                                               | xmake-repo 的 `packages/q/` 只有 qt6base/core/gui/network/qml/quick/widgets   | **没有 multimedia / shadertools / sql** → Qt 必须本机装             |
 
 ### 9.2 MSVC 的目标环境约束
 
-| 项 | 要求 | 不满足会怎样 |
-| --- | --- | --- |
-| CRT | `/MD`（`set_runtimes("MD")`） | 与 Qt 的 `/MD` 不一致 → 链接错或跨 dll 释放堆崩溃 |
-| Qt 套件 | `msvc2022_64` | 用错套件会在链接期爆炸，且报错信息完全指不到根因 |
-| 字符集 | `/utf-8` + 源文件 UTF-8 with BOM 不必需 | 中文注释变乱码、`L"中文"` 编译警告 |
-| 标准 | `/std:c++20` + `/Zc:__cplusplus` | `__cplusplus` 谎报 199711 |
-| 严格性 | `/permissive-` | 依赖 MSVC 扩展的代码悄悄通过 |
-| 宏 | `NOMINMAX` `WIN32_LEAN_AND_MEAN` `UNICODE` `_UNICODE` | `<windows.h>` 的 `min/max` 宏摧毁 `std::min` |
-| 大对象 | `/bigobj` | 模板 + `std::variant` 多的 TU 报 C1128 |
+| 项      | 要求                                                          | 不满足会怎样                                         |
+| ------- | ------------------------------------------------------------- | ---------------------------------------------------- |
+| CRT     | `/MD`（`set_runtimes("MD")`）                             | 与 Qt 的 `/MD` 不一致 → 链接错或跨 dll 释放堆崩溃 |
+| Qt 套件 | `msvc2022_64`                                               | 用错套件会在链接期爆炸，且报错信息完全指不到根因     |
+| 字符集  | `/utf-8` + 源文件 UTF-8 with BOM 不必需                     | 中文注释变乱码、`L"中文"` 编译警告                 |
+| 标准    | `/std:c++20` + `/Zc:__cplusplus`                          | `__cplusplus` 谎报 199711                          |
+| 严格性  | `/permissive-`                                              | 依赖 MSVC 扩展的代码悄悄通过                         |
+| 宏      | `NOMINMAX` `WIN32_LEAN_AND_MEAN` `UNICODE` `_UNICODE` | `<windows.h>` 的 `min/max` 宏摧毁 `std::min`   |
+| 大对象  | `/bigobj`                                                   | 模板 + `std::variant` 多的 TU 报 C1128             |
 
 ### 9.3 主 `xmake.lua`
 
@@ -818,11 +831,11 @@ target("sonora")
 
 ### 9.5 FFmpeg 在 MSVC 下的三条路（**这条最容易浪费一天**）
 
-| 路线 | 做法 | 评价 |
-| --- | --- | --- |
+| 路线                       | 做法                                                                                                 | 评价                                                                |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
 | **A. vcpkg（推荐）** | `vcpkg install ffmpeg:x64-windows`，然后 `xmake f --vcpkg=D:/vcpkg` + `add_requires("ffmpeg")` | 全 MSVC 编译，`.lib` 与 Qt 同 ABI，一劳永逸。首次编译 30–60 分钟 |
-| B. 源码自建 | MSYS2 bash + `vcvars64` + `--toolchain=msvc` | 可控但要维护一套脚本 |
-| C. 预编译二进制 | 只接受**明确标注 MSVC 构建**的包 | 见下面的警告 |
+| B. 源码自建                | MSYS2 bash + `vcvars64` + `--toolchain=msvc`                                                     | 可控但要维护一套脚本                                                |
+| C. 预编译二进制            | 只接受**明确标注 MSVC 构建**的包                                                               | 见下面的警告                                                        |
 
 > **警告：gyan.dev 与 BtbN/FFmpeg-Builds 的 Windows 预编译包是 MinGW 编译的**（`.dll.a` import lib），**不能**与 MSVC 链接。把它们喂给 MSVC 的典型症状是链接期成片的 `undefined symbol: __imp_av_*` 或 `__mingw_*`。v1 计划里写"下载 gyan.dev"的那一版在切换到 MSVC 后已作废——这是本次架构变更连带的变化。
 >
@@ -834,7 +847,7 @@ target("sonora")
 # 配置（Qt 前缀、vcpkg 根、debug）
 xmake f -m debug -a x64 -y          # Qt 由 find_qt 自动检出（实测 D:/Software/Qt/6.12.0/msvc2022_64）
 
-# 编译（23 个 target 并行）
+# 编译（30 个 target 并行）
 xmake -j
 
 # 运行（qt.env 会把 Qt bin 加进 PATH）
@@ -894,11 +907,11 @@ task("qsb")
 
 ### 10.1 强度档位
 
-| 档 | 做法 | 成本 |
-| --- | --- | --- |
-| L1 点缀 | 现代 UI + 漫画配件（气泡提示、拟声词按钮、网点背景） | 低 |
-| **L2 分格（选它）** | 整页按漫画版面重组：粗描边分格、黑白 + 单色、硬阴影、页边距 | 中 |
-| L3 全漫画 | L2 + 翻页转场 + 立绘 + 手绘字体 + 网点动画 | 高 |
+| 档                        | 做法                                                        | 成本 |
+| ------------------------- | ----------------------------------------------------------- | ---- |
+| L1 点缀                   | 现代 UI + 漫画配件（气泡提示、拟声词按钮、网点背景）        | 低   |
+| **L2 分格（选它）** | 整页按漫画版面重组：粗描边分格、黑白 + 单色、硬阴影、页边距 | 中   |
+| L3 全漫画                 | L2 + 翻页转场 + 立绘 + 手绘字体 + 网点动画                  | 高   |
 
 以 **L2 为主体**，把 L3 的组件做成可选开关逐页点亮。这样哪怕 L3 做一半没时间，产品仍是完整的。
 
@@ -952,18 +965,18 @@ QtObject {
 
 ### 10.3 组件契约（`presentation/qml/comic/`）
 
-| 组件 | 关键属性 / 信号 | 实现要点 |
-| --- | --- | --- |
-| `MangaPanel` | `strokeWidth, tailSide, shadowOffset, dashed` | `BorderImage` 9 宫格 + 手绘边框贴图；阴影用偏移的第二个 BorderImage，**不用 DropShadow** |
-| `Halftone` | `dotSize, angle, density, ink, paper, fadeFrom, fadeTo` | `ShaderEffect` + `dot.frag` |
-| `SpeedLines` | `count, speed, focusX, focusY` | `ShaderEffect` + 极坐标条纹，`speed` 驱动相位 |
-| `ComicBubble` | `text, tailSide, duration`, `signal dismissed()` | `Shape` + 路径画尾巴；`SpringAnimation` 弹出 |
-| `SfxText` | `text, size, rotation`, `function burst()` | **池化 6 个实例复用**；`ParallelAnimation` 上浮+放大+淡出；禁止每次 `createObject` |
-| `ComicButton` | `text, icon, tone, pressedOffset` | 常态画偏移阴影，按下时阴影收窄 + 平移 `(2,2)` |
-| `InkSlider` | `from, to, value, fillImage` | 轨道为手绘墨线贴图；已播放部分用 `clip` 裁切 `Image` |
-| `PageTurner` | `sourceCurrent, sourceNext, direction` | 先做便宜版：两张 `ShaderEffectSource` + 绕 Y 轴旋转；shader 版后置 |
-| `CoverFrame` | `source, spinAngle` | 直角 + 粗描边 + 唱片旋转 |
-| `TrackRow` | `title, artist, duration, isPlaying, index` | 高度固定（虚拟化前提）；`isPlaying` 时左缘出 `accent` 墨迹 |
+| 组件            | 关键属性 / 信号                                           | 实现要点                                                                                         |
+| --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `MangaPanel`  | `strokeWidth, tailSide, shadowOffset, dashed`           | `BorderImage` 9 宫格 + 手绘边框贴图；阴影用偏移的第二个 BorderImage，**不用 DropShadow** |
+| `Halftone`    | `dotSize, angle, density, ink, paper, fadeFrom, fadeTo` | `ShaderEffect` + `dot.frag`                                                                  |
+| `SpeedLines`  | `count, speed, focusX, focusY`                          | `ShaderEffect` + 极坐标条纹，`speed` 驱动相位                                                |
+| `ComicBubble` | `text, tailSide, duration`, `signal dismissed()`      | `Shape` + 路径画尾巴；`SpringAnimation` 弹出                                                 |
+| `SfxText`     | `text, size, rotation`, `function burst()`            | **池化 6 个实例复用**；`ParallelAnimation` 上浮+放大+淡出；禁止每次 `createObject`     |
+| `ComicButton` | `text, icon, tone, pressedOffset`                       | 常态画偏移阴影，按下时阴影收窄 + 平移 `(2,2)`                                                  |
+| `InkSlider`   | `from, to, value, fillImage`                            | 轨道为手绘墨线贴图；已播放部分用 `clip` 裁切 `Image`                                         |
+| `PageTurner`  | `sourceCurrent, sourceNext, direction`                  | 先做便宜版：两张 `ShaderEffectSource` + 绕 Y 轴旋转；shader 版后置                             |
+| `CoverFrame`  | `source, spinAngle`                                     | 直角 + 粗描边 + 唱片旋转                                                                         |
+| `TrackRow`    | `title, artist, duration, isPlaying, index`             | 高度固定（虚拟化前提）；`isPlaying` 时左缘出 `accent` 墨迹                                   |
 
 **M2 落地情况**：已实现 `MangaPanel` / `ComicButton` / `ComicBubble` / `Halftone` / `InkSlider` 五个，其余留给 M6（`TrackRow`、`CoverFrame`）与 M8（`SpeedLines`、`SfxText`、`PageTurner`）。两处实现偏差记在这里，免得后来人对不上：
 
@@ -1245,6 +1258,17 @@ CREATE TABLE lyric_line (track_id INTEGER NOT NULL, seq INTEGER NOT NULL,
 
 -- Preferences
 CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER);
+
+-- Online：provider 原样 JSON，不拆列；last_used_at 为 0 表示"迁移前的老行"，排序时回落到 fetched_at
+CREATE TABLE online_search_cache (provider TEXT NOT NULL, keywords TEXT NOT NULL, "offset" INTEGER NOT NULL,
+                                  fetched_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL DEFAULT 0,
+                                  payload TEXT NOT NULL, PRIMARY KEY (provider, keywords, "offset"));
+CREATE TABLE online_detail_cache (provider TEXT NOT NULL, kind TEXT NOT NULL, id TEXT NOT NULL,
+                                  fetched_at INTEGER NOT NULL, last_used_at INTEGER NOT NULL DEFAULT 0,
+                                  payload TEXT NOT NULL, PRIMARY KEY (provider, kind, id));
+CREATE TABLE online_song_cache (provider TEXT NOT NULL, song_id TEXT NOT NULL, fetched_at INTEGER NOT NULL,
+                                payload TEXT NOT NULL, PRIMARY KEY (provider, song_id));
+CREATE TABLE online_session (provider TEXT PRIMARY KEY, cookie_blob BLOB, expires_at INTEGER);
 ```
 
 **注意 Playlists 的两个约束**：`PRIMARY KEY (playlist_id, track_id)` 让"成员不重复"成为数据库级不变量；`UNIQUE INDEX (playlist_id, pos)` 让"顺序连续无空洞"在重排时逼你整体重编号——**用 schema 承载不变量比用代码守住更可靠**，但前提是这个不变量真的属于该模块。
@@ -1255,26 +1279,29 @@ CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER);
 
 记录"看起来随意、其实有理由"的选择，避免三个月后被自己推翻。
 
-| 决策 | 理由 | 推翻条件 |
-| --- | --- | --- |
-| 模块边界用 xmake target 强制 | C++ 里 include 路径由构建系统给，是天生的边界执行者 | 若 target 数造成编译时间瓶颈（>60s 增量），合并 `*.Contracts` 进 `*.Core` |
-| **只做通道分离 CQRS，不做事件溯源** | 无审计/重放需求；ES 换不到任何东西，只换来序列化成本 | 需要多设备同步或撤销历史时再评估 |
-| 读侧用投影表而非聚合 | 万级列表加载聚合会卡死，这是确凿的收益 | 若曲库长期 < 500 首，投影可以退化为直接查询（但要保留 Query 契约不变） |
-| `Preferences` 不套 DDD | 键值对无不变量无行为，套上去只有样板 | 若出现"配置项之间互斥/迁移"的规则，升格为聚合 |
-| 位置不进总线 | 60Hz 走类型擦除是纯浪费 | 若需要跨进程共享播放状态（如未来手机遥控），改为事件流 |
-| 不做 outbox | 单进程 + 事务回滚已足够 | 出现跨进程/离线同步 |
-| 同步投影而非最终一致 | 本机单写者，同步更简单也更快 | 投影变慢影响命令延迟时改异步 |
-| Catalog/Playlists 分模块 | 事实 vs 看法，删歌语义不同 | 不要合并，会逼出畸形规则 |
-| 跨模块不建外键 | 否则数据库替你决定业务语义（删曲目时歌单怎么办） | 不推翻 |
+| 决策                                      | 理由                                                 | 推翻条件                                                                      |
+| ----------------------------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------- |
+| 模块边界用 xmake target 强制              | C++ 里 include 路径由构建系统给，是天生的边界执行者  | 若 target 数造成编译时间瓶颈（>60s 增量），合并 `*.Contracts` 进 `*.Core` |
+| **只做通道分离 CQRS，不做事件溯源** | 无审计/重放需求；ES 换不到任何东西，只换来序列化成本 | 需要多设备同步或撤销历史时再评估                                              |
+| 读侧用投影表而非聚合                      | 万级列表加载聚合会卡死，这是确凿的收益               | 若曲库长期 < 500 首，投影可以退化为直接查询（但要保留 Query 契约不变）        |
+| `Preferences` 不套 DDD                  | 键值对无不变量无行为，套上去只有样板                 | 若出现"配置项之间互斥/迁移"的规则，升格为聚合                                 |
+| 位置不进总线                              | 60Hz 走类型擦除是纯浪费                              | 若需要跨进程共享播放状态（如未来手机遥控），改为事件流                        |
+| 不做 outbox                               | 单进程 + 事务回滚已足够                              | 出现跨进程/离线同步                                                           |
+| 同步投影而非最终一致                      | 本机单写者，同步更简单也更快                         | 投影变慢影响命令延迟时改异步                                                  |
+| Catalog/Playlists 分模块                  | 事实 vs 看法，删歌语义不同                           | 不要合并，会逼出畸形规则                                                      |
+| 跨模块不建外键                            | 否则数据库替你决定业务语义（删曲目时歌单怎么办）     | 不推翻                                                                        |
 | 一模块一 `*.Contracts` target | 让 Presentation 物理上看不见 Domain | 不推翻 |
+| **`online` 定位成支撑域、不建聚合** | 全是别人数据的副本 + 会过期的地址，没有不变量 | 若将来要在本机维护「离线可用的在线库」（下载/收藏），那才有需要保护的不变量，届时要建聚合 |
+| **在线播放直接吃 URL，不做下载** | 省掉下载-转码-存储三段，出错面小一半；`FfmpegOutput` 本来就吃 URL | 若需离线播放或精确 seek 稳定，改为「取地址 → 预取 30 s → 播放」 |
+| **传输端口 `IHttpTransport` 放 `Online.Contracts`** | 让 core 零 Qt；`Platform.Net` 实现它，host 注入 | 若出现第二个模块要发 HTTP，抽到 `Sonora.Contracts`（共享端口），现在抽只会多一层抽象 |
 
 ## 附 B 这套架构的代价（诚实版）
 
-| 代价 | 量级 | 什么时候值 |
-| --- | --- | --- |
-| 首次搭骨架 | ~1.5 人日（23 个 target + 边界脚本） | 只有活过 v1 之后才回本 |
-| 每个功能多写一层 | 命令/DTO/映射器 ≈ 每功能 +30% 代码量 | 功能数 > 10 之后开始赚 |
-| 心智负担 | 新人需理解三层与总线 | 单人项目只体现在"三个月后的自己" |
-| 调试链路长 | 一次点击跨 4 层 | 用一条 `trace id` 串起来（debug 下打点） |
+| 代价             | 量级                                  | 什么时候值                                 |
+| ---------------- | ------------------------------------- | ------------------------------------------ |
+| 首次搭骨架       | ~1.5 人日（最初 23 个 target，现 30 个 + 边界脚本）  | 只有活过 v1 之后才回本                     |
+| 每个功能多写一层 | 命令/DTO/映射器 ≈ 每功能 +30% 代码量 | 功能数 > 10 之后开始赚                     |
+| 心智负担         | 新人需理解三层与总线                  | 单人项目只体现在"三个月后的自己"           |
+| 调试链路长       | 一次点击跨 4 层                       | 用一条 `trace id` 串起来（debug 下打点） |
 
 **一句话**：这套架构不是为了让 v1 更快写完（它会慢 4 人日），是为了让 v2、v3 不被推倒重来。如果这个项目只做一个月然后扔掉，那么 v1 的简单分层就够。

@@ -13,7 +13,7 @@
 2. **一个库只能出现在它被批准的那一层**（见 §1 矩阵）。要用到上层去，先改文档再改构建。
 3. **新依赖必须过五问**（见文末清单）。过不了就不加——标准库或者 200 行手写，通常比一个新依赖便宜。
 
-**预算**：运行时第三方库（不含 Qt / Windows SDK）**≤ 6 个**。当前规划用了 5 个：SQLite、SQLiteCpp、TagLib、FFmpeg、spdlog。剩下的一个名额留给未来的意外。
+**预算**：运行时第三方库（不含 Qt / Windows SDK）**≤ 6 个**。当前用了 6 个：SQLite、SQLiteCpp、TagLib、FFmpeg、spdlog、nlohmann/json（R2 加的，header-only）。第 7 个名额空着——空着比填满好。
 
 M0 阶段实际只用了 **Qt** 一个（其余都还没到引入的里程碑）。
 
@@ -25,6 +25,8 @@ M0 阶段实际只用了 **Qt** 一个（其余都还没到引入的里程碑）
 | --- | --- | --- | --- | --- | --- | --- |
 | C++ 标准库 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Qt 6 | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
+| Qt Network（`Qt6Network`） | ❌ | ❌ | ❌ | ✅（仅 `net`：`QtHttpTransport`） | ❌ | ❌ |
+| nlohmann/json | ❌ | ❌ | ✅（仅 `Online.Adapters`） | ❌ | ❌ | ✅ |
 | SQLite / SQLiteCpp | ❌ | ❌ | ❌ | ✅（仅 `storage`） | ❌ | ❌ |
 | TagLib | ❌ | ❌ | ✅（仅 `Catalog.Adapters`） | ❌ | ❌ | ❌ |
 | FFmpeg | ❌ | ❌ | ❌ | ✅（仅 `audio`） | ❌ | ❌ |
@@ -39,7 +41,7 @@ M0 阶段实际只用了 **Qt** 一个（其余都还没到引入的里程碑）
 
 | 库 | 版本 | 许可 | 干什么 | 引入 | 获取 |
 | --- | --- | --- | --- | --- | --- |
-| **Qt** | 6.12.0（本机已装） | LGPLv3 / 商业 | UI、事件循环、网络、音频输出、SQL 驱动 | M0 ✅ | 本机 `D:/Software/Qt/6.12.0/msvc2022_64` |
+| **Qt** | 6.12.0（本机已装） | LGPLv3 / 商业 | UI、事件循环、网络（**本期**：Qt6Network）、音频输出、SQL 驱动 | M0 ✅ | 本机 `D:/Software/Qt/6.12.0/msvc2022_64` |
 | **SQLite** | 3.54.x | Public Domain | 持久化（聚合表 + 投影表 + 迁移版本表） | **M1** | **自带 amalgamation**（见下，不用包） |
 | **SQLiteCpp** | 3.4.0 | MIT | sqlite3 的 RAII C++ 封装（Statement/Transaction） | **M1** | xmake-repo `sqlitecpp`（`sqlite3_external`） |
 | **TagLib** | 2.3.2 | LGPL-2.1 / MPL-1.1 | 读 ID3v2 / FLAC / MP4 / OGG / APE 元数据与内嵌封面 | **M1** | xmake-repo `taglib` |
@@ -47,6 +49,7 @@ M0 阶段实际只用了 **Qt** 一个（其余都还没到引入的里程碑）
 | **spdlog** | 1.17.0 | MIT | `ILogger` 的实现（异步、滚动、彩色控制台） | M1 | xmake-repo `spdlog` |
 | **doctest** | 2.5.3 | MIT | 单测框架（替换 M0 里的手写断言） | M1 | xmake-repo `doctest` |
 | **xxHash** | 0.8.4 | BSD-2 | 内容指纹（曲目去重、QualityHash 缓存键、封面缓存键） | M5 | xmake-repo `xxhash` |
+| **nlohmann/json** | 3.12.0 | MIT | 在线 provider 的响应解码（header-only，`Online.Adapters` + 测试夹具） | R2 ✅ | xmake-repo `nlohmann_json` |
 
 ### 逐个说明
 
@@ -57,7 +60,8 @@ M0 阶段实际只用了 **Qt** 一个（其余都还没到引入的里程碑）
 | `Core` `Gui` `Qml` `Quick` | 基础与 UI | M0 ✅ |
 | `QuickControls2` | 控件（会和自定义漫画控件混用） | M2 |
 | `QuickEffects` | `MultiEffect`：阴影/模糊/遮罩，省掉一半自写 shader | M2 |
-| `Network` | 未来在线音源、封面下载 | M6 |
+| `Network` | 在线音源（**本期已启用**：搜索 / 详情 / 直链 / 歌词 / 账号）；封面下载不用它 | R2 ✅ |
+| `Network` 的 TLS 后端 | 走 **Schannel**（`tls/qschannelbackend.dll`），不引 OpenSSL | R2 ✅ |
 | `Multimedia` | `QAudioSink`（音频输出设备） | M3 |
 | `Sql` | QSqlDatabase——**给它一句否决**：存储层走 SQLiteCpp，不用 QtSql（见 §4） | 不启用 |
 | `Svg` | 手绘边框、图标 | M2 |
@@ -141,8 +145,8 @@ add_requires("spdlog 1.17.0", {configs = {header_only = true, std_format = true}
 | **ICU** | 为了中文排序/搜索引入 ~30MB 字典。中文搜索用 SQLite FTS5 + 自带 bigram 分词即可。 |
 | **PortAudio / miniaudio / RtAudio** | 音频输出用 Qt 的 `QAudioSink`（WASAPI 共享模式，拉模式 QIODevice，正好对上 `AudioRing` 的设计）。真需要独占/低延迟时，直接在 `platform/win` 里调 WASAPI——不引入第三方。 |
 | **OpenCV / 任何图像库** | 封面加载、缩放、模糊全用 Qt（`QImage` + `MultiEffect` + shader）。 |
-| **libcurl / OpenSSL** | v1 没有网络。将来要联网用 `QtNetwork`（自带 TLS）。 |
-| **nlohmann/json（现在不引）** | v1 没有插件、没有导入导出、配置存 SQLite。等 M6 真需要 JSON 时再加（3.12.0，header-only）。 |
+| **libcurl / OpenSSL** | 联网用 `QtNetwork`：它的 TLS 后端在 Windows 上就是 Schannel，天然复用系统证书库；引 OpenSSL 等于自己再维护一份 CA 与 FIPS 配置，还多两个 DLL。 |
+| ~~**nlohmann/json**~~ | **已采纳**（R2）：在线 provider 的响应是嵌套 JSON，手写解析器的维护成本高于引一个 header-only 库。边界：只许出现在 `Online.Adapters` 与测试里。 |
 | **spdlog 之外的日志库**（log4cxx / quill） | quill 更快但要自己管后端线程；本项目日志不是瓶颈。 |
 | **Crashpad / Breakpad（现在不引）** | M9 若要做崩溃上报再说。 |
 | **Qt Quick 3D** | 2D 漫画风，不用 3D 场景。 |
@@ -154,7 +158,6 @@ add_requires("spdlog 1.17.0", {configs = {header_only = true, std_format = true}
 
 | 库 | 版本 | 触发条件 |
 | --- | --- | --- |
-| `nlohmann/json` | 3.12.0 | M6 要做播放列表导入/导出，或插件清单 |
 | `utf8proc` | 2.11.3 | 中文搜索需要 NFC 归一化 / 大小写折叠（FTS5 的 unicode61 对中文分词无力） |
 | `Crashpad` | — | M9 想做崩溃上报 |
 | `libebur128` | 1.2.x | 若做"响度归一化"（ReplayGain 风格） |

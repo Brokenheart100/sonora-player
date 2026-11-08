@@ -15,7 +15,7 @@
 
 ```bash
 # 每个新 shell：portable xmake 不在系统 PATH 里
-export PATH="/c/Users/123/AppData/Local/Temp/xmake-test/xmake:$PATH"
+export PATH="/c/Users/123/AppData/Local/xmake-portable:$PATH"
 
 xmake f -m debug -a x64 -y     # Qt 自动识别，不需要 --qt
 xmake                          # 编全部 target
@@ -38,7 +38,7 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 6. Handler 同步耗时 **< 5ms**；更慢的活投 `ITaskQueue::post()`，不要就地等。
 7. **先 commit 事务，再发领域事件**。不做 outbox、不做最终一致。
 8. 一个命令一个 `UnitOfWorkScope`；单个文件失败只计数，不回滚整批。
-9. ViewModel 只持 DTO + 视图状态，**不持聚合**。QML 只认注入的 `Library` / `Player` / `Settings` / `Sfx`。
+9. ViewModel 只持 DTO + 视图状态，**不持聚合**。QML 只认注入的单例 `Library` / `Player` / `Lyrics` / `Online` / `Settings` / `Sfx`（全部注册在 `Sonora.Presentation` 下）。
 10. 播放位置走 `IPositionStream` 旁路，**不进命令总线**（60Hz 会淹掉事件循环）。
 11. 仓储不提供 `findAll()`；列表查询走 `*.Contracts` 里的 Query + 投影视图，直接出 DTO。
 
@@ -118,6 +118,15 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - delegate 内部的 `id` **在外面看不见**（`item.pop.restart()` → `TypeError: Cannot call method 'restart' of undefined`）。给 delegate 加一个 `function start()` 当门面。
 - `comic/`、`layout/` 这些子目录里的组件**也要** `import Sonora.Presentation 1.0`，否则 `ReferenceError: Player is not defined`——而且只在运行时炸。
 
+**在线音源**
+
+- `IHttpTransport::send()` **只许队列线程调用**（实现里有断言）。回调也在队列线程上回来；别在 GUI 线程直接 `send` 再等结果，那等于把网络延迟搬进 5ms 预算。
+- **cookie 不许进日志、不许进事件载荷**。`OnlineErrorRecord.where` 只写"搜索 / 取地址 / 登录校验 / 扫码"这类固定词，`message` 用 provider 原文——原文里也没有 cookie，别自己拼。
+- 在线曲目 `trackId = 0`，`SqlitePlaybackRecorder` 见到 0 必须早退，否则会给"一首不存在的歌"记播放次数。
+- 缓存/会话/直链全在 `online_*` 四张表里，**不进任何聚合事务**；`last_used_at = 0` 表示"迁移前的老行"，排序要用 `CASE WHEN last_used_at = 0 THEN fetched_at ELSE last_used_at END`。
+- **迁移里不要写"顺手回填"的 UPDATE**：200 行 × 78KB 的老库上，`UPDATE ... SET last_used_at = fetched_at` 会让 SQLite 报 `unable to open database file`，而迁移失败 = 应用打不开。加列就只加列。
+- 降级必须留痕：失败走 `Diagnostics::recordError()`（分类计数 + 最近 10 条），取消（`Internal` + `"已取消"`）不计数，否则打字时每敲一个字就多一条"错误"。
+
 **调试**
 
 - QML 类型错误看 **stderr 的 `[qml]` 行**——`host/main.cpp` 把 `QQmlApplicationEngine::warnings` 接出来了。没有这段，`/SUBSYSTEM:WINDOWS` 进程里这类错误完全不可见。
@@ -157,13 +166,13 @@ python xmake/checks/boundaries.py
 | `modules/<m>/core/` | 领域 + 应用层，**不链 Qt** | `Sonora.<M>.Core` |
 | `modules/<m>/adapters/` | SQLite / 文件系统等实现，默认也不链 Qt | `Sonora.<M>.Adapters` |
 | `platform/storage/` | SQLite 封装 + Migrator + 工作单元 | `Sonora.Platform.Storage` |
-| `platform/{audio,filesystem,win}/` | 平台能力 | `Sonora.Platform.*` |
+| `platform/{audio,filesystem,net,win}/` | 平台能力；`net` 是全项目**唯一**出现 QtNetwork 的地方 | `Sonora.Platform.*` |
 | `presentation/` | ViewModel（C++）+ QML | `Sonora.Presentation` |
 | `host/main.cpp` | **组合根**：唯一一处把实现 new 出来并接线的地方 | `sonora` |
 | `tests/` | doctest；只链纯 C++ target | `sonora_tests` |
 | `third_party/sqlite3/` | amalgamation，编译开关见 `xmake/targets.lua` | `Sonora.ThirdParty.Sqlite` |
 
-业务模块：`catalog` / `playback` / `playlists` / `lyrics` / `preferences`。新增模块 = 三个 target（Contracts / Core / Adapters）+ 在 `xmake/targets.lua` 的 `BUSINESS` 表里加一个名字。
+业务模块：`catalog` / `playback` / `playlists` / `lyrics` / `preferences` / `online`（**无聚合**，只有端口 + 流程）。新增模块 = 三个 target（Contracts / Core / Adapters）+ 在 `xmake/targets.lua` 的 `BUSINESS` 表里加一个名字。
 
 ---
 
