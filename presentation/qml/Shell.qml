@@ -139,6 +139,26 @@ Item {
 
 
 
+    // ── 顶部条：搜索 + 账号 ─────────────────────────────────────────────
+    TopBar {
+        id: topBar
+        anchors.left: sidebar.right
+        anchors.leftMargin: 16
+        anchors.right: parent.right
+        anchors.rightMargin: 18
+        anchors.top: parent.top
+        anchors.topMargin: 18
+
+        page: shell.currentPage
+
+        // 头像 / 用户名：任何一页都能点开登录面板。
+        onLoginRequested: {
+            loginSheet.open()
+        }
+        // 在别的页打字搜曲库：把用户带到结果所在的那一页。
+        onLibraryRequested: shell.currentPage = 0
+    }
+
     // ── 内容区 ──────────────────────────────────────────────────────────
     // 页面切换走 PageTurner（转场），不是直接换 Loader：见 layout/PageTurner.qml
     // 顶部关于"为什么不用 ShaderEffectSource 快照"的说明。
@@ -148,8 +168,8 @@ Item {
         anchors.leftMargin: 16
         anchors.right: parent.right
         anchors.rightMargin: 18
-        anchors.top: parent.top
-        anchors.topMargin: 18
+        anchors.top: topBar.bottom
+        anchors.topMargin: 12
         anchors.bottom: playerBar.top
         anchors.bottomMargin: 14
 
@@ -165,6 +185,13 @@ Item {
     Component { id: settingsPage; SettingsPage { } }
     Component { id: playlistsPage; PlaylistsPage { } }
 
+
+    // ── 登录面板（全局一份） ─────────────────────────────────────────────
+    // 放在拟声字之前、页面之上：它盖住整窗，包括播放条。
+    LoginSheet {
+        id: loginSheet
+        anchors.fill: parent
+    }
 
     // ── 拟声字层 ────────────────────────────────────────────────────────
     // 盖在内容区之上、播放条之下：它是"画面上贴的字"，不属于任何一页。

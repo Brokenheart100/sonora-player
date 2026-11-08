@@ -668,6 +668,14 @@ PlaylistsPage / PlaylistsViewModel
 - **不可用占位**：`TrackRemoved` 的订阅方式已定（`markTrackUnavailable`），但曲库还没有"移除曲目"功能，因此目前**没有发布者**——接口、仓储与测试先就位。
 - **设置**：`PreferencesService` 在内存里持一份 `map`，`set` 先落库再改缓存；音量与播放模式由组合根接一个回调写回（`PlaybackService::onSettingsChanged`），播放模块不知道 Preferences 存在。曲库根目录仍留在 `settings.ini` 的 `library/root`，主题与语言仍由 `Appearance` 用 `QSettings` 管——三种存法各有理由，暂不合并。
 
+### 7.7 界面骨架：顶部 TopBar 与搜索路由
+
+`Shell.qml` 顶部是一条全局 `TopBar`（`presentation/qml/layout/TopBar.qml`），内容是**一个搜索框 + 账号区**：
+
+- 曲库页与在线页各自的搜索横带都删掉了。"搜"只有一个入口，**搜索目标由当前页决定**：在线页（`currentPage === 2`）→ 网易云（输入 280ms 防抖、回车立即发）；其它页 → 曲库 FTS5，并自动切回曲库页（`libraryRequested` → `currentPage = 0`）。
+- 账号区显示 `Online.accountText` 与头像（登录态给首字母色块，游客态给纸色剪影）。点击打开**全局一份**的 `LoginSheet`（`presentation/qml/comic/LoginSheet.qml`），不再需要先切到"在线"页。
+- 之所以把登录面板从 `OnlinePage.qml` 搬出来：登录与当前页无关，挂在页面里就会"只有点了在线才能登录"。
+
 ---
 
 ## 8. 目录结构

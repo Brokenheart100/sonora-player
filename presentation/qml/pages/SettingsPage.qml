@@ -285,6 +285,9 @@ Item {
     FolderDialog {
         id: folderDialog
         title: qsTr("选择音乐文件夹")
-        onAccepted: Library.chooseFolder(selectedFolder.toString())
+        // FolderDialog 给的是 url，交给 C++ 的必须是本地路径：
+        // toString() 会写成 file:///D:/Music，落进 settings.ini 后重启认不出，
+        // 用户会被弹回"先把歌放进来"的首次引导页。
+        onAccepted: Library.chooseFolder(selectedFolder.toLocalFile())
     }
 }

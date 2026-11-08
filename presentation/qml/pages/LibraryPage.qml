@@ -33,71 +33,6 @@ Item {
             anchors.fill: parent
             spacing: 0
 
-            // ── 搜索 ────────────────────────────────────────────────────
-            //
-            // 搜索走 FTS5（中文按字切、英文按词），命中判定在 SQL 侧，
-            // 这里只把每次输入丢给模型重新取第一页。故意不做防抖：
-            // 两千首的查询是毫秒级的，加了 timer 只会让"输入即筛"变成"输入完才筛"。
-            Item {
-                id: searchBar
-                width: parent.width
-                height: 40
-
-                Rectangle {
-                    anchors.fill: parent
-                    color: Theme.paperHigh
-                }
-
-                Rectangle {
-                    anchors.bottom: parent.bottom
-                    width: parent.width
-                    height: 1
-                    color: Theme.screentone
-                }
-
-                TextInput {
-                    id: searchInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 16
-                    // 右边留出分组按钮的位置：不留的话输入到第 20 个字
-                    // 就会跑到按钮底下。
-                    anchors.rightMargin: 130
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: Theme.ink
-                    selectionColor: Theme.accent
-                    selectedTextColor: Theme.paperHigh
-                    font.family: Theme.fontText
-                    font.pixelSize: Theme.textBody
-                    clip: true
-                    // 不给 focus:true。搜索框一旦抢到键盘焦点，窗口级的
-                    // Shortcut（空格 / ← / →）就再也收不到按键——用户会觉得
-                    // "快捷键坏了"。点一下输入框就能打字，这点成本比"播放键失灵"划算。
-                    onTextEdited: Library.setSearchText(text)
-
-                    Text {
-                        anchors.verticalCenter: parent.verticalCenter
-                        visible: searchInput.text.length === 0
-                        text: qsTr("搜标题、艺术家、专辑（中文一个字也能搜）")
-                        color: Theme.inkSoft
-                        opacity: 0.6
-                        font.family: Theme.fontText
-                        font.pixelSize: Theme.textBody
-                    }
-                }
-
-                // 分组开关。用普通按钮而不是复选框：
-                // 漫画语言里没有"勾选框"，只有"按下去变重的按钮"。
-                ComicButton {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 28
-                    text: page.grouped ? qsTr("分组：专辑") : qsTr("分组：关")
-                    strong: page.grouped
-                    onClicked: page.grouped = !page.grouped
-                }
-            }
-
             // ── 表头 ────────────────────────────────────────────────────
             Item {
                 width: parent.width
@@ -131,13 +66,25 @@ Item {
                     height: Theme.stroke
                     color: Theme.ink
                 }
+
+                // 分组开关原来在搜索条上；搜索移到全局顶部条后，它跟表头一起走。
+                // 用普通按钮而不是复选框：漫画语言里没有"勾选框"，只有按下去变重的按钮。
+                ComicButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 24
+                    text: page.grouped ? qsTr("分组：专辑") : qsTr("分组：关")
+                    strong: page.grouped
+                    onClicked: page.grouped = !page.grouped
+                }
             }
 
             // ── 列表 ────────────────────────────────────────────────────
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - 34 - searchBar.height
+                height: parent.height - 34
                 clip: true
                 model: Library
                 boundsBehavior: Flickable.StopAtBounds

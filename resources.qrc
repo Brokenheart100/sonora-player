@@ -38,6 +38,8 @@
         <!-- 布局部件 -->
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>
         <file alias="qml/layout/PageTurner.qml">presentation/qml/layout/PageTurner.qml</file>
+        <file alias="qml/layout/TopBar.qml">presentation/qml/layout/TopBar.qml</file>
+        <file alias="qml/comic/LoginSheet.qml">presentation/qml/comic/LoginSheet.qml</file>
 
         <!-- 应用图标：运行期窗口图标用；.exe 的图标在 assets/app.rc 里 -->
         <file alias="icons/sonora.png">assets/icons/sonora.png</file>

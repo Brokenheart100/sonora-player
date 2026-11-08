@@ -118,6 +118,7 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - delegate 内部的 `id` **在外面看不见**（`item.pop.restart()` → `TypeError: Cannot call method 'restart' of undefined`）。给 delegate 加一个 `function start()` 当门面。
 - **子目录组件用主题要自己 import 主题目录**：`comic/`、`layout/` 里写 `Theme.xxx` 必须有 `import "../theme"`。缺了不会在加载时报，而是**换页那一刻**丢 4 条 `ReferenceError: Theme is not defined`（`PageTurner.qml` 中过）。
 - **状态行是"每拍覆写"的公共资源**：`onTick()` 每 50ms 按 job 状态重写 `statusText_`。一次性反馈（已加入队列 / 已收藏）要 `statusHoldTicks_ = N` 按住若干拍，否则用户根本看不到那句话。
+- **`FolderDialog` / `FileDialog` 给的是 url，不是路径**：交给 C++ 前必须 `selectedFolder.toLocalFile()`。用 `toString()` 会写成 `file:///D:/Music`，落进 `settings.ini` 的 `library/root`，重启时按路径找不到目录，用户被弹回"先把歌放进来"的首次引导页（整窗盖一层 0.55 墨色遮罩，看起来像"界面变暗了"）。
 - `comic/`、`layout/` 这些子目录里的组件**也要** `import Sonora.Presentation 1.0`，否则 `ReferenceError: Player is not defined`——而且只在运行时炸。
 
 **在线音源**
