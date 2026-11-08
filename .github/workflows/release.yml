@@ -451,7 +451,12 @@ jobs:
           $required = @(
             'sonora.exe',
             'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Qml.dll', 'Qt6Quick.dll', 'Qt6Multimedia.dll',
+            # 在线音源：少了 Network 就是"窗口正常、在线页永远失败"。
+            'Qt6Network.dll',
             'platforms/qwindows.dll',
+            # TLS 后端。Qt 6.12 的 Windows 版默认走 Schannel：windeployqt 有时只拷
+            # 了 openssl 后端、有时一个都不拷，缺它时所有 https 请求在运行时失败。
+            'tls/qschannelbackend.dll',
             # QAudioSink 的设备实现来自多媒体插件，不在 Qt6Multimedia.dll 本体里：
             # 少它 → 能起窗口、点播放没声音。
             'multimedia/windowsmediaplugin.dll',
@@ -519,6 +524,13 @@ jobs:
             throw "解压后的 sonora.exe 在 15 秒内退出了（exit $($p.ExitCode)）：这是「缺 DLL / 缺插件」的典型症状"
           }
           Stop-Process -Id $p.Id -Force
+          # 在线链路必须真的起来：这条日志只有在 QtHttpTransport 构造成功后才会打。
+          # 缺 Qt6Network.dll 时进程根本走不到这里；缺 TLS 后端时进程能活但
+          # 在线页永远报错 —— 两种都要在发布前拦住（docs/ONLINE.md R5-5）。
+          $logText = (Get-Content $err -Raw -ErrorAction SilentlyContinue) + (Get-Content $out -Raw -ErrorAction SilentlyContinue)
+          if ($logText -notmatch '在线音源就绪') {
+            throw "冒烟日志里没有『在线音源就绪』：Qt6Network / TLS 后端没被正确部署（stderr 见上）"
+          }
           Get-Content $err -ErrorAction SilentlyContinue |
             Where-Object { $_ -match '\[qml\]|Could not|Failed' } |
             Select-Object -First 10 | ForEach-Object { "::warning::$_" }
