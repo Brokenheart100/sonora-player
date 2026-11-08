@@ -126,6 +126,8 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - 缓存/会话/直链全在 `online_*` 四张表里，**不进任何聚合事务**；`last_used_at = 0` 表示"迁移前的老行"，排序要用 `CASE WHEN last_used_at = 0 THEN fetched_at ELSE last_used_at END`。
 - **迁移里不要写"顺手回填"的 UPDATE**：200 行 × 78KB 的老库上，`UPDATE ... SET last_used_at = fetched_at` 会让 SQLite 报 `unable to open database file`，而迁移失败 = 应用打不开。加列就只加列。
 - 降级必须留痕：失败走 `Diagnostics::recordError()`（分类计数 + 最近 10 条），取消（`Internal` + `"已取消"`）不计数，否则打字时每敲一个字就多一条"错误"。
+- 判断 JSON 里"有没有这个键"**不要用 `member(...).is_object()`**：`member()` 对缺失键返回共享的空对象，空对象也是 object。要判存在性用返回指针的 `findMember()`——否则平铺的歌曲对象会被当成 `{"song":{…}}` 的外层，整页解析成 0 行。
+- 请求参数里带 `[`/`]`（数组字面量）**必须 URL 编码**：裸方括号会让 `/api/song/detail` 回 `{"code":400,"msg":"参数错误"}`，和"参数真的错"长得一模一样。
 
 **打包 / 发布**
 

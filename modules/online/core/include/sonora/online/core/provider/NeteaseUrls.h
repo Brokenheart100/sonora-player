@@ -70,7 +70,59 @@ namespace sonora::online::core::provider
     // 二维码里真正编码的文本：手机网易云扫到的就是这个链接。
     [[nodiscard]] std::string qrPayloadOf(const std::string &unikey);
 
+    // ------------------------------------------------------------------ N1
+    //
+    // 只读资源的七个构造器。N0（docs/ONLINE.md §19）实测过可用性：
+    //   * `playlist/track/all`、`playlist/track/ids` → 404，所以曲目一律
+    //     "playlist detail 的 trackIds[] → song/detail 分批"；
+    //   * `artist/songs` → 400，歌手曲目只能取 `/api/v1/artist/{id}` 的 hotSongs。
+    // 下面刻意**没有** makePlaylistTracksRequest / makeArtistSongsRequest /
+    // makeSimilarSongsRequest：那三个端点在 2026-11 已经是死的/不给参数。
+
+    // 歌单/榜单详情。同一个接口：榜单本身就是一张歌单。
+    [[nodiscard]] contracts::HttpRequest makePlaylistDetailRequest(const std::string &baseUrl,
+                                                                   const std::string &playlistId,
+                                                                   std::chrono::milliseconds timeout);
+
+    // 批量歌曲详情（旧版字段 artists/album/duration）。ids 是 JSON 数组形状，
+    // 一次最多 kMaxSongDetailsPerRequest 首。
+    [[nodiscard]] contracts::HttpRequest makeSongDetailsRequest(const std::string &baseUrl,
+                                                                const std::vector<std::string> &songIds,
+                                                                std::chrono::milliseconds timeout);
+
+    // 专辑详情：`/api/v1/album/{id}`，曲目在顶层 `songs[]`。
+    [[nodiscard]] contracts::HttpRequest makeAlbumRequest(const std::string &baseUrl,
+                                                          const std::string &albumId,
+                                                          std::chrono::milliseconds timeout);
+
+    // 歌手详情：`/api/v1/artist/{id}`，热门曲目在 `hotSongs[]`（最多 50 首）。
+    [[nodiscard]] contracts::HttpRequest makeArtistRequest(const std::string &baseUrl,
+                                                           const std::string &artistId,
+                                                           std::chrono::milliseconds timeout);
+
+    // 榜单列表：`/api/toplist`，一次给全（实测 65 张），没有分页参数。
+    [[nodiscard]] contracts::HttpRequest makeToplistRequest(const std::string &baseUrl,
+                                                            std::chrono::milliseconds timeout);
+
+    // 推荐歌单：`/api/personalized/playlist?limit=`（实测 1..6 张，limit 上限 100）。
+    [[nodiscard]] contracts::HttpRequest makePersonalizedPlaylistsRequest(const std::string &baseUrl,
+                                                                          int limit,
+                                                                          std::chrono::milliseconds timeout);
+
+    // 新歌速递：`/api/personalized/newsong?limit=`，结果里每项是 `result[].song`。
+    [[nodiscard]] contracts::HttpRequest makeNewSongsRequest(const std::string &baseUrl, int limit,
+                                                             std::chrono::milliseconds timeout);
+
+    // 歌词：`/api/song/lyric?id=&lv=-1&tv=-1`（N3 用，N1 先把构造器备好，
+    // 免得 N3 又要在服务层拼一次字符串）。
+    [[nodiscard]] contracts::HttpRequest makeLyricRequest(const std::string &baseUrl,
+                                                          const std::string &songId,
+                                                          std::chrono::milliseconds timeout);
+
     inline constexpr int kMaxSearchLimit = 100;
     inline constexpr int kMaxSongIds = 200;
+    // `/api/song/detail?ids=` 实测 500 首可行；取 500 与 todolist §N1-5 对齐。
+    inline constexpr int kMaxSongDetailsPerRequest = 500;
+    inline constexpr int kMaxCollectionLimit = 100;
 
 } // namespace sonora::online::core::provider

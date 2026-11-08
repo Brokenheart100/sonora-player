@@ -55,9 +55,31 @@ namespace sonora::online::adapters
         std::uint64_t startQrKey(QrKeyCallback onDone);
         std::uint64_t startQrPoll(std::string unikey, QrPollCallback onDone);
 
+        // ---------------------------------------------------------------- N1
+        //
+        // 只读资源。回调同样在 worker 线程执行，调用方只许把结果塞进队列
+        // （与 startSearch 的约定一字不差）。
+        using PageCallback = std::function<void(core::codec::DecodeResult)>;
+        using CollectionCallback = std::function<void(core::codec::CollectionListResult)>;
+        using PlaylistDetailCallback = std::function<void(core::codec::PlaylistDetailResult)>;
+
+        // 歌单/榜单详情（头部 + trackIds）。榜单与歌单是同一个接口。
+        std::uint64_t startPlaylistDetail(std::string playlistId, PlaylistDetailCallback onDone);
+        // 批量歌曲详情，替代已失效的 playlist/track/all。
+        std::uint64_t startSongDetails(std::vector<std::string> songIds, PageCallback onDone);
+        std::uint64_t startAlbum(std::string albumId, PageCallback onDone);
+        std::uint64_t startArtist(std::string artistId, PageCallback onDone);
+        std::uint64_t startNewSongs(int limit, PageCallback onDone);
+        std::uint64_t startToplist(CollectionCallback onDone);
+        std::uint64_t startPersonalizedPlaylists(int limit, CollectionCallback onDone);
+
         void cancel(std::uint64_t requestId);
 
     private:
+        // 七个"GET 一个 JSON"的公共骨架：捕获 baseUrl/cookie、投到 worker 线程、
+        // 处理 HTTP 失败、把 body 交给解码器。模板定义在 .cpp 里（只有那一处用）。
+        template <typename T, typename Decode>
+        std::uint64_t startGet(std::string path, Decode decode, std::function<void(T)> onDone);
         contracts::IHttpTransport &transport_;
         contracts::IExecutor &executor_;
         std::string baseUrl_;

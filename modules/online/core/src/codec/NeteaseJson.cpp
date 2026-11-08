@@ -1,5 +1,7 @@
 #include "sonora/online/core/codec/NeteaseJson.h"
 
+#include <iostream>
+
 #include "sonora/online/core/auth/CookieHeader.h"
 
 #include <nlohmann/json.hpp>
@@ -76,6 +78,22 @@ namespace sonora::online::core::codec
                 return kEmpty;
             }
             return *it;
+        }
+
+        // `member()` 对缺失键返回共享的空对象，所以 `member(x, "k").is_object()`
+        // 永远为真——拿它判断"有没有"会把缺键当成空对象。真要判断存在性用这个。
+        const json *findMember(const json &object, const char *key)
+        {
+            if (!object.is_object())
+            {
+                return nullptr;
+            }
+            const auto it = object.find(key);
+            if (it == object.end() || it->is_null() || !it->is_object())
+            {
+                return nullptr;
+            }
+            return &*it;
         }
 
         std::string artistNames(const json &song)
@@ -447,6 +465,352 @@ namespace sonora::online::core::codec
         }
         out.error = mapApiCode(out.code);
         return out;
+    }
+
+    // ------------------------------------------------------------------ N1
+
+    namespace
+    {
+        // 顶层业务码判定。只读 root 的 `code`，不递归——嵌套对象里也有 code
+        // （专辑的 `album.code` 就是 0），N0 的探针脚本正是在这里误判过一次。
+        // 返回 true 表示成功；失败时把 error 填好。
+        bool topCodeOk(const json &root, contracts::OnlineError &error)
+        {
+            const json &node = member(root, "code");
+            if (node.is_number() || node.is_string())
+            {
+                const auto code = static_cast<int>(asInt(node));
+                // 0 与 200 都算成功：v1 系列历史上两种都出现过（§19.3）。
+                if (code != 0 && code != 200)
+                {
+                    error = mapApiCode(code);
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // "一张卡片"：歌单/榜单/专辑/歌手共用同一套字段名，取不到就跳过。
+        bool toCollection(const json &item, contracts::SourceKind kind, contracts::CollectionDto &out)
+        {
+            if (!item.is_object())
+            {
+                return false;
+            }
+            out.id = asText(member(item, "id"));
+            if (out.id.empty())
+            {
+                return false;
+            }
+            out.name = asText(member(item, "name"));
+            // 榜单用 coverImgUrl，推荐歌单用 picUrl，专辑用 picUrl，歌手用 picUrl/img1v1Url。
+            out.coverUrl = asText(member(item, "coverImgUrl"));
+            if (out.coverUrl.empty())
+            {
+                out.coverUrl = asText(member(item, "picUrl"));
+            }
+            if (out.coverUrl.empty())
+            {
+                out.coverUrl = asText(member(item, "img1v1Url"));
+            }
+            out.count = static_cast<std::int32_t>(asInt(member(item, "trackCount")));
+            if (out.count == 0)
+            {
+                out.count = static_cast<std::int32_t>(asInt(member(item, "size")));
+            }
+            out.kind = kind;
+            return true;
+        }
+
+        // 列表里的曲目对象可能被包了一层：新歌是 `result[].song`，其余是直接对象。
+        const json &unwrapSong(const json &item)
+        {
+            static const json kEmpty = json::object();
+            if (!item.is_object())
+            {
+                return kEmpty;
+            }
+            // 榜单/推荐里的行是 `{"song":{…}}` 包了一层；歌曲详情里就是平的歌曲对象。
+            // 这里不能用 `member(item, "song").is_object()`——缺失时它返回共享空对象，
+            // 同样是 object，结果把所有字段都取成空字符串。
+            const json *inner = findMember(item, "song");
+            return inner != nullptr ? *inner : item;
+        }
+
+        void appendTracks(const json &array, DecodeResult &out)
+        {
+            if (!array.is_array())
+            {
+                return;
+            }
+            out.rows.reserve(out.rows.size() + array.size());
+            for (const auto &item : array)
+            {
+                const json &song = unwrapSong(item);
+                if (!song.is_object())
+                {
+                    continue;
+                }
+                auto track = toTrack(song);
+                if (track.songId.empty())
+                {
+                    // 没有 id 的行点不动，留着只会变成一条永远转圈的行。
+                    continue;
+                }
+                out.rows.push_back(std::move(track));
+            }
+        }
+
+        CollectionListResult decodeCollectionArray(const std::string &body, const char *arrayKey,
+                                                   contracts::SourceKind kind, bool hasMoreWhenFull)
+        {
+            CollectionListResult out;
+            const json root = json::parse(body, nullptr, false);
+            if (root.is_discarded() || !root.is_object())
+            {
+                out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "响应不是合法 JSON", false, 0};
+                return out;
+            }
+            if (!topCodeOk(root, out.error))
+            {
+                return out;
+            }
+            const json &array = member(root, arrayKey);
+            if (array.is_array())
+            {
+                out.items.reserve(array.size());
+                for (const auto &item : array)
+                {
+                    contracts::CollectionDto card;
+                    if (!toCollection(item, kind, card))
+                    {
+                        continue;
+                    }
+                    // 副标题：榜单给更新频率，歌单给播放数，其它给创建者/歌手名。
+                    card.subtitle = asText(member(item, "updateFrequency"));
+                    if (card.subtitle.empty())
+                    {
+                        card.subtitle = asText(member(item, "copywriter"));
+                    }
+                    if (card.subtitle.empty())
+                    {
+                        const json &creator = member(item, "creator");
+                        card.subtitle = asText(member(creator, "nickname"));
+                    }
+                    out.items.push_back(std::move(card));
+                }
+                // 卡片列表没有分页参数（toplist 一次全给），拿满即认为没有更多。
+                out.hasMore = hasMoreWhenFull && array.size() >= 20;
+            }
+            out.raw = body;
+            out.ok = true;
+            return out;
+        }
+    } // namespace
+
+    PlaylistDetailResult decodePlaylistDetail(const std::string &body, contracts::SourceKind kind)
+    {
+        PlaylistDetailResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "歌单详情不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+        const json *playlistPtr = findMember(root, "playlist");
+        if (playlistPtr == nullptr)
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "歌单详情里没有 playlist", false, 0};
+            return out;
+        }
+        const json &playlist = *playlistPtr;
+
+        auto &detail = out.detail;
+        detail.id = asText(member(playlist, "id"));
+        detail.name = asText(member(playlist, "name"));
+        detail.coverUrl = asText(member(playlist, "coverImgUrl"));
+        detail.description = asText(member(playlist, "description"));
+        detail.creator = asText(member(member(playlist, "creator"), "nickname"));
+        detail.trackCount = static_cast<std::int32_t>(asInt(member(playlist, "trackCount")));
+        detail.kind = kind;
+        detail.ok = true;
+
+        const json &ids = member(playlist, "trackIds");
+        if (ids.is_array())
+        {
+            out.trackIds.reserve(ids.size());
+            for (const auto &entry : ids)
+            {
+                // 形状是 `{"id":123,"v":0,"at":...,"alg":null}`，也可能退化成纯数字。
+                std::string id = asText(member(entry, "id"));
+                if (id.empty())
+                {
+                    id = asText(entry);
+                }
+                if (!id.empty())
+                {
+                    out.trackIds.push_back(std::move(id));
+                }
+            }
+        }
+        if (out.trackIds.empty())
+        {
+            // 老歌单可能只给 `tracks`（最多 10 首）。退而求其次，至少让首屏有东西。
+            const json &tracks = member(playlist, "tracks");
+            if (tracks.is_array())
+            {
+                for (const auto &song : tracks)
+                {
+                    const std::string id = asText(member(song, "id"));
+                    if (!id.empty())
+                    {
+                        out.trackIds.push_back(id);
+                    }
+                }
+            }
+        }
+
+        out.raw = body;
+        out.ok = true;
+        return out;
+    }
+
+    DecodeResult decodeSongDetails(const std::string &body)
+    {
+        DecodeResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "歌曲详情不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+        const json &songs = member(root, "songs");
+        appendTracks(songs, out);
+        out.raw = body;
+        out.ok = true;
+        return out;
+    }
+
+    DecodeResult decodeAlbum(const std::string &body)
+    {
+        DecodeResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "专辑详情不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+        const json &album = member(root, "album");
+        auto &detail = out.detail;
+        detail.id = asText(member(album, "id"));
+        detail.name = asText(member(album, "name"));
+        detail.coverUrl = asText(member(album, "picUrl"));
+        detail.description = asText(member(album, "briefDesc"));
+        // 专辑的歌手在 `album.artist.name`；`album.artists[]` 是同一份数据的数组形态。
+        detail.creator = asText(member(member(album, "artist"), "name"));
+        if (detail.creator.empty())
+        {
+            const json &artists = member(album, "artists");
+            if (artists.is_array() && !artists.empty())
+            {
+                detail.creator = asText(member(artists.front(), "name"));
+            }
+        }
+        detail.trackCount = static_cast<std::int32_t>(asInt(member(album, "size")));
+        detail.kind = contracts::SourceKind::Album;
+        detail.ok = !detail.id.empty();
+
+        appendTracks(member(root, "songs"), out);
+        if (out.rows.empty())
+        {
+            appendTracks(member(album, "songs"), out);
+        }
+        out.raw = body;
+        out.ok = true;
+        return out;
+    }
+
+    DecodeResult decodeArtist(const std::string &body)
+    {
+        DecodeResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "歌手详情不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+        const json &artist = member(root, "artist");
+        auto &detail = out.detail;
+        detail.id = asText(member(artist, "id"));
+        detail.name = asText(member(artist, "name"));
+        detail.coverUrl = asText(member(artist, "picUrl"));
+        if (detail.coverUrl.empty())
+        {
+            detail.coverUrl = asText(member(artist, "img1v1Url"));
+        }
+        detail.description = asText(member(artist, "briefDesc"));
+        // 歌手页标题下那行字用"专辑数 / 歌曲数"，比空着强。
+        const std::int32_t albums = static_cast<std::int32_t>(asInt(member(artist, "albumSize")));
+        const std::int32_t songs = static_cast<std::int32_t>(asInt(member(artist, "musicSize")));
+        if (albums > 0 || songs > 0)
+        {
+            detail.description += (detail.description.empty() ? "" : "\n");
+            detail.description += std::to_string(albums) + " 张专辑 · " + std::to_string(songs) + " 首";
+        }
+        detail.trackCount = songs;
+        detail.kind = contracts::SourceKind::Artist;
+        detail.ok = !detail.id.empty();
+
+        appendTracks(member(root, "hotSongs"), out);
+        out.raw = body;
+        out.ok = true;
+        return out;
+    }
+
+    DecodeResult decodeNewSongs(const std::string &body)
+    {
+        DecodeResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "新歌列表不是合法 JSON", false, 0};
+            return out;
+        }
+        if (!topCodeOk(root, out.error))
+        {
+            return out;
+        }
+        appendTracks(member(root, "result"), out);
+        out.raw = body;
+        out.ok = true;
+        return out;
+    }
+
+    CollectionListResult decodeToplist(const std::string &body)
+    {
+        // hasMore=false：`/api/toplist` 一次给全（实测 65 张），没有分页参数。
+        return decodeCollectionArray(body, "list", contracts::SourceKind::Chart, false);
+    }
+
+    CollectionListResult decodePersonalizedPlaylists(const std::string &body)
+    {
+        return decodeCollectionArray(body, "result", contracts::SourceKind::Playlist, false);
     }
 
 } // namespace sonora::online::core::codec

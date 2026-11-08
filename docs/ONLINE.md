@@ -997,3 +997,55 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 
 ```
 
 **cookie 只在命令行传参，不落仓库**——`docs/probe/` 只收日志，日志里禁止出现 cookie 值。
+
+---
+
+## 20. N1 实施记录：只读资源（2026-11-08）
+
+> 对应 `docs/todolist.md` §N1。目标是"歌单、专辑、歌手、榜单、推荐歌单、新歌"全部能列、能点、能播。
+
+### 20.1 接通的资源与端点
+
+| 资源 | 端点 | 分页方式 |
+| --- | --- | --- |
+| 榜单列表 | `/api/toplist`（65 张） | 一次取全 |
+| 推荐歌单 | `/api/personalized/playlist?limit=` | 一次取全 |
+| 歌单/榜单曲目 | `/api/v6/playlist/detail` → `trackIds[]` → `/api/song/detail?ids=[…]`（500/批） | 服务端切片 + 多批 |
+| 专辑 | `/api/v1/album/{id}` | 一次取全，内存切片 |
+| 歌手 | `/api/v1/artist/{id}`（`hotSongs`） | 一次取全，内存切片 |
+| 新歌速递 | `/api/personalized/newsong?limit=` | 一次取全，内存切片 |
+
+`SourceKind` 现在有 `Chart`/`Artist`/`NewSongs`；**没有** `SongDetail`——批量歌曲详情是内部手段，不对外成为一种资源。
+
+### 20.2 三个只有真跑才会暴露的问题
+
+1. **`member()` 对缺失键返回共享的空对象**（`modules/online/core/src/codec/NeteaseJson.cpp`）。`unwrapSong` 原先用 `member(item, "song").is_object()` 判断"是不是包了一层"，空对象也是 object，于是 `song/detail` 的**平铺** songs[] 被当成外层，解出全空 → `songId` 为空 → 整页 0 行。修法是新增返回指针的 `findMember()`，缺失/null/非 object 一律 `nullptr`。回归用例在 `tests/online_collections.cpp`「歌曲详情：平铺的 songs[] 必须解出整行」。
+2. **`/api/song/detail?ids=[…]` 的方括号必须 URL 编码**。裸 `[`/`]` 回 `{"code":400,"msg":"参数错误"}`（curl 直接敲也一样），写成 `%5B…%5D` 才回 200。`makeSongDetailsRequest` 与 `NeteaseProvider::startSongDetails` 两处都改。
+3. **翻页时 `jobs_.begin()` 会把上一页清空**。`startPage` 原先每次进都 begin，而 `JobRegistry::begin` 会整体重置该 token 的行——表现为"点了加载更多还是 100 首"。现在只在 `phase == Idle` 时 begin。
+
+顺带一个：`FetchCollections` 也必须在开头 `drainPages()`，否则卡片墙永远 0 张（以前只有 `GetOnlineJob` 会驱动排水）。
+
+### 20.3 真机实测
+
+| 检查 | 结果 |
+| --- | --- |
+| 推荐歌单卡片墙 | 30 张，卡片区彩色像素 14.6%（封面真渲染）；`[qml]` 告警 0 |
+| 榜单详情 | 首屏 100 行、`hasMore=true` |
+| 翻页 | 第二页到 200 行，`hasMore` 仍为 `true` |
+| 在线曲目播放 | `st=播放中 f=0 t=麻雀 pos=0:03`（走 `ResolveAndPlayOnline`，播放层未改） |
+| 门禁 | `sonora_tests` 164 用例 / 5163 断言；`boundaries.py` 218 文件；字体 1008 字 / 167 KB `--verify` 覆盖完整 |
+
+截图证据：`.demo/n1_browse.png`（卡片墙）、`.demo/n1_collection.png`（榜单详情）。
+
+### 20.4 没做的，以及理由
+
+**N1-6 的 DB 缓存（`online_collection_cache` / `online_playlist_tracks_cache`）本轮没做。** R5 刚把搜索缓存的 LRU 与"迁移只加列不回填"钉死，再加两张表和第三版迁移会让验收面翻倍；而只读资源单次拉取 < 1 s、失败可重试，缓存的主要价值是断网/限流时不至于空白。推迟到 N5 界面成型后评估——若做，迁移**只建表**、LRU 复用 `CASE WHEN last_used_at = 0 THEN fetched_at ELSE last_used_at END`。
+
+榜单页的 `details_[key].kind` 目前是 `Playlist`（`startPlaylistDetail` 固定按 `Playlist` 解码），页标题由 ViewModel 传入，界面无感——等 N2 做"我的歌单"时再把它改成按请求 kind 回填。
+
+### 20.5 给下一轮的教训
+
+- 判断 JSON 里"有没有这个键"，**不要用 `member().is_object()`**——它分不清"缺失"和"空对象"。要判断存在性就用返回指针的 `findMember()`。
+- 端点的参数里带 `[`/`]`（数组字面量）时必须编码，否则网易云回 `code 400 参数错误`；这类错误和"参数真的错了"长得一模一样，容易在解析层找半天。
+- 一个 token 被反复复用（翻页）时，任何 `begin()`/`reset()` 都要先想"上一页的数据还在不在"。
+- 列表接口的正确形状是"命令要一次 + 轮询读"：`LoadCollections` 负责触发，`FetchCollections` 负责排水与读值，二者都不该假装自己同步完成。

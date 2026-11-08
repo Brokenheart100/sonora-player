@@ -131,4 +131,91 @@ namespace sonora::online::core::provider
         return "https://music.163.com/login?codekey=" + unikey;
     }
 
+    // ------------------------------------------------------------------ N1
+
+    namespace
+    {
+        contracts::HttpRequest getRequest(const std::string &url, const std::string &cookie,
+                                          std::chrono::milliseconds timeout)
+        {
+            contracts::HttpRequest request;
+            request.method = contracts::HttpMethod::Get;
+            request.url = url;
+            request.headers = defaultHeaders(cookie);
+            request.transferTimeout = timeout;
+            return request;
+        }
+    } // namespace
+
+    contracts::HttpRequest makePlaylistDetailRequest(const std::string &baseUrl,
+                                                     const std::string &playlistId,
+                                                     std::chrono::milliseconds timeout)
+    {
+        // v6 而不是 v3：v3 会额外塞 urls/privileges，那两坨我们不用，白白多解析几 MB。
+        return getRequest(baseUrl + "/api/v6/playlist/detail?id=" + encodeUrlComponent(playlistId), {},
+                          timeout);
+    }
+
+    contracts::HttpRequest makeSongDetailsRequest(const std::string &baseUrl,
+                                                  const std::vector<std::string> &songIds,
+                                                  std::chrono::milliseconds timeout)
+    {
+        std::string ids = "[";
+        const std::size_t limit =
+            std::min<std::size_t>(songIds.size(), static_cast<std::size_t>(kMaxSongDetailsPerRequest));
+        for (std::size_t index = 0; index < limit; ++index)
+        {
+            if (index != 0)
+            {
+                ids.push_back(',');
+            }
+            ids += songIds[index];
+        }
+        ids.push_back(']');
+        // `[` `]` 是 gen-delims，原样塞进查询串会被服务端当成坏参数
+        // （实测 `/api/song/detail?ids=[1,2]` 回 code 400，编码成 %5B…%5D 才回 200）。
+        return getRequest(baseUrl + "/api/song/detail?ids=" + encodeUrlComponent(ids), {}, timeout);
+    }
+
+    contracts::HttpRequest makeAlbumRequest(const std::string &baseUrl, const std::string &albumId,
+                                            std::chrono::milliseconds timeout)
+    {
+        return getRequest(baseUrl + "/api/v1/album/" + encodeUrlComponent(albumId), {}, timeout);
+    }
+
+    contracts::HttpRequest makeArtistRequest(const std::string &baseUrl, const std::string &artistId,
+                                             std::chrono::milliseconds timeout)
+    {
+        return getRequest(baseUrl + "/api/v1/artist/" + encodeUrlComponent(artistId), {}, timeout);
+    }
+
+    contracts::HttpRequest makeToplistRequest(const std::string &baseUrl, std::chrono::milliseconds timeout)
+    {
+        return getRequest(baseUrl + "/api/toplist", {}, timeout);
+    }
+
+    contracts::HttpRequest makePersonalizedPlaylistsRequest(const std::string &baseUrl, int limit,
+                                                            std::chrono::milliseconds timeout)
+    {
+        const int clamped = std::clamp(limit, 1, kMaxCollectionLimit);
+        return getRequest(baseUrl + "/api/personalized/playlist?limit=" + std::to_string(clamped), {},
+                          timeout);
+    }
+
+    contracts::HttpRequest makeNewSongsRequest(const std::string &baseUrl, int limit,
+                                               std::chrono::milliseconds timeout)
+    {
+        const int clamped = std::clamp(limit, 1, kMaxCollectionLimit);
+        return getRequest(baseUrl + "/api/personalized/newsong?limit=" + std::to_string(clamped), {},
+                          timeout);
+    }
+
+    contracts::HttpRequest makeLyricRequest(const std::string &baseUrl, const std::string &songId,
+                                            std::chrono::milliseconds timeout)
+    {
+        // lv=-1 / tv=-1 是"原歌词 + 翻译"的全量形态（R0 实测 lrc.lyric 1471 字符）。
+        return getRequest(baseUrl + "/api/song/lyric?id=" + encodeUrlComponent(songId) + "&lv=-1&tv=-1",
+                          {}, timeout);
+    }
+
 } // namespace sonora::online::core::provider

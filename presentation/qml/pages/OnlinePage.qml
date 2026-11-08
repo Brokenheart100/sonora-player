@@ -16,6 +16,10 @@ import Sonora.Presentation 1.0
 Item {
     id: page
 
+    // "" = 搜索页；"playlist" = 推荐歌单；"chart" = 榜单。
+    // 浏览层是整页覆盖而不是塞进搜索页的布局里：搜索页的行列早就排满了。
+    property string browseMode: ""
+
 
     // 与 LibraryPage 同一套列宽分配方式：表头与数据行共用一个数组，
     // 各写一份就一定会漂。
@@ -80,6 +84,34 @@ Item {
                     color: Theme.inkSoft
                     font.family: Theme.fontText
                     font.pixelSize: Theme.textBody
+                }
+
+                // 浏览入口：推荐歌单 / 榜单各一张卡片墙。
+                Row {
+                    anchors.right: diagChip.left
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    ComicButton {
+                        text: qsTr("推荐")
+                        tone: "paper"
+                        onClicked: {
+                            page.browseMode = "playlist"
+                            Online.closeCollection()
+                            Online.loadCollections("playlist")
+                        }
+                    }
+
+                    ComicButton {
+                        text: qsTr("榜单")
+                        tone: "paper"
+                        onClicked: {
+                            page.browseMode = "chart"
+                            Online.closeCollection()
+                            Online.loadCollections("chart")
+                        }
+                    }
                 }
 
                 // 诊断入口：默认收起，点开才取快照（查两次 COUNT，不能进轮询）。
@@ -587,5 +619,111 @@ Item {
                 Online.cancelQrLogin()
             }
         }
+    }
+
+    // ── 浏览层：推荐歌单 / 榜单 ─────────────────────────────────────
+    Item {
+        id: browseLayer
+        anchors.fill: parent
+        visible: page.browseMode.length > 0 && !Online.collectionActive
+
+        Rectangle {
+            anchors.fill: parent
+            color: Theme.paperHigh
+        }
+
+        Item {
+            id: browseBar
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 50
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: 1
+                color: Theme.screentone
+            }
+
+            Row {
+                anchors.left: parent.left
+                anchors.leftMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 10
+
+                ComicButton {
+                    text: qsTr("推荐")
+                    tone: page.browseMode === "playlist" ? "accent" : "paper"
+                    onClicked: {
+                        page.browseMode = "playlist"
+                        Online.loadCollections("playlist")
+                    }
+                }
+
+                ComicButton {
+                    text: qsTr("榜单")
+                    tone: page.browseMode === "chart" ? "accent" : "paper"
+                    onClicked: {
+                        page.browseMode = "chart"
+                        Online.loadCollections("chart")
+                    }
+                }
+
+                ComicButton {
+                    text: qsTr("新歌速递")
+                    tone: "paper"
+                    onClicked: Online.openCollection("newsongs", "latest", qsTr("新歌速递"))
+                }
+            }
+
+            ComicButton {
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("返回搜索")
+                tone: "paper"
+                onClicked: {
+                    page.browseMode = ""
+                    Online.closeCollection()
+                }
+            }
+        }
+
+        GridView {
+            id: cardGrid
+            anchors.top: browseBar.bottom
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 20
+            anchors.topMargin: 20
+            clip: true
+            cellWidth: 188
+            cellHeight: 248
+            model: Online.collections
+
+            delegate: CollectionCard {
+                onActivated: Online.openCollection(page.browseMode, collectionId, name)
+            }
+        }
+
+        Text {
+            anchors.centerIn: cardGrid
+            width: Math.min(parent.width * 0.7, 420)
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.WordWrap
+            visible: Online.collections.count === 0
+            text: Online.collections.status.length > 0 ? Online.collections.status : qsTr("正在拉取…")
+            color: Theme.inkSoft
+            font.family: Theme.fontText
+            font.pixelSize: Theme.textBody
+        }
+    }
+
+    // ── 卡片详情：与搜索页共用 Online.results ──────────────────────
+    CollectionPage {
+        anchors.fill: parent
+        visible: Online.collectionActive
     }
 }

@@ -49,6 +49,34 @@ namespace sonora::presentation
             return QStringLiteral("%1 首").arg(state.loaded);
         }
 
+        // QML 里传的是字符串（锚点跟着标签页走），到这里换成枚举；
+        // 认不出来就退回搜索——总比静默什么都不做要好查。
+        online::contracts::SourceKind kindFromName(const QString &name)
+        {
+            using online::contracts::SourceKind;
+            if (name == QLatin1String("chart"))
+            {
+                return SourceKind::Chart;
+            }
+            if (name == QLatin1String("album"))
+            {
+                return SourceKind::Album;
+            }
+            if (name == QLatin1String("artist"))
+            {
+                return SourceKind::Artist;
+            }
+            if (name == QLatin1String("newsongs"))
+            {
+                return SourceKind::NewSongs;
+            }
+            if (name == QLatin1String("playlist"))
+            {
+                return SourceKind::Playlist;
+            }
+            return SourceKind::Search;
+        }
+
         bool isBusy(JobPhase phase)
         {
             return phase == JobPhase::Loading || phase == JobPhase::LoadingMore;
@@ -128,6 +156,55 @@ namespace sonora::presentation
         endResetModel();
     }
 
+    // ---- OnlineCollectionModel ----
+
+    OnlineCollectionModel::OnlineCollectionModel(QObject *parent) : RowsModel{parent} {}
+
+    QHash<int, QByteArray> OnlineCollectionModel::roleNames() const
+    {
+        return {
+            {IdRole, "collectionId"}, {NameRole, "name"}, {CoverRole, "cover"},
+            {SubtitleRole, "subtitle"}, {CountRole, "trackCount"},
+        };
+    }
+
+    QVariant OnlineCollectionModel::data(const QModelIndex &index, int role) const
+    {
+        if (!index.isValid())
+        {
+            return {};
+        }
+        const auto row = static_cast<std::size_t>(index.row());
+        if (row >= items_.size())
+        {
+            return {};
+        }
+        const auto &item = items_[row];
+        switch (role)
+        {
+        case IdRole:
+            return fromUtf8(item.id);
+        case NameRole:
+            return fromUtf8(item.name);
+        case CoverRole:
+            return fromUtf8(item.coverUrl);
+        case SubtitleRole:
+            return fromUtf8(item.subtitle);
+        case CountRole:
+            return item.count;
+        default:
+            return {};
+        }
+    }
+
+    void OnlineCollectionModel::setItems(const std::vector<online::contracts::CollectionDto> &items)
+    {
+        beginResetModel();
+        items_ = items;
+        assignCount(static_cast<int>(items_.size()));
+        endResetModel();
+    }
+
     // ---- OnlineViewModel ----
 
     OnlineViewModel::OnlineViewModel(kernel::ICommandBus &commands, kernel::IQueryBus &queries,
@@ -201,6 +278,11 @@ namespace sonora::presentation
         ++token_;
         seenRevision_ = 0;
         keywords_ = trimmed;
+        pageKind_ = online::contracts::SourceKind::Search;
+        pageCollectionId_.clear();
+        collectionTitle_.clear();
+        collectionSubtitle_.clear();
+        emit collectionChanged();
         model_.clearRows();
         busy_ = true;
         hasMore_ = false;
@@ -238,15 +320,18 @@ namespace sonora::presentation
 
         const auto token = token_;
         const auto text = keywords_.toStdString();
+        const auto kind = pageKind_;
+        const auto collectionId = pageCollectionId_;
         dispatchQuietly(
-            [this, token, text, offset]
+            [this, token, text, kind, collectionId, offset]
             {
                 online::contracts::RequestOnlinePage command;
                 command.token = token;
-                command.kind = online::contracts::SourceKind::Search;
+                command.kind = kind;
                 command.keywords = text;
+                command.collectionId = collectionId;
                 command.offset = offset;
-                command.limit = 30;
+                command.limit = kind == online::contracts::SourceKind::Search ? 30 : 100;
                 return commands_.dispatch(command);
             });
     }
@@ -290,14 +375,15 @@ namespace sonora::presentation
         }
 
         const auto token = token_;
+        const auto origin = pageKind_;
         dispatchQuietly(
-            [this, token, songIds = std::move(songIds), index]
+            [this, token, origin, songIds = std::move(songIds), index]
             {
                 online::contracts::ResolveAndPlayOnline command;
                 command.token = token;
                 command.songIds = songIds;
                 command.startIndex = index;
-                command.origin = online::contracts::SourceKind::Search;
+                command.origin = origin;
                 return commands_.dispatch(command);
             });
     }
@@ -368,6 +454,49 @@ namespace sonora::presentation
                     qrActive_ = false;
                     emit qrChanged();
                 }
+            }
+        }
+
+        // 卡片列表（推荐歌单 / 榜单）：界面切到哪个标签页就只轮询哪一类。
+        if (collectionsWanted_ >= 0)
+        {
+            const auto wanted = static_cast<online::contracts::SourceKind>(collectionsWanted_);
+            const auto page =
+                queries_.ask<online::contracts::CollectionPageDto>(online::contracts::FetchCollections{wanted});
+            if (page)
+            {
+                const auto revision = page.value().revision;
+                if (revision != seenCollectionRevisions_.value(collectionsWanted_, 0))
+                {
+                    seenCollectionRevisions_[collectionsWanted_] = revision;
+                    if (page.value().loaded)
+                    {
+                        collections_.setItems(page.value().items);
+                        collections_.setStatus(QString{});
+                    }
+                    else if (!page.value().error.message.empty())
+                    {
+                        collections_.setStatus(fromUtf8(page.value().error.message));
+                    }
+                }
+            }
+        }
+
+        // 详情页的副标题（"播放量 · 创建者"）只用一条查询补，页面自己不去猜。
+        if (pageKind_ != online::contracts::SourceKind::Search && collectionSubtitle_.isEmpty() && token_ != 0)
+        {
+            const auto detail = queries_.ask<online::contracts::CollectionDetailDto>(
+                online::contracts::FetchCollectionDetail{pageKind_, pageCollectionId_});
+            if (detail && detail.value().ok)
+            {
+                collectionSubtitle_ = detail.value().trackCount > 0
+                                          ? QStringLiteral("%1 首").arg(detail.value().trackCount)
+                                          : QString{};
+                if (!detail.value().creator.empty())
+                {
+                    collectionSubtitle_ += QStringLiteral(" · ") + fromUtf8(detail.value().creator);
+                }
+                emit collectionChanged();
             }
         }
 
@@ -466,7 +595,7 @@ namespace sonora::presentation
                 command.token = token_;
                 command.songIds = {songId};
                 command.startIndex = 0;
-                command.origin = online::contracts::SourceKind::Search;
+                command.origin = pageKind_;
                 return commands_.dispatch(command);
             });
     }
@@ -591,6 +720,77 @@ namespace sonora::presentation
         }
         model_.setRows(page.value().rows);
         hasMore_ = page.value().hasMore;
+    }
+
+    void OnlineViewModel::loadCollections(const QString &kind)
+    {
+        const auto source = kindFromName(kind);
+        if (source != online::contracts::SourceKind::Playlist && source != online::contracts::SourceKind::Chart)
+        {
+            return;
+        }
+        collectionsWanted_ = static_cast<int>(source);
+        online::contracts::LoadCollections command;
+        command.kind = source;
+        command.limit = source == online::contracts::SourceKind::Chart ? 65 : 30;
+        dispatchQuietly([this, command] { return commands_.dispatch(command); });
+    }
+
+    void OnlineViewModel::openCollection(const QString &kind, const QString &id, const QString &title)
+    {
+        const auto source = kindFromName(kind);
+        if (source == online::contracts::SourceKind::Search)
+        {
+            return;
+        }
+
+        ++token_;
+        seenRevision_ = 0;
+        pageKind_ = source;
+        pageCollectionId_ = id.toStdString();
+        collectionTitle_ = title;
+        collectionSubtitle_.clear();
+        keywords_.clear();
+        model_.clearRows();
+        busy_ = true;
+        hasMore_ = false;
+        retryable_ = false;
+        errorText_.clear();
+        statusText_ = QStringLiteral("正在打开：%1").arg(title);
+        emit statusChanged();
+        emit collectionChanged();
+
+        const auto token = token_;
+        const auto collectionId = pageCollectionId_;
+        dispatchQuietly(
+            [this, token, source, collectionId]
+            {
+                online::contracts::RequestOnlinePage command;
+                command.token = token;
+                command.kind = source;
+                command.collectionId = collectionId;
+                command.offset = 0;
+                command.limit = 100;
+                return commands_.dispatch(command);
+            });
+    }
+
+    void OnlineViewModel::closeCollection()
+    {
+        pageKind_ = online::contracts::SourceKind::Search;
+        pageCollectionId_.clear();
+        collectionTitle_.clear();
+        collectionSubtitle_.clear();
+        model_.clearRows();
+        token_ = 0;
+        seenRevision_ = 0;
+        busy_ = false;
+        hasMore_ = false;
+        retryable_ = false;
+        errorText_.clear();
+        statusText_ = QStringLiteral("输入关键词，回车搜索");
+        emit statusChanged();
+        emit collectionChanged();
     }
 
     void OnlineViewModel::dispatchQuietly(

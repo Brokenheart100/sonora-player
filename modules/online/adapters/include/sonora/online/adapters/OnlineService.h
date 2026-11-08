@@ -48,6 +48,10 @@ namespace sonora::online::adapters
 
         // ---- 命令：全部同步、< 5ms，只记账 ----
         kernel::Result<void> handle(const contracts::RequestOnlinePage &command);
+        // 拉一屏"卡片"：推荐歌单 / 榜单 / 新歌速递。结果落进内存里的
+        // `collections_`，界面随后用 FetchCollections 取——中间不做分页，
+        // 这三类一屏就是全部（推荐 30 张、榜单 65 张、新歌 30 首）。
+        kernel::Result<void> handle(const contracts::LoadCollections &command);
         kernel::Result<void> handle(const contracts::CancelOnlineJob &command);
         kernel::Result<void> handle(const contracts::RetryOnlineJob &command);
         kernel::Result<void> handle(const contracts::ResolveAndPlayOnline &command);
@@ -68,6 +72,12 @@ namespace sonora::online::adapters
         [[nodiscard]] kernel::Result<contracts::QrLoginDto> handle(const contracts::GetQrLoginState &query);
         [[nodiscard]] kernel::Result<std::vector<contracts::PlaylistDto>> handle(
             const contracts::GetMyPlaylists &query) const;
+        // 卡片列表与详情都是纯内存读：`LoadCollections` / `RequestOnlinePage` 已经
+        // 把结果放在服务里了，这里只是换个形状交出去。
+        [[nodiscard]] kernel::Result<contracts::CollectionPageDto> handle(
+            const contracts::FetchCollections &query);
+        [[nodiscard]] kernel::Result<contracts::CollectionDetailDto> handle(
+            const contracts::FetchCollectionDetail &query) const;
         // 一次性诊断快照：只在用户点开面板时取（内部要查两次 COUNT，不进轮询）。
         [[nodiscard]] kernel::Result<contracts::OnlineDiagnosticsDto> handle(
             const contracts::GetOnlineDiagnostics &query);
@@ -97,6 +107,61 @@ namespace sonora::online::adapters
         // 把一份解码结果落进状态表（顺带写缓存）。只在 GUI 线程调用。
         void apply(std::uint64_t token, core::codec::DecodeResult result, const std::string &keywords,
                    std::int32_t offset);
+
+        // ---- N1：只读资源 ----
+        // 一条回包通道装三种结果，按到达顺序处理（`drainPages()` 在 50ms 轮询里跑）。
+        struct PendingPage
+        {
+            std::uint64_t token{0};
+            contracts::SourceKind kind{contracts::SourceKind::Search};
+            std::string key;
+            std::int32_t offset{0};
+            std::int32_t limit{0};
+            core::codec::DecodeResult result;
+        };
+        struct PendingCollection
+        {
+            contracts::SourceKind kind{contracts::SourceKind::Playlist};
+            core::codec::CollectionListResult result;
+        };
+        struct PendingPlaylistDetail
+        {
+            std::uint64_t token{0};
+            std::string collectionId;
+            contracts::SourceKind kind{contracts::SourceKind::Playlist};
+            core::codec::PlaylistDetailResult result;
+        };
+
+        // 按 kind 分发一页请求：搜索原路、歌单/榜单两段、专辑/歌手/新歌一次取全后在内存切片。
+        kernel::Result<void> startPage(const contracts::RequestOnlinePage &command);
+        // 歌单/榜单的第二段：拿到 trackIds 后按 500 一批取歌曲详情。
+        void startPlaylistBatch(std::uint64_t token, contracts::SourceKind kind, const std::string &collectionId,
+                                const std::vector<std::string> &trackIds, std::int32_t offset, std::int32_t limit);
+        void drainPages();
+        void applyPlaylistDetail(const PendingPlaylistDetail &item);
+        void applyPage(PendingPage &item);
+        void applyCollectionList(const PendingCollection &item);
+        // 退避 + 令牌两道闸门；挡住时自己 jobs_.fail 并返回 false。
+        bool gate(std::uint64_t token, contracts::SourceKind kind, std::int64_t now);
+        [[nodiscard]] static std::string pageKey(contracts::SourceKind kind, const std::string &collectionId);
+        [[nodiscard]] static std::string whereOf(contracts::SourceKind kind);
+
+        // 歌单/榜单的中间状态：详情头部 + 全量 trackIds，跨页复用。
+        struct PlaylistPlan
+        {
+            contracts::CollectionDetailDto detail;
+            std::vector<std::string> trackIds;
+        };
+        std::unordered_map<std::string, PlaylistPlan> playlists_;
+        // 专辑/歌手/新歌一次取全（都 ≤ 100 行），分页只是在内存里切片。
+        std::unordered_map<std::string, std::vector<contracts::OnlineTrackDto>> fullPages_;
+        std::unordered_map<std::string, contracts::CollectionDetailDto> details_;
+        std::unordered_map<int, contracts::CollectionPageDto> collections_; // key: SourceKind 的整数
+
+        std::mutex pageMutex_;
+        std::vector<PendingPage> pagePending_;
+        std::vector<PendingCollection> collectionPending_;
+        std::vector<PendingPlaylistDetail> playlistDetailPending_;
 
         void drain();
         // 失败留痕的唯一入口：计数器 + 环形缓冲 + 退避闸门，三件事一起做，

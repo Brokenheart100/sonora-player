@@ -62,6 +62,34 @@ namespace sonora::presentation
         std::vector<online::contracts::OnlineTrackDto> rows_;
     };
 
+    // 在线"卡片"（推荐歌单 / 榜单）。role 名与 `comic/CollectionCard.qml` 的
+    // required 属性逐字相同——对不上不报错，只会静默绑定成空串。
+    class OnlineCollectionModel final : public RowsModel
+    {
+        Q_OBJECT
+
+    public:
+        enum Role
+        {
+            IdRole = Qt::UserRole + 1,
+            NameRole,
+            CoverRole,
+            SubtitleRole,
+            CountRole,
+        };
+
+        explicit OnlineCollectionModel(QObject *parent = nullptr);
+
+        [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
+        [[nodiscard]] QVariant data(const QModelIndex &index, int role) const override;
+
+        void setItems(const std::vector<online::contracts::CollectionDto> &items);
+        [[nodiscard]] const std::vector<online::contracts::CollectionDto> &items() const { return items_; }
+
+    private:
+        std::vector<online::contracts::CollectionDto> items_;
+    };
+
     class OnlineViewModel final : public QObject
     {
         Q_OBJECT
@@ -81,6 +109,12 @@ namespace sonora::presentation
         Q_PROPERTY(int qrSize READ qrSize NOTIFY qrChanged)
         // 诊断面板：一次性快照，不进 50ms 轮询（取一次要查两次 COUNT）。
         Q_PROPERTY(QVariantMap diagnostics READ diagnostics NOTIFY diagnosticsChanged)
+        // 推荐歌单 / 榜单两种卡片列表。卡片本身很少（≤ 65），一张模型够用；
+        // 界面按当前标签页决定给 model 换哪一页数据。
+        Q_PROPERTY(OnlineCollectionModel *collections READ collections CONSTANT)
+        Q_PROPERTY(QString collectionTitle READ collectionTitle NOTIFY collectionChanged)
+        Q_PROPERTY(QString collectionSubtitle READ collectionSubtitle NOTIFY collectionChanged)
+        Q_PROPERTY(bool collectionActive READ collectionActive NOTIFY collectionChanged)
 
     public:
         OnlineViewModel(kernel::ICommandBus &commands, kernel::IQueryBus &queries,
@@ -100,6 +134,13 @@ namespace sonora::presentation
         [[nodiscard]] QString qrMessage() const { return qrMessage_; }
         [[nodiscard]] int qrSize() const { return qrSize_; }
         [[nodiscard]] QVariantMap diagnostics() const { return diagnostics_; }
+        [[nodiscard]] OnlineCollectionModel *collections() { return &collections_; }
+        [[nodiscard]] QString collectionTitle() const { return collectionTitle_; }
+        [[nodiscard]] QString collectionSubtitle() const { return collectionSubtitle_; }
+        [[nodiscard]] bool collectionActive() const
+        {
+            return pageKind_ != online::contracts::SourceKind::Search;
+        }
         Q_INVOKABLE [[nodiscard]] bool qrCell(int row, int col) const;
 
         // 回车触发：立刻搜（词没变且有结果时不重发）。
@@ -121,11 +162,17 @@ namespace sonora::presentation
         Q_INVOKABLE void cancelQrLogin();
         // 打开诊断面板时调一次；面板关着就不要调（它要查两次 COUNT）。
         Q_INVOKABLE void refreshDiagnostics();
+        // 拉一屏卡片："playlist"（推荐歌单）或 "chart"（榜单）。
+        Q_INVOKABLE void loadCollections(const QString &kind);
+        // 进一张卡片：把结果列表切到那一页（歌单/榜单/专辑/歌手/新歌共用同一条路径）。
+        Q_INVOKABLE void openCollection(const QString &kind, const QString &id, const QString &title);
+        Q_INVOKABLE void closeCollection();
 
     signals:
         void statusChanged();
         void qrChanged();
         void diagnosticsChanged();
+        void collectionChanged();
 
     private:
         void commitSearch(const QString &keywords);
@@ -172,7 +219,19 @@ namespace sonora::presentation
         std::uint64_t qrSession_ = 0;
         QVariantMap diagnostics_;
 
+        // 当前结果列表属于哪一类资源：搜索之外，`token_` 那条轮询同样管它，
+        // 所以翻页/重试/播放都不用分两套代码。
+        online::contracts::SourceKind pageKind_{online::contracts::SourceKind::Search};
+        std::string pageCollectionId_;
+        QString collectionTitle_;
+        QString collectionSubtitle_;
+        // 卡片列表：哪些 kind 已经请求过、各自看到第几版。
+        QHash<int, std::uint64_t> seenCollectionRevisions_;
+        // 当前要看哪一类卡片（-1 = 不看）；界面切标签页时改它。
+        int collectionsWanted_ = -1;
+
         OnlineListModel model_;
+        OnlineCollectionModel collections_;
     };
 
 } // namespace sonora::presentation

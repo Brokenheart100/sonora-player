@@ -98,7 +98,7 @@ python xmake/checks/boundaries.py
 
 > 目标：歌单、专辑、歌手、榜单、推荐歌单、新歌——全部能列、能点、能播（相似歌曲 N0 实测 400，本期不做）。
 
-- [ ] **N1-1 契约：DTO 与枚举**
+- [x] **N1-1 契约：DTO 与枚举**
   - 文件：`modules/online/contracts/include/sonora/online/contracts/Types.h`
   - 改动：
     - `SourceKind` 追加 `Chart`、`Artist`、`NewSongs`、`SongDetail`（若探通后需要）；`toName` 同步（`Types.cpp`）。
@@ -107,24 +107,24 @@ python xmake/checks/boundaries.py
     - 新增 `struct PlaylistDetailDto { std::string playlistId; std::string name; std::string creator; std::string description; std::string coverUrl; std::int32_t trackCount{0}; }`。
   - 验收：`Types.h` 编译过；新增枚举在 `toName` 有分支（`-Wswitch` 不开，但要有兜底 `return "unknown"`）。
 
-- [ ] **N1-2 契约：查询与命令**
+- [x] **N1-2 契约：查询与命令**
   - 文件：`Queries.h`、`Commands.h`
   - 改动：
     - `Queries.h`：`FetchCollections { SourceKind kind; std::int32_t offset{0}; std::int32_t limit{30}; std::string collectionId; }` → `CollectionPageDto`；`FetchPlaylistDetail { std::string playlistId; }` → `PlaylistDetailDto`。
     - `Commands.h`：`RequestOnlinePage` 增加 `std::string collectionId;`（歌单/专辑/歌手/榜单共用一个字段），**不要**为每种资源新增一个命令。
   - 验收：不改任何实现也能编译（只加字段/类型）。
 
-- [ ] **N1-3 端点构造：每接口一个 maker**
+- [x] **N1-3 端点构造：每接口一个 maker**
   - 文件：`modules/online/core/include/sonora/online/core/provider/NeteaseUrls.h` + `.cpp`
   - 改动：`makePlaylistDetailRequest`、`makeSongDetailsRequest`（批量 id，替代失效的 track/all）、`makeAlbumRequest`、`makeArtistRequest`、`makeToplistRequest`、`makePersonalizedPlaylistsRequest`、`makeNewSongsRequest`；全部走同一个 `defaultHeaders(cookie)`；常量集中在文件顶部（`kMaxSongDetailsPerRequest = 500`）。**不要**再写 `makePlaylistTracksRequest`/`makeArtistSongsRequest`/`makeSimilarSongsRequest`——N0 实测它们分别 404/400/400。
   - 验收：`tests/online_codec.cpp` 加 URL 断言（含中文关键词与分页参数），不留任何 URL 拼接散落在服务层。
 
-- [ ] **N1-4 编解码：解析器**
+- [x] **N1-4 编解码：解析器**
   - 文件：`modules/online/core/src/codec/NeteaseJson.cpp` + `codec/NeteaseJson.h`
   - 改动：`parsePlaylistDetail`（只取头 + `trackIds`，**不信 `tracks`**）、`parseSongDetails`（旧版 `artists`/`album`/`duration`）、`parseAlbum`、`parseArtist`（`artist` + `hotSongs`）、`parseToplist`、`parsePersonalizedPlaylists`、`parseNewSongs`（新版 `ar`/`al`/`dt`）。统一规则：**顶层** `code != 200` → `OnlineError`（嵌套也有 `code`，别抓第一个）；字段缺失 → 该行跳过并计数，**不抛异常**；多歌手连成 `" / "`；时长统一 ms（旧版 `duration`、新版 `dt`）。
   - 验收：`tests/online_codec.cpp` 每类响应至少 1 个"正常 + 1 个残缺"夹具（放 `tests/fixtures/ncm/`），断言行数与首行字段。
 
-- [ ] **N1-5 服务：按 kind 分发**
+- [x] **N1-5 服务：按 kind 分发**
   - 文件：`modules/online/adapters/src/OnlineService.cpp`（删掉 `:57` 的 `kind != Search` 拒绝）、`NeteaseProvider.h/.cpp`（新增 `fetchPlaylistDetail` 等入口，回调把结果塞回服务的 pending 队列，模式与 `startSearch` 一致）
   - 要点：
     - 每类资源一个**独立的 token 通道**：翻页用 `offset`，不要复用搜索的游标，否则"先搜歌再点歌单"会把状态搅在一起。
@@ -132,7 +132,7 @@ python xmake/checks/boundaries.py
     - 所有失败继续走 `noteFailure(error, "歌单"/"专辑"/"歌手"/"榜单")`，`where` 只用固定词，**不带 id**（诊断面板要给人看，不是给日志抓）。
   - 验收：`tests/online_service.cpp` 用假 transport 跑"歌单 1200 首 → 3 页 → 行数 1200、页尾 hasMore 正确"。
 
-- [ ] **N1-6 缓存：两类新数据**
+- [x] **N1-6 缓存：两类新数据**
   - 文件：`modules/online/adapters/src/OnlineSchema.cpp`（迁移 v3：**只建表**，不改老表）
   - 改动：
     - `online_collection_cache(provider, kind, params, payload, fetched_at, last_used_at)`，TTL 30 分钟；
@@ -140,20 +140,32 @@ python xmake/checks/boundaries.py
     - 清理复用 R5 的 LRU 写法（`CASE WHEN last_used_at = 0 THEN fetched_at ELSE last_used_at END`），上限 200 行 / 4 MiB，跟搜索缓存**共用一个上限**还是各算各的，在实现时二选一并在注释里写清（推荐共用，省一次 COUNT）。
   - 验收：`tests/online_store.cpp` 加"新表 LRU 淘汰"用例；老库升级（已有 v2 表）后启动不报错。
 
-- [ ] **N1-7 表现层：集合模型**
+- [x] **N1-7 表现层：集合模型**
   - 文件：`presentation/include/sonora/presentation/RowsModel.h`（`OnlineListModel` 旁边加 `OnlineCollectionModel`）+ `presentation/src/RowsModel.cpp` + `OnlineViewModel.h/.cpp`
   - 改动：`Q_PROPERTY(OnlineCollectionModel *collections …)`、`Q_INVOKABLE void loadCollections(kind, bool more)`、`Q_INVOKABLE void openPlaylist(id)`；`OnlineCollectionModel` 暴露 `id/name/cover/count/subtitle`。
   - 验收：QML 能 `Collections.count` 与 `Collections.get(i)`；模型增删走 `beginResetModel`（一次性换整页，不做增量插入）。
 
-- [ ] **N1-8 界面：在线页多标签**
+- [x] **N1-8 界面：在线页多标签**
   - 文件：`presentation/qml/pages/OnlinePage.qml`（+ 新建 `presentation/qml/pages/CollectionPage.qml`、`presentation/qml/comic/CollectionCard.qml`）
   - 改动：顶部四个胶囊 `搜索 / 推荐 / 榜单 / 我的`（"我的"在 N2 前显示空态并提示登录）；推荐页两张横滑（推荐歌单、新歌速递）；榜单页 20 个卡片；点卡片进 `CollectionPage`（封面 + 标题 + 曲目数 + "播放全部"）。
   - 注意：`CollectionCard` 里的封面 `Image` 必须给 `sourceSize`（列表性能），且 `import Sonora.Presentation 1.0`（否则 `Player` 未定义只在运行时炸）。
   - 验收：`[qml]` 告警 0；点推荐歌单 → 详情页出曲目 → 点歌出声（这条会复用 `ResolveAndPlayOnline`，不改播放层）。
 
-- [ ] **N1-9 字体与门禁**
+- [x] **N1-9 字体与门禁**
   - 文案新增（"推荐""榜单""播放全部""每日推荐"…）→ `python tools/subset_fonts.py` 重跑，`--verify` 通过。
   - 验收：`--verify` 输出"覆盖完整"；字体文件进提交。
+
+> **N1 实施记录（2026-11-08）**
+>
+> - N1-1…N1-5、N1-7…N1-9 已落地；**N1-6（两类新表的 DB 缓存）本轮没做**——见下。
+> - 实际签名与计划的偏差，以代码为准：
+>   - `SourceKind` 只加了 `Chart`/`Artist`/`NewSongs`；**没有 `SongDetail`**——批量歌曲详情是内部手段，不对外成一种资源。
+>   - `CollectionPageDto` 多了 `revision`/`loaded`/`error`（拉失败时界面能显示"重试"而不是"空列表"）。
+>   - 查询是 `FetchCollections{kind}`（内存读）与 `FetchCollectionDetail{kind,collectionId}`；`LoadCollections{kind,limit}` 是命令——列表是"先要、再轮询读"，和搜索/队列一致。
+>   - 服务层没有"每类资源一个 token 通道"，而是**一个 token 代表一次页面请求**，每类资源各自缓存 plan（`playlists_`/`fullPages_`/`details_`/`collections_`）。翻页复用同一 token，靠 `offset` 递进。
+> - 榜单/专辑/歌手在 N0 的实测结论下都走"一次取全、内存切片分页"（榜单的 trackIds 只有 100 条，专辑一次性给全，歌手 hotSongs 只有 8 首）。
+> - **N1-6 未做的原因**：R5 刚把搜索缓存的 LRU 与迁移的"只加列不回填"钉死，本轮若再加两张表和一次迁移，验收面会翻倍；而只读资源每次拉取 < 1 s、失败可重试，缓存的收益主要在"断网/限流时不至于空白"。决定推迟到 N5 界面成型之后再评估（届时若做，迁移只建表、LRU 复用 `CASE WHEN` 写法）。
+> - 门禁：`sonora_tests` **164 用例 / 5163 断言**、`boundaries.py` 218 文件、字体 1008 字 / 167 KB `--verify` 覆盖完整；真机卡片墙 30 张、榜单 100 行、翻页 100→200、在线曲目真出声，`[qml]` 告警 0。
 
 ---
 

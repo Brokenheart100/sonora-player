@@ -29,6 +29,10 @@ namespace sonora::online::core::codec
         std::int32_t total{0};
         bool hasMore{false};
 
+        // 专辑/歌手/歌单这类"有头部的曲目页"顺带把头部带回来：
+        // 详情页标题不必为了一行名字再发一次请求。
+        contracts::CollectionDetailDto detail;
+
         // 原始响应体。只由 adapters 填（codec 自己不认识 HTTP），
         // 用来把"刚拿到的这一页"原样存进缓存。
         std::string raw;
@@ -107,5 +111,59 @@ namespace sonora::online::core::codec
     // 所以要连 headers 一起传进来（键统一小写）。
     [[nodiscard]] QrPollResult decodeQrPoll(const std::string &body,
                                            const std::vector<std::pair<std::string, std::string>> &headers);
+
+    // ------------------------------------------------------------------ N1
+    //
+    // 只读资源。四个"曲目页"共用 `DecodeResult`，另外两个"卡片列表"用下面的
+    // `CollectionListResult`：它们没有行状态机，只要一个数组。
+    //
+    // 统一规矩（N0 的教训，见 docs/ONLINE.md §19.3）：
+    //   * **只认顶层 `code`**——嵌套对象里也有 `code`，抓第一个会把专辑误判成 0；
+    //   * `code` 0 与 200 都算成功（v1 系列历史上两种都出现过）；
+    //   * 字段缺失就跳过该行，不抛异常；
+    //   * 旧版 `artists/album/duration` 与新版 `ar/al/dt` 都认（`toTrack` 已处理）。
+
+    struct CollectionListResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        std::vector<contracts::CollectionDto> items;
+        bool hasMore{false};
+        std::string raw;
+    };
+
+    struct PlaylistDetailResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        contracts::CollectionDetailDto detail;
+        // `playlist.trackIds[].id`，顺序即歌单顺序。**不信 `tracks`**：
+        // N0 实测 trackCount=100 时 `tracks` 只有前 10 首。
+        std::vector<std::string> trackIds;
+        std::string raw;
+    };
+
+    // `/api/v6/playlist/detail`：头部 + trackIds。`kind` 由调用方给（榜单也是它）。
+    [[nodiscard]] PlaylistDetailResult decodePlaylistDetail(const std::string &body,
+                                                            contracts::SourceKind kind);
+
+    // `/api/song/detail?ids=[…]`（旧版字段）。rows 顺序按响应顺序，调用方自己按
+    // trackIds 重排——上游偶尔不保证顺序。
+    [[nodiscard]] DecodeResult decodeSongDetails(const std::string &body);
+
+    // `/api/v1/album/{id}`：`songs[]` 是曲目，`album{}` 是头部。
+    [[nodiscard]] DecodeResult decodeAlbum(const std::string &body);
+
+    // `/api/v1/artist/{id}`：`hotSongs[]` 是热门曲目，`artist{}` 是头部。
+    [[nodiscard]] DecodeResult decodeArtist(const std::string &body);
+
+    // `/api/personalized/newsong?limit=`：每项是 `result[].song`（内层才是曲目）。
+    [[nodiscard]] DecodeResult decodeNewSongs(const std::string &body);
+
+    // `/api/toplist`：`list[]`，每张榜就是一张歌单（点进去再走 decodePlaylistDetail）。
+    [[nodiscard]] CollectionListResult decodeToplist(const std::string &body);
+
+    // `/api/personalized/playlist?limit=`：`result[]`。
+    [[nodiscard]] CollectionListResult decodePersonalizedPlaylists(const std::string &body);
 
 } // namespace sonora::online::core::codec

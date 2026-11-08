@@ -45,8 +45,13 @@ namespace sonora::online::contracts
         Failed,
     };
 
-    // 在线页的数据来源。`Search` 之外的类型是 R5 之后的事，但值先占好，
-    // 免得以后加值时要动命令的二进制布局。
+    // 在线页的数据来源。
+    //
+    // 值只许**往后追加**：命令与 DTO 会带着它跨线程、跨版本，中间插值等于
+    // 让旧二进制把"榜单"读成"歌单"。
+    //
+    // `Chart` / `Artist` / `NewSongs` 是 N1 补的（docs/todolist.md §N1）；
+    // `SongDetail` 没有单独的 kind——它只是歌单/专辑/榜单拉曲目的内部手段。
     enum class SourceKind : std::uint8_t
     {
         Search,
@@ -55,6 +60,9 @@ namespace sonora::online::contracts
         Recent,
         DailyRecommend,
         Album,
+        Chart,    // 榜单：详情就是一张歌单
+        Artist,   // 歌手页：`/api/v1/artist/{id}` 的 hotSongs
+        NewSongs, // 新歌速递：一页歌曲，没有详情页
     };
 
     [[nodiscard]] const char *toName(JobPhase phase) noexcept;
@@ -140,6 +148,44 @@ namespace sonora::online::contracts
         std::string name;
         std::int32_t trackCount{0};
         std::string coverUrl;
+    };
+
+    // 「一张卡片」。歌单、榜单、专辑、歌手在界面上长得一样：封面 + 标题 +
+    // 一行副标题 + 一个数量。**不在契约里分四种结构**，否则每加一种来源，
+    // 表现层就要多写一套 ListView。
+    struct CollectionDto
+    {
+        std::string id;
+        std::string name;
+        std::string coverUrl;
+        // 副标题已经是"可直接粘进界面"的形态：摘要/更新时间/歌手名。
+        std::string subtitle;
+        std::int32_t count{0};
+        SourceKind kind{SourceKind::Playlist};
+    };
+
+    struct CollectionPageDto
+    {
+        std::vector<CollectionDto> items;
+        bool hasMore{false};
+        // 变化时才 +1，表现层据此决定要不要重装模型（与 OnlinePageDto.revision 同理）。
+        std::uint64_t revision{0};
+        // 拉失败时 `items` 为空、这里带原因；界面显示"重试"而不是"空列表"。
+        bool loaded{false};
+        OnlineError error;
+    };
+
+    // 详情页头部。曲目另行按页拉（歌单/榜单要先取 trackIds 再分批换详情）。
+    struct CollectionDetailDto
+    {
+        std::string id;
+        std::string name;
+        std::string creator;
+        std::string description;
+        std::string coverUrl;
+        std::int32_t trackCount{0};
+        SourceKind kind{SourceKind::Playlist};
+        bool ok{false};
     };
 
     // 一次解析出来的可播放直链。R3 只给表现层用：它把 url 塞进 QueueEntry.filePath，

@@ -50,6 +50,21 @@ namespace sonora::online::contracts
     {
     };
 
+    // → CollectionPageDto
+    // 只读服务里已经拉回来的那批卡片；真正发起请求的是 LoadCollections 命令。
+    struct FetchCollections
+    {
+        SourceKind kind{SourceKind::Playlist};
+    };
+
+    // → CollectionDetailDto
+    // 歌单/榜单/专辑/歌手的头部。没拉过就返回 ok=false，界面显示"加载中"而不是报错。
+    struct FetchCollectionDetail
+    {
+        SourceKind kind{SourceKind::Playlist};
+        std::string collectionId;
+    };
+
     // → OnlineDiagnosticsDto
     // 一次性快照（连续失败、令牌余量、缓存条数、最近 10 条错误）。刻意不进
     // 50ms 轮询：它要查两次 COUNT，只在用户点开诊断面板时问。

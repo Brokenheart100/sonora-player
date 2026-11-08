@@ -1,5 +1,6 @@
 #include "sonora/online/adapters/NeteaseProvider.h"
 
+#include <algorithm>
 #include <chrono>
 #include <utility>
 
@@ -86,8 +87,7 @@ namespace sonora::online::adapters
     }
 
     std::uint64_t NeteaseProvider::startQrKey(QrKeyCallback onDone)
-    {
-        const std::uint64_t requestId = nextId_.fetch_add(1);
+    {        const std::uint64_t requestId = nextId_.fetch_add(1);
 
         executor_.post([this, requestId, onDone = std::move(onDone)] {
             auto request = provider::makeQrKeyRequest(baseUrl_, std::chrono::milliseconds{8000});
@@ -265,6 +265,148 @@ namespace sonora::online::adapters
         // 取消也必须回到 worker 线程做：`abort()` 作用在 QNetworkReply 上，
         // 从别的线程调它等于跨线程碰一个没有加锁的对象。
         executor_.post([this, requestId] { transport_.cancel(requestId); });
+    }
+
+    // ------------------------------------------------------------------ N1
+
+    namespace
+    {
+        // 三种返回类型（DecodeResult / CollectionListResult / PlaylistDetailResult）
+        // 都有 `error` 字段，所以"HTTP 层失败怎么填"可以只有这一处。
+        template <typename T>
+        void fillTransportError(T &out, const kernel::Error &error)
+        {
+            out.error.code = error.code();
+            out.error.message = error.message();
+            // 超时与"连不上"值得重试；被取消不值得（用户已经不要了）。
+            out.error.retryable =
+                error.code() == kernel::ErrorCode::Timeout || error.code() == kernel::ErrorCode::Unavailable;
+        }
+
+        template <typename T>
+        void fillStatusError(T &out, int statusCode)
+        {
+            out.error.code =
+                statusCode >= 500 || statusCode == 429 ? kernel::ErrorCode::Unavailable : kernel::ErrorCode::Upstream;
+            out.error.message = "网易云返回 HTTP " + std::to_string(statusCode);
+            out.error.retryable = statusCode >= 500 || statusCode == 429;
+            out.error.retryAfterMs = statusCode == 429 ? 2000 : 0;
+        }
+    } // namespace
+
+    template <typename T, typename Decode>
+    std::uint64_t NeteaseProvider::startGet(std::string path, Decode decode, std::function<void(T)> onDone)
+    {
+        const std::uint64_t requestId = nextId_.fetch_add(1, std::memory_order_relaxed);
+
+        // 与 startSearch 一致：baseUrl/cookie 按值捕获，因为投递到 worker 线程的
+        // 这段时间里 setCookie() 可能已经把成员改掉。
+        const std::string baseUrl = baseUrl_;
+        const std::string cookie = cookie_;
+
+        executor_.post([this, requestId, path = std::move(path), baseUrl, cookie, decode = std::move(decode),
+                        onDone = std::move(onDone)]() mutable {
+            c::HttpRequest request;
+            request.method = c::HttpMethod::Get;
+            request.url = baseUrl + path;
+            request.headers = provider::defaultHeaders(cookie);
+            request.transferTimeout = std::chrono::milliseconds{8000};
+
+            transport_.send(
+                requestId, request,
+                [decode = std::move(decode), onDone = std::move(onDone)](kernel::Result<c::HttpResponse> response) {
+                    T out{};
+                    if (!response)
+                    {
+                        fillTransportError(out, response.error());
+                    }
+                    else
+                    {
+                        const c::HttpResponse &http = response.value();
+                        if (http.statusCode != 200)
+                        {
+                            fillStatusError(out, http.statusCode);
+                        }
+                        else
+                        {
+                            out = decode(http.body);
+                            // 原样留一份给缓存：解析器升级后旧条目自动按新规则解析。
+                            out.raw = http.body;
+                        }
+                    }
+                    if (onDone)
+                    {
+                        onDone(std::move(out));
+                    }
+                });
+        });
+
+        return requestId;
+    }
+
+    std::uint64_t NeteaseProvider::startPlaylistDetail(std::string playlistId, PlaylistDetailCallback onDone)
+    {
+        return startGet<codec::PlaylistDetailResult>(
+            "/api/v6/playlist/detail?id=" + provider::encodeUrlComponent(playlistId),
+            [](const std::string &body) { return codec::decodePlaylistDetail(body, c::SourceKind::Playlist); },
+            std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startSongDetails(std::vector<std::string> songIds, PageCallback onDone)
+    {
+        std::string ids = "[";
+        const std::size_t limit = std::min<std::size_t>(
+            songIds.size(), static_cast<std::size_t>(provider::kMaxSongDetailsPerRequest));
+        for (std::size_t index = 0; index < limit; ++index)
+        {
+            if (index != 0)
+            {
+                ids.push_back(',');
+            }
+            ids += songIds[index];
+        }
+        ids.push_back(']');
+        // 方括号是 gen-delims，不编码会被服务端当坏参数（实测回 code 400，界面表现为"空结果"）。
+        return startGet<codec::DecodeResult>("/api/song/detail?ids=" + provider::encodeUrlComponent(ids),
+                                             [](const std::string &body) { return codec::decodeSongDetails(body); },
+                                             std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startAlbum(std::string albumId, PageCallback onDone)
+    {
+        return startGet<codec::DecodeResult>(
+            "/api/v1/album/" + provider::encodeUrlComponent(albumId),
+            [](const std::string &body) { return codec::decodeAlbum(body); }, std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startArtist(std::string artistId, PageCallback onDone)
+    {
+        return startGet<codec::DecodeResult>(
+            "/api/v1/artist/" + provider::encodeUrlComponent(artistId),
+            [](const std::string &body) { return codec::decodeArtist(body); }, std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startNewSongs(int limit, PageCallback onDone)
+    {
+        const int clamped = std::clamp(limit, 1, provider::kMaxCollectionLimit);
+        return startGet<codec::DecodeResult>(
+            "/api/personalized/newsong?limit=" + std::to_string(clamped),
+            [](const std::string &body) { return codec::decodeNewSongs(body); }, std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startToplist(CollectionCallback onDone)
+    {
+        return startGet<codec::CollectionListResult>(
+            "/api/toplist", [](const std::string &body) { return codec::decodeToplist(body); }, std::move(onDone));
+    }
+
+    std::uint64_t NeteaseProvider::startPersonalizedPlaylists(int limit, CollectionCallback onDone)
+    {
+        const int clamped = std::clamp(limit, 1, provider::kMaxCollectionLimit);
+        return startGet<codec::CollectionListResult>(
+            "/api/personalized/playlist?limit=" + std::to_string(clamped),
+            [](const std::string &body) { return codec::decodePersonalizedPlaylists(body); },
+            std::move(onDone));
     }
 
 } // namespace sonora::online::adapters

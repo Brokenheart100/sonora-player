@@ -17,13 +17,25 @@ namespace sonora::online::contracts
 
     // 请求一页结果。`token` 由**界面**递增生成：旧 token 的迟到结果直接丢弃，
     // 这是"连打 5 个字只发 1 次请求"的实现基础（另一半是 280ms 防抖）。
+    //
+    // `collectionId` 是歌单 / 榜单 / 专辑 / 歌手的 id：**共用一个字段**，
+    // 不为每种来源加一条命令——它们要的都是"一页曲目"。
     struct RequestOnlinePage
     {
         std::uint64_t token{0};
         SourceKind kind{SourceKind::Search};
         std::string keywords;
         std::string playlistId;
+        std::string collectionId;
         std::int32_t offset{0};
+        std::int32_t limit{30};
+    };
+
+    // 拉一页"卡片"（推荐歌单 / 榜单列表）。与 RequestOnlinePage 分开：
+    // 卡片列表没有分页游标之外的输入，也不需要用户可见的 job 状态机。
+    struct LoadCollections
+    {
+        SourceKind kind{SourceKind::Playlist};
         std::int32_t limit{30};
     };
 

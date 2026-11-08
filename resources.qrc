@@ -25,11 +25,13 @@
         <file alias="qml/comic/SfxText.qml">presentation/qml/comic/SfxText.qml</file>
         <file alias="qml/comic/Mascot.qml">presentation/qml/comic/Mascot.qml</file>
         <file alias="qml/comic/FirstRunCard.qml">presentation/qml/comic/FirstRunCard.qml</file>
+        <file alias="qml/comic/CollectionCard.qml">presentation/qml/comic/CollectionCard.qml</file>
 
         <!-- 页面 -->
         <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>
         <file alias="qml/pages/NowPlaying.qml">presentation/qml/pages/NowPlaying.qml</file>
         <file alias="qml/pages/OnlinePage.qml">presentation/qml/pages/OnlinePage.qml</file>
+        <file alias="qml/pages/CollectionPage.qml">presentation/qml/pages/CollectionPage.qml</file>
 
         <!-- 布局部件 -->
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>

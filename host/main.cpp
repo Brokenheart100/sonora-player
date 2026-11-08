@@ -402,6 +402,8 @@ int main(int argc, char *argv[])
                                   { return onlineService.handle(command); });
         commands.on<CancelQrLogin>([&onlineService](const CancelQrLogin &command)
                                    { return onlineService.handle(command); });
+        commands.on<LoadCollections>([&onlineService](const LoadCollections &command)
+                                     { return onlineService.handle(command); });
 
         queries.on<GetOnlineJob, OnlineJobState>(
             [&onlineService](const GetOnlineJob &query)
@@ -423,6 +425,12 @@ int main(int argc, char *argv[])
             { return onlineService.handle(query); });
         queries.on<GetOnlineDiagnostics, OnlineDiagnosticsDto>(
             [&onlineService](const GetOnlineDiagnostics &query)
+            { return onlineService.handle(query); });
+        queries.on<FetchCollections, CollectionPageDto>(
+            [&onlineService](const FetchCollections &query)
+            { return onlineService.handle(query); });
+        queries.on<FetchCollectionDetail, CollectionDetailDto>(
+            [&onlineService](const FetchCollectionDetail &query)
             { return onlineService.handle(query); });
     }
 

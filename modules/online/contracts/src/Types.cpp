@@ -67,6 +67,12 @@ namespace sonora::online::contracts
             return "DailyRecommend";
         case SourceKind::Album:
             return "Album";
+        case SourceKind::Chart:
+            return "Chart";
+        case SourceKind::Artist:
+            return "Artist";
+        case SourceKind::NewSongs:
+            return "NewSongs";
         }
         return "Unknown";
     }
