@@ -928,3 +928,72 @@ R0-1 ─► R0-2 ─┬─► R0-3 ┐
 - **经写盘工具写 C++ 字符串里的 `\"` 会多一层反斜杠**（`"offset"` 变成 `\"offset\"` → `C2017 未知转义序列`）。SQL 里的保留字列名改写成 `[offset]`，既避开转义也避开歧义。
 - **`Q[A-Z]` 这条 grep 会被 `SQLite` 误伤**。写检查脚本时用 `Q[A-Z][a-zA-Z]*` 再排除 `QLite`，或者直接断言"不含 `<Q`"。
 - **没有视觉通道时，验收要换成可计算的判据**：迁移成功看日志行、降级看诊断 JSON、防抖看缓存表新增了几行、封面看像素/哈希。凡是"看一眼就知道"的结论，先问一句"我能不能用数字证明它"。
+
+---
+
+## 19. 常用接口第二批（N0 匿名探通 · 2026-11-08）
+
+### 19.1 方法与证据
+
+第一版只接了 4 个端点（搜索、直链、账号、扫码登录）。要把歌单 / 专辑 / 歌手 / 榜单 / 推荐接进来，先得知道剩下 15 个候选端点**今天还在不在**。
+
+- 脚本：`tools/probe_ncm_api.ps1`（UTF-8 with BOM + CRLF；只发只读 GET，不发任何写操作）。
+- 匿名日志：`docs/probe/ncm-anon.log`（原始 `status` / `code` / body 前 260 字）。
+- 原始响应：`docs/probe/raw/1.json` … `raw/15.json`、`raw-extra/A.json` `E.json` `F.json` `H.json`。
+- 解析后的可读版：`docs/probe/ncm-anon-summary.md`（日志里的中文在终端是乱码，因为 PowerShell 输出走 GBK 管道；落盘文件本身是 UTF-8）。
+- **没有 cookie，"登录态"那一半没探**，见 §19.5。
+
+### 19.2 结论
+
+| 端点 | 匿名结论 | 备注 |
+| --- | --- | --- |
+| `/api/search/get?s=&type=1` | ✅ 可用 | 已有实现 |
+| `/api/toplist` | ✅ 可用 | 实测返回 **65** 张榜；`list[].tracks` 恒为 null |
+| `/api/v6/playlist/detail?id=` | ✅ 可用 | `playlist.{name,coverImgUrl,trackCount,trackIds[],creator{},tags[]}`；**`tracks` 只给前 10 首** |
+| `/api/v3/playlist/detail?id=` | ✅ 可用 | 与 v6 同一份数据，多 `urls`/`privileges`；无理由换 |
+| `/api/song/detail?ids=[…]` | ✅ 可用，批量 | 歌单曲目的实际取数通道（见 19.3） |
+| `/api/song/enhance/player/url?id=&br=320000` | ✅ 可用 | 已有实现；无版权时 `url` 为 null 而 `code` 仍 200 |
+| `/api/song/lyric?id=&lv=-1&tv=-1` | ✅ 可用 | `lrc.lyric` 实测 1471 字符，`tlyric` / `klyric` 都在 |
+| `/api/v1/album/{id}` | ✅ 可用 | `songs[]` 是旧版字段（`artists`/`album`/`duration`） |
+| `/api/v1/artist/{id}` | ✅ 可用 | `artist{name,img1v1Url}` + `hotSongs[]`（实测 8 首） |
+| `/api/artist/{id}` | ✅ 可用 | 同上，旧路径 |
+| `/api/personalized/playlist?limit=` | ✅ 可用 | `result[].{id,name,picUrl,copywriter}` |
+| `/api/personalized/newsong?limit=` | ✅ 可用 | `result[].song` 用新版字段 `ar`/`al`/`dt` |
+| `/api/v1/radio/get` | ✅ **匿名也取得到** | 一次 1 首；私人 FM 不必等登录 |
+| `/api/v3/discovery/recommend/songs` | ⚠️ **匿名也返回 31 首** | 与"每日推荐需登录"的旧假设不符，N2 用登录态复核 |
+| `/api/v1/discovery/recommend/resource` | ❌ `code 301` | 每日推荐歌单确实要登录 |
+| `/api/user/playlist?uid=&limit=` | ⚠️ 无法判定 | 无 cookie 只能用 `uid=0`，返回 1 张空壳列表 |
+| `/api/playlist/track/all?id=&limit=&offset=` | ❌ **`code 404`「接口未找到」** | 大歌单分页的老写法已死 |
+| `/api/playlist/track/ids?id=` | ❌ `code 404` | 同上 |
+| `/api/v1/artist/songs?id=&order=hot` | ❌ `code 400`「参数错误」 | 用 `/api/v1/artist/{id}` 的 `hotSongs` |
+| `/api/discovery/simiSong?id=` | ❌ `code 400`「参数错误」 | 相似歌曲本期不做 |
+| `/api/playlist/manipulate/tracks`（POST） | ⏸ 未探 | 写操作，N2 有 cookie 再验 |
+
+### 19.3 会咬人的字段
+
+1. **`playlist.trackCount` 与 `playlist.tracks` 不是一回事**。实测榜单 `19723756`：`trackCount=100`、`trackIds` 100 条、`tracks` **只有 10 条**。列表页永远按 `trackIds` 拉详情，`tracks` 只能当"前 10 首预览"。
+2. **歌单曲目只能走 `trackIds` + `/api/song/detail?ids=[…]`**。`playlist/track/all` 与 `playlist/track/ids` 都 404 了。分批大小取 500（URL 长度与响应体都安全）。
+3. **同一首歌有两套字段**：`/api/song/detail`、`/api/v1/album` 用 `artists`/`album`/`duration`；`/api/v6/playlist/detail`、`/api/personalized/*` 用 `ar`/`al`/`dt`。编解码两种都认，不能只写一套。
+4. **`artists[].id` 可能是 0**。搜"晴天"第一条是 UP 主上传版（`2668397359`），它的 `artists[0].id = 0`；拿 0 去请求 `/api/v1/artist/0` 得 404、`/api/v1/artist/songs?id=0` 得 400。**详情页的 artist/album id 只能从详情接口里取**，并要判 0 再决定能不能点。
+5. **成功码只认顶层 `code`**。探测脚本最初用正则抓第一个 `"code"`，`/api/v1/album/` 的第一个 `code` 是 `songs[]` 里嵌套的 0，被误读成失败；真实顶层是 200。解析必须先定位顶层对象。
+6. **中文乱码是终端的事**。PowerShell 5.1 往管道写中文按 GBK 编码，日志与 `raw/*.json` 落盘都是 UTF-8，用 Python 读正常——不要因为终端乱码去改代码里的解码方式。
+
+### 19.4 对实现的影响（N1 计划据此调整）
+
+- 新增 `makeSongDetailsRequest` / `parseSongDetails`，删掉原计划的 `makePlaylistTracksRequest`、`makeArtistSongsRequest`、`makeSimilarSongsRequest`。
+- 歌手页数据来自 `/api/v1/artist/{id}` 的 `artist` + `hotSongs`，不再单请求歌曲列表。
+- 歌单详情解析只取 `trackIds`；`parsePlaylistDetail` 里**不许**用 `tracks` 决定曲目数。
+- 私人 FM 可以先按匿名实现（N4 不必等 N2）；每日推荐歌曲同样先按匿名，等 N2 用登录态复核后再决定文案。
+- 逐条细节见 `docs/todolist.md` §2 的"结论"列与 §3.1 的 N0 结论。
+
+### 19.5 还没探的（要有 cookie）
+
+`/api/user/playlist`（我的歌单、"我喜欢的音乐" `specialType 5`）、`/api/v1/discovery/recommend/resource`（每日歌单）、`/api/v3/discovery/recommend/songs` 的登录态形态，以及唯一的写操作 `/api/playlist/manipulate/tracks`（收藏/取消收藏，需要 `__csrf`）。
+
+脚本已经支持 `-Cookie "MUSIC_U=…; __csrf=…"`，登录后跑一次：
+
+```bash
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 -Cookie "MUSIC_U=...; __csrf=..." -Out docs/probe/ncm-cookie.log
+```
+
+**cookie 只在命令行传参，不落仓库**——`docs/probe/` 只收日志，日志里禁止出现 cookie 值。

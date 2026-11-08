@@ -1,0 +1,80 @@
+﻿probe started: 2026-11-08 17:06:31
+cookie: anonymous
+=== 1 search 晴天
+url: https://music.163.com/api/search/get?s=%E6%99%B4%E5%A4%A9&type=1&offset=0&limit=5
+status: 200
+code: 200
+body: {"result":{"songs":[{"album":{"publishTime":1738684800000,"size":1,"artist":{"img1v1Url":"https://p2.music.126.net/6y-UleORITEDbvrOLV0Q8A==/5639395138885805.jpg","musicSize":0,"albumSize":0,"img1v1":0,"name":"","alias":[],"id":0,"picId":0},"copyrightId":679014
+derived: songId=2668397359 artistId=0 albumId=260499608
+=== 2 toplist
+url: https://music.163.com/api/toplist
+status: 200
+code: 200
+body: {"code":200,"list":[{"subscribers":[],"subscribed":null,"creator":null,"artists":null,"tracks":null,"updateFrequency":null,"backgroundCoverId":0,"backgroundCoverUrl":null,"titleImage":0,"coverText":null,"titleImageUrl":null,"coverImageUrl":null,"iconImageUrl":
+derived: playlistId=19723756
+=== 3 playlist detail
+url: https://music.163.com/api/v6/playlist/detail?id=19723756
+status: 200
+code: 200
+body: {"code":200,"relatedVideos":null,"playlist":{"id":19723756,"name":"飙升榜","coverImgId":109951170048506929,"coverImgUrl":"https://p1.music.126.net/rIi7Qzy2i2Y_1QD7cd0MYA==/109951170048506929.jpg","coverImgId_str":"109951170048506929","adType":0,"userId":1,"create
+=== 4 playlist track all
+url: https://music.163.com/api/playlist/track/all?id=19723756&limit=10&offset=0
+status: 200
+code: 404
+body: {"code":404,"message":"接口未找到！"}
+=== 5 album
+url: https://music.163.com/api/v1/album/260499608
+status: 200
+code: 0
+body: {"resourceState":true,"songs":[{"rtUrls":[],"ar":[{"id":0,"name":"RyaVocal"}],"al":{"id":260499608,"name":"晴天","picUrl":"https://p2.music.126.net/-NVLOT5vt9I91LRiZV1TCQ==/109951170413587092.jpg","pic_str":"109951170413587092","pic":109951170413587092},"st":1,"
+=== 6 artist
+url: https://music.163.com/api/v1/artist/0
+status: 200
+code: 404
+body: {"code":404}
+=== 7 artist songs
+url: https://music.163.com/api/v1/artist/songs?id=0&limit=5&order=hot
+status: 200
+code: 400
+body: {"msg":"参数错误","code":400}
+=== 8 personalized playlists
+url: https://music.163.com/api/personalized/playlist?limit=6
+status: 200
+code: 200
+body: {"hasTaste":false,"code":200,"category":0,"result":[{"id":509265479,"type":0,"name":"「后摇」一只孤独的巨兽在深海里呼喊","copywriter":"","picUrl":"https://p2.music.126.net/rzjue3XJZQRghsSjl5JbYw==/18699394254857669.jpg","canDislike":true,"trackNumberUpdateTime":1582975814682,"
+=== 9 new songs
+url: https://music.163.com/api/personalized/newsong?limit=5
+status: 200
+code: 200
+body: {"code":200,"category":5,"result":[{"id":3456047164,"type":4,"name":"Hong Kong (feat. 王菲季候风)","copywriter":null,"picUrl":"http://p1.music.126.net/12-Tl1d-BT-_AwXMl7-MzQ==/109951174206326909.jpg","canDislike":false,"trackNumberUpdateTime":null,"song":{"name":"H
+=== 10 similar songs
+url: https://music.163.com/api/discovery/simiSong?id=2668397359
+status: 200
+code: 400
+body: {"msg":"参数错误","code":400}
+=== 11 lyric
+url: https://music.163.com/api/song/lyric?id=2668397359&lv=-1&tv=-1
+status: 200
+code: 200
+body: {"sgc":false,"sfy":false,"qfy":false,"lyricUser":{"id":126637299,"status":99,"demand":0,"userid":12525712131,"nickname":"_iiiy0_0","uptime":1764234080986},"lrc":{"version":2,"lyric":"[00:00.000] 作词 : Chieh-lun Chou\n[00:00.000] 作曲 : Chieh-lun Chou\n[00:00.000]
+=== 12 daily recommend songs
+url: https://music.163.com/api/v3/discovery/recommend/songs
+status: 200
+code: 200
+body: {"code":200,"data":{"fromCache":false,"dailySongs":[{"name":"你瞒我瞒","mainTitle":null,"additionalTitle":null,"id":27511488,"pst":0,"t":0,"ar":[{"id":2127,"name":"陈柏宇","tns":[],"alias":[]}],"alia":[],"pop":100.0,"st":0,"rt":"","fee":1,"v":61,"crbt":null,"cf":"","
+=== 13 daily recommend playlists
+url: https://music.163.com/api/v1/discovery/recommend/resource
+status: 200
+code: 301
+body: {"msg":null,"code":301}
+=== 14 user playlists
+url: https://music.163.com/api/user/playlist?uid=0&limit=5&offset=0
+status: 200
+code: 200
+body: {"more":false,"playlist":[{"subscribers":[],"subscribed":null,"creator":null,"artists":null,"tracks":null,"top":false,"updateFrequency":null,"backgroundCoverId":0,"backgroundCoverUrl":null,"titleImage":0,"titleImageUrl":null,"englishTitle":null,"opRecommend":f
+=== 15 personal fm
+url: https://music.163.com/api/v1/radio/get
+status: 200
+code: 0
+body: {"popAdjust":false,"data":[{"name":"葛藤花语","id":3446607699,"position":0,"alias":[],"status":0,"fee":8,"copyrightId":0,"disc":"01","no":1,"artists":[{"name":"THORN020","id":123218243,"picId":0,"img1v1Id":0,"briefDesc":"","picUrl":"http://p1.music.126.net/6y-UleO
+probe finished: 2026-11-08 17:06:34
