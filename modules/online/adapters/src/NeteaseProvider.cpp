@@ -427,6 +427,15 @@ namespace sonora::online::adapters
             [](const std::string &body) { return codec::decodeDailySongs(body); }, std::move(onDone));
     }
 
+    std::uint64_t NeteaseProvider::startLyric(std::string songId, LyricCallback onDone)
+    {
+        // 歌词接口不需要 cookie，但走同一条 GET 骨架（超时、状态码映射、解码器
+        // 的错误填法都复用）——它自己那几个 maker 是给"要 POST/要特殊头"的接口用的。
+        return startGet<codec::LyricResult>(
+            "/api/song/lyric?id=" + provider::encodeUrlComponent(songId) + "&lv=-1&tv=-1",
+            [](const std::string &body) { return codec::decodeLyric(body); }, std::move(onDone));
+    }
+
     std::uint64_t NeteaseProvider::startToggleFavorite(const std::string &playlistId,
                                                       const std::string &songId, bool add,
                                                       const std::string &csrf, FavoriteCallback onDone)

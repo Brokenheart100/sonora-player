@@ -58,6 +58,7 @@
 #include "sonora/playback/core/app/PlaybackHandlers.h"
 #include "sonora/playback/core/app/PlaybackService.h"
 #include "sonora/lyrics/adapters/LyricsSourceChain.h"
+#include "sonora/lyrics/adapters/OnlineLyricsSource.h"
 #include "sonora/lyrics/adapters/SidecarLyricsSource.h"
 #include "sonora/lyrics/adapters/TagLibLyricsSource.h"
 #include "sonora/lyrics/core/app/GetLyricsHandler.h"
@@ -342,6 +343,11 @@ int main(int argc, char *argv[])
     lyrics::adapters::LyricsSourceChain lyricsChain;
     lyricsChain.add(sidecarLyrics);
     lyricsChain.add(embeddedLyrics);
+    // 第三来源：在线歌词（N3）。**排在最后**——本地有词就别去麻烦网络。
+    // 它只依赖查询总线，在线服务在下面才构造：注册晚于构造没关系，
+    // 真正 ask 发生在播放时（那时总线早就满了）。
+    lyrics::adapters::OnlineLyricsSource onlineLyrics{queries};
+    lyricsChain.add(onlineLyrics);
     lyrics::core::GetLyricsHandler lyricsHandler{lyricsChain};
     queries.on<lyrics::contracts::GetLyrics, lyrics::contracts::LyricsView>(
         [&lyricsHandler](const lyrics::contracts::GetLyrics &query)
@@ -435,6 +441,11 @@ int main(int argc, char *argv[])
             { return onlineService.handle(query); });
         queries.on<FetchCollectionDetail, CollectionDetailDto>(
             [&onlineService](const FetchCollectionDetail &query)
+            { return onlineService.handle(query); });
+        // 在线歌词（N3）：歌词模块通过它取词。查询是"取一次、拿一次"，
+        // 没取回来时回 ready=false，表现层一秒后再问。
+        queries.on<FetchOnlineLyrics, OnlineLyricDto>(
+            [&onlineService](const FetchOnlineLyrics &query)
             { return onlineService.handle(query); });
     }
 

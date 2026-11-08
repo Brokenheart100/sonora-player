@@ -24,15 +24,24 @@ namespace sonora::presentation
     } // namespace
 
     LyricsModel::LyricsModel(kernel::IQueryBus &queries, QObject *parent)
-        : QAbstractListModel(parent), queries_(queries) {}
-
-    void LyricsModel::loadFor(const QString &filePath)
+        : QAbstractListModel(parent), queries_(queries)
     {
-        if (filePath == loadedPath_)
+        // 在线歌词是异步的：第一次问只会拿到"还没到"。
+        // 一秒一次的重试停在三处——拿到词、切歌、或者确认这首歌没有在线词。
+        retryTimer_.setInterval(1000);
+        retryTimer_.setSingleShot(false);
+        connect(&retryTimer_, &QTimer::timeout, this, &LyricsModel::requery);
+    }
+
+    void LyricsModel::loadFor(const QString &filePath, const QString &onlineSongId)
+    {
+        if (filePath == loadedPath_ && onlineSongId == onlineSongId_)
         {
             return;
         }
         loadedPath_ = filePath;
+        onlineSongId_ = onlineSongId;
+        retryTimer_.stop();
 
         if (filePath.isEmpty())
         {
@@ -40,18 +49,39 @@ namespace sonora::presentation
             return;
         }
 
+        requery();
+        if (!retryTimer_.isActive() && onlineSongId_.isEmpty())
+        {
+            return;
+        }
+    }
+
+    void LyricsModel::requery()
+    {
         lyrics::contracts::GetLyrics query;
-        query.filePath = filePath.toStdString();
+        query.filePath = loadedPath_.toStdString();
+        query.onlineSongId = onlineSongId_.toStdString();
 
         const auto result = queries_.ask<lyrics::contracts::LyricsView>(query);
         if (!result)
         {
+            retryTimer_.stop();
             clear();
             statusText_ = fromUtf8(result.error().message());
             emit linesChanged();
             return;
         }
         adopt(result.value());
+
+        // 只有"在线那份还没到"才值得再问；本地没有就是没有，别打扰在线模块。
+        if (result.value().pending && !onlineSongId_.isEmpty())
+        {
+            retryTimer_.start();
+        }
+        else
+        {
+            retryTimer_.stop();
+        }
     }
 
     void LyricsModel::clear()
@@ -76,6 +106,7 @@ namespace sonora::presentation
     {
         beginResetModel();
         lines_ = view.lines;
+        onlineSource_ = view.onlineSource;
         times_.clear();
         times_.reserve(lines_.size());
         for (const auto &line : lines_)

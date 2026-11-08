@@ -86,6 +86,11 @@ namespace sonora::online::adapters
         // 一次性诊断快照：只在用户点开面板时取（内部要查两次 COUNT，不进轮询）。
         [[nodiscard]] kernel::Result<contracts::OnlineDiagnosticsDto> handle(
             const contracts::GetOnlineDiagnostics &query);
+        // 在线歌词：第一次问会把请求发出去并回 `ready == false`，之后每次问都会
+        // 顺带排空回包；取到以后一直命中内存。**不做同步等待**——歌词链是同步端口，
+        // 阻塞在这里会把 33ms 的位置推进卡住。
+        [[nodiscard]] kernel::Result<contracts::OnlineLyricDto> handle(
+            const contracts::FetchOnlineLyrics &query);
 
     private:
         struct Pending
@@ -186,12 +191,31 @@ namespace sonora::online::adapters
         bool myPlaylistsLoaded_{false};
         std::uint64_t myPlaylistsRevision_{0};
 
+        // ---- N3：在线歌词 ----
+        struct LyricEntry
+        {
+            contracts::OnlineLyricDto dto;
+            bool loading{false};
+        };
+        struct PendingLyric
+        {
+            std::string songId;
+            core::codec::LyricResult result;
+        };
+        void drainLyrics();
+        // 内存只留最近 kLyricCacheSize 首：歌词一份几 KB，但"整张列表都播过一遍"
+        // 之后没有上限就会一直涨。
+        static constexpr std::size_t kLyricCacheSize = 16;
+        std::unordered_map<std::string, LyricEntry> lyrics_;
+        std::vector<std::string> lyricOrder_;
         std::mutex pageMutex_;
         std::vector<PendingPage> pagePending_;
         std::vector<PendingCollection> collectionPending_;
         std::vector<PendingPlaylistDetail> playlistDetailPending_;
         std::vector<PendingUserPlaylists> userPlaylistsPending_;
         std::vector<PendingFavorite> favoritePending_;
+        std::mutex lyricMutex_;
+        std::vector<PendingLyric> lyricPending_;
 
         void drain();
         // 失败留痕的唯一入口：计数器 + 环形缓冲 + 退避闸门，三件事一起做，

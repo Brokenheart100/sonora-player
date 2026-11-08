@@ -229,3 +229,114 @@ TEST_CASE("GetLyricsHandler：空路径是参数错误")
     REQUIRE(view.hasValue() == false);
     CHECK(view.error().code() == sonora::kernel::ErrorCode::InvalidArgument);
 }
+
+// ── N3：第三个来源（在线歌词）────────────────────────────────────────────
+//
+// 这里用一个"假在线来源"而不是真 OnlineLyricsSource：后者的行为取决于
+// 在线服务的内存状态（取回没有、有没有错），那是 online 模块自己的测。
+// 歌词这边要钉住的是**链子与 handler 的语义**：排在最后、pending 会不会
+// 停住、取不到时不报错。
+namespace {
+
+class StubOnlineLyrics final : public ILyricsSource {
+public:
+    explicit StubOnlineLyrics(std::optional<LyricsDocument> document)
+        : document_(std::move(document)) {}
+
+    [[nodiscard]] sonora::kernel::Result<std::optional<LyricsDocument>>
+    load(std::string_view) const override
+    {
+        return sonora::kernel::Result<std::optional<LyricsDocument>>::ok(std::nullopt);
+    }
+
+    [[nodiscard]] sonora::kernel::Result<std::optional<LyricsDocument>>
+    load(const sonora::lyrics::core::LyricsRequest &) const override
+    {
+        return sonora::kernel::Result<std::optional<LyricsDocument>>::ok(document_);
+    }
+
+private:
+    std::optional<LyricsDocument> document_;
+};
+
+LyricsDocument onlineDocument(std::string text, bool pending = false)
+{
+    LyricsDocument document;
+    document.source = "在线歌词";
+    document.text = std::move(text);
+    document.pending = pending;
+    document.online = true;
+    return document;
+}
+
+}  // namespace
+
+TEST_CASE("在线歌词：本地没有时问在线，取到就是 Found 并标 online")
+{
+    const Workspace workspace;
+    const fs::path audio = workspace.write("online.mp3", "not really audio");
+
+    const SidecarLyricsSource sidecar;
+    const StubOnlineLyrics online{onlineDocument("[00:02.00]网上的词\n[00:05.00]第二句")};
+    LyricsSourceChain chain;
+    chain.add(sidecar);
+    chain.add(online);
+
+    const GetLyricsHandler handler{chain};
+    sonora::lyrics::contracts::GetLyrics query;
+    query.filePath = u8String(audio);
+    query.onlineSongId = "12345";
+
+    const auto view = handler.handle(query);
+    REQUIRE(view.hasValue());
+    CHECK(view.value().status == LyricsStatus::Found);
+    CHECK(view.value().onlineSource);
+    CHECK(view.value().source == "在线歌词");
+    REQUIRE(view.value().lines.size() == 2);
+    CHECK(view.value().lines[0].timeMs == 2000);
+}
+
+TEST_CASE("在线歌词：还没取回来时是 pending，不是 NotFound 也不是错误")
+{
+    const Workspace workspace;
+    const fs::path audio = workspace.write("pending.mp3", "not really audio");
+
+    const SidecarLyricsSource sidecar;
+    const StubOnlineLyrics online{onlineDocument({}, true)};
+    LyricsSourceChain chain;
+    chain.add(sidecar);
+    chain.add(online);
+
+    const GetLyricsHandler handler{chain};
+    sonora::lyrics::contracts::GetLyrics query;
+    query.filePath = u8String(audio);
+    query.onlineSongId = "999";
+
+    const auto view = handler.handle(query);
+    REQUIRE(view.hasValue());
+    CHECK(view.value().pending);
+    CHECK(view.value().status == LyricsStatus::NotFound);
+    CHECK(view.value().lines.empty());
+}
+
+TEST_CASE("在线歌词：在线也没有词时是 NotFound，不是错误")
+{
+    const Workspace workspace;
+    const fs::path audio = workspace.write("nolyric.mp3", "not really audio");
+
+    const SidecarLyricsSource sidecar;
+    const StubOnlineLyrics online{std::nullopt};
+    LyricsSourceChain chain;
+    chain.add(sidecar);
+    chain.add(online);
+
+    const GetLyricsHandler handler{chain};
+    sonora::lyrics::contracts::GetLyrics query;
+    query.filePath = u8String(audio);
+    query.onlineSongId = "777";
+
+    const auto view = handler.handle(query);
+    REQUIRE(view.hasValue());
+    CHECK(view.value().status == LyricsStatus::NotFound);
+    CHECK(view.value().pending == false);
+}

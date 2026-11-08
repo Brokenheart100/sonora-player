@@ -12,6 +12,11 @@ namespace sonora::lyrics::contracts {
 // 这件事本来就该由表现层从 Player 快照里拿。
 struct GetLyrics {
     std::string filePath;
+    // 在线曲目才有：网易云 songId。本地曲目留空。
+    //
+    // 歌词模块同样不认识在线服务——它只是把"这首歌的 id"原样转给在线歌词来源，
+    // 由那个适配器去调 Online.Contracts 的查询。
+    std::string onlineSongId;
 };
 
 }  // namespace sonora::lyrics::contracts

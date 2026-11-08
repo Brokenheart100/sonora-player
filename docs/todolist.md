@@ -203,20 +203,28 @@ python xmake/checks/boundaries.py
 > - 迁移 v3 只加 `online_session.user_id` 一列，不回填（沿用 R5 的教训）。
 > - 门禁：`sonora_tests` 168 用例 / 5182 断言、`boundaries.py` 218 文件、字体 1011 字 / 168 KB `--verify` 覆盖完整、`[qml]` 告警 0。
 
-### N3 · 在线歌词（1 人日）
+### N3 · 在线歌词（1 人日）✅ 2026-11-08
 
-- [ ] **N3-1 契约与端点**
+- [x] **N3-1 契约与端点**
   - `Queries.h` 加 `FetchOnlineLyrics { std::string songId; }` → `OnlineLyricDto { std::string lrc; std::string translated; bool instrumental{false}; }`；`NeteaseUrls` 加 `makeLyricRequest`；`NeteaseJson` 加 `parseLyric`（`lrc.lyric` / `tlyric.lyric` / `nolyric|uncollected` 视为无歌词）。
 
-- [ ] **N3-2 作为歌词第三个来源**
+- [x] **N3-2 作为歌词第三个来源**
   - 文件：新建 `modules/lyrics/adapters/include/sonora/lyrics/adapters/OnlineLyricsSource.h` + `.cpp`
   - 要点：**依赖 `Online.Contracts` 的查询**（模块 → 契约，合法），不依赖 `Online.Core`；查询是同步返回（在线服务本来就把结果放内存状态表）；返回空即"没有"，由链子继续/结束。
   - 链路顺序：同名 `.lrc` → 内嵌标签 → **在线**；在线失败**不阻断**本地已取到的歌词。
   - 验收：`tests/lyrics_sources.cpp` 加"本地无歌词时问在线、在线失败时是 NoLyrics 不是错误"两条。
 
-- [ ] **N3-3 界面体现来源**
+- [x] **N3-3 界面体现来源**
   - `NowPlaying` 歌词区右下角小字标"在线歌词"（非必须，但用户会问"这词哪来的"）。
   - 验收：截图确认标签出现且不遮挡歌词。
+
+#### N3 实施记录
+
+- **签名与清单的差异**：`OnlineLyricDto` 多了 `bool ready`——异步查询必须能表达"还没回来"，否则"网络慢"会被当成"这首歌没词"。`LrcParser` 未改，翻译仍靠"同一时间戳再来一行"合并。
+- **`ILyricsSource` 加的是重载不是改签名**：新增 `LyricsRequest{audioFilePath, onlineSongId}`，默认实现退回旧 `load(path)`，两个本地来源零改动；只有 `OnlineLyricsSource` 覆写。
+- **重试在表现层**：`LyricsModel` 自己拿 1 秒定时器，服务层不重试——歌词是背景数据，不该占用退避和令牌。
+- **歌词是内存缓存**：`OnlineService` 存 16 首，没有建表（见 ONLINE.md §22.5）。
+- **验证**：`sonora_tests` 174 用例 / 5210 断言；真机 `src=在线歌词 online=true lines=64 idx=1→7`；截图 `.demo/n3_lyrics.png`。
 
 ---
 

@@ -64,6 +64,7 @@ namespace sonora::online::adapters
         using FavoriteCallback = std::function<void(core::codec::FavoriteResult)>;
         using CollectionCallback = std::function<void(core::codec::CollectionListResult)>;
         using PlaylistDetailCallback = std::function<void(core::codec::PlaylistDetailResult)>;
+        using LyricCallback = std::function<void(core::codec::LyricResult)>;
 
         // 歌单/榜单详情（头部 + trackIds）。榜单与歌单是同一个接口。
         std::uint64_t startPlaylistDetail(std::string playlistId, PlaylistDetailCallback onDone);
@@ -79,6 +80,8 @@ namespace sonora::online::adapters
         std::uint64_t startUserPlaylists(const std::string &userId, PlaylistsCallback onDone);
         // 每日推荐歌曲：匿名也回数据（N0 实测 31 首），所以这里不判断登录态。
         std::uint64_t startDailySongs(PageCallback onDone);
+        // 在线歌词（N3）：`/api/song/lyric?id=&lv=-1&tv=-1`，匿名可用。
+        std::uint64_t startLyric(std::string songId, LyricCallback onDone);
         // 收藏/取消收藏。`csrf` 只进表单字段，不落日志。
         std::uint64_t startToggleFavorite(const std::string &playlistId, const std::string &songId,
                                           bool add, const std::string &csrf,

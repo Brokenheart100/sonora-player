@@ -153,6 +153,7 @@ contracts::PlayerSnapshot PlaybackService::snapshot() const {
         snapshot.artistName = entry->artistName;
         snapshot.filePath = entry->filePath;
         snapshot.coverPath = entry->coverPath;
+        snapshot.onlineSongId = entry->onlineSongId;
     }
     return snapshot;
 }

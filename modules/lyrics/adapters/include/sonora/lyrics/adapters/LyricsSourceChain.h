@@ -24,7 +24,14 @@ public:
     [[nodiscard]] std::size_t size() const noexcept { return sources_.size(); }
 
     [[nodiscard]] kernel::Result<std::optional<core::LyricsDocument>>
-    load(std::string_view audioFilePath) const override;
+    load(const core::LyricsRequest &request) const override;
+
+    // 只给路径的旧形态：测试与"只想验本地链子"的调用方用。
+    [[nodiscard]] kernel::Result<std::optional<core::LyricsDocument>>
+    load(std::string_view audioFilePath) const override
+    {
+        return load(core::LyricsRequest{audioFilePath, std::string_view{}});
+    }
 
 private:
     std::vector<const core::ILyricsSource *> sources_;

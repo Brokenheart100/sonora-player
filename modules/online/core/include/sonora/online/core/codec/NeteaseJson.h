@@ -178,6 +178,20 @@ namespace sonora::online::core::codec
         std::string raw;
     };
 
+    // `/api/song/lyric?id=&lv=-1&tv=-1`：`lrc.lyric` 是原词，`tlyric.lyric`
+    // 是翻译（可能为空串或只有时间标签）。`nolyric`/`uncollected` 为 true 时
+    // 表示接口明说"这首歌没有词"——那不是错误。
+    struct LyricResult
+    {
+        bool ok{false};
+        contracts::OnlineError error;
+        std::string lrc;
+        std::string translated;
+        bool instrumental{false};
+        // 原始响应。`startGet` 的统一骨架会往里塞一份（它的约定是 T 有 raw）。
+        std::string raw;
+    };
+
     struct FavoriteResult
     {
         bool ok{false};
@@ -195,5 +209,9 @@ namespace sonora::online::core::codec
     // `/api/playlist/manipulate/tracks`：`{"code":200,"status":1}` 之类，
     // 只关心 code；`status` 不参与判定（它表示"这首歌当时是否可收藏"）。
     [[nodiscard]] FavoriteResult decodeFavoriteToggle(const std::string &body);
+
+    // `/api/song/lyric?id=&lv=-1&tv=-1`。返回的 `lrc`/`translated` 是**原文**，
+    // 合并翻译是 LrcParser 的事（它按时间戳配对），这里只负责把两段拿出来。
+    [[nodiscard]] LyricResult decodeLyric(const std::string &body);
 
 } // namespace sonora::online::core::codec

@@ -17,6 +17,7 @@
 #include <QByteArray>
 #include <QHash>
 #include <QObject>
+#include <QTimer>
 #include <QString>
 #include <QVariant>
 
@@ -38,6 +39,9 @@ namespace sonora::presentation
         // 给界面看的一句话：来源、"纯音乐"、或失败原因。
         Q_PROPERTY(QString statusText READ statusText NOTIFY linesChanged)
         Q_PROPERTY(int currentIndex READ currentIndex NOTIFY currentIndexChanged)
+        // 这份词是不是在线来的。界面右下角那句"在线歌词"认这个，
+        // 不去比对 statusText 的字符串（文案会变）。
+        Q_PROPERTY(bool onlineSource READ onlineSource NOTIFY linesChanged)
 
     public:
         enum Role
@@ -54,9 +58,14 @@ namespace sonora::presentation
         [[nodiscard]] bool visible() const { return visible_; }
         [[nodiscard]] QString statusText() const { return statusText_; }
         [[nodiscard]] int currentIndex() const { return currentIndex_; }
+        [[nodiscard]] bool onlineSource() const { return onlineSource_; }
 
-        // 换一首歌就调一次。同一个路径重复调直接返回（2Hz 轮询会不停喂同一个值）。
-        Q_INVOKABLE void loadFor(const QString &filePath);
+        // 换一首歌就调一次。路径与在线 id 都没变时直接返回（2Hz 轮询会不停喂同值）。
+        //
+        // 在线歌词是异步取回来的：第一次问通常只拿到"还没到"，所以这里挂一个
+        // 1 秒的重试定时器，等在线模块把词取回来再问一次——取到、切歌、或者
+        // 确认没有词，都会把定时器停掉。
+        Q_INVOKABLE void loadFor(const QString &filePath, const QString &onlineSongId);
         // 由 PlayerViewModel 的 33ms tick 推进。位置没跨行时什么都不做，
         // 所以这里的开销是"一次整数比较"。
         void setPositionMs(qint64 positionMs);
@@ -72,6 +81,8 @@ namespace sonora::presentation
 
     private:
         void adopt(const lyrics::contracts::LyricsView &view);
+        // 重新问一次（不动 loadedPath_，只按现有参数重查）。
+        void requery();
         void setCurrentIndex(int index);
 
         kernel::IQueryBus &queries_;
@@ -81,6 +92,10 @@ namespace sonora::presentation
         QString statusText_;
         // 上次加载的路径，用来早退。空表示还没加载过。
         QString loadedPath_;
+        QString onlineSongId_;
+        bool onlineSource_ = false;
+        // 在线歌词还没到时用来重试；空转时是停的。
+        QTimer retryTimer_;
         int currentIndex_ = -1;
         bool visible_ = false;
     };

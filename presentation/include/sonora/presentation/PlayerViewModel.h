@@ -33,6 +33,9 @@ namespace sonora::presentation
         Q_PROPERTY(QString queueText READ queueText NOTIFY trackChanged)
         // 封面：**空的 QString 表示没有封面**，界面据此决定画唱片标签还是画图。
         Q_PROPERTY(QString coverUrl READ coverUrl NOTIFY trackChanged)
+        // 在线曲目的 songId，本地曲目是空串。歌词模型靠它去问在线歌词；
+        // 界面不用关心它，所以没有对应的可视化用途。
+        Q_PROPERTY(QString onlineSongId READ onlineSongId NOTIFY trackChanged)
         Q_PROPERTY(bool hasTrack READ hasTrack NOTIFY trackChanged)
         Q_PROPERTY(bool playing READ playing NOTIFY stateChanged)
         Q_PROPERTY(QString stateText READ stateText NOTIFY stateChanged)
@@ -61,6 +64,7 @@ namespace sonora::presentation
         [[nodiscard]] QString artist() const { return artist_; }
         [[nodiscard]] QString queueText() const { return queueText_; }
         [[nodiscard]] QString coverUrl() const { return coverUrl_; }
+        [[nodiscard]] QString onlineSongId() const { return onlineSongId_; }
         [[nodiscard]] bool hasTrack() const { return hasTrack_; }
         [[nodiscard]] bool playing() const { return playing_; }
         [[nodiscard]] QString stateText() const { return stateText_; }
@@ -113,6 +117,7 @@ namespace sonora::presentation
         QString artist_;
         QString queueText_;
         QString coverUrl_;
+        QString onlineSongId_;
         QString stateText_ = QStringLiteral("未播放");
         QString positionText_ = QStringLiteral("0:00");
         QString durationText_ = QStringLiteral("--:--");

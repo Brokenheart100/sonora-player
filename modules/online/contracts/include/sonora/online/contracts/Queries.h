@@ -73,4 +73,13 @@ namespace sonora::online::contracts
         std::string provider{"ncm"};
     };
 
+    // → OnlineLyricDto
+    // 一首歌的在线歌词。**刻意做成"查一次、拿一次"**：第一次问通常只拿到
+    // `ready == false`（请求刚发出），表现层隔一秒再问，取到之后就一直命中内存。
+    // 这样歌词链路（同步的端口）不必为了一个异步请求改签名。
+    struct FetchOnlineLyrics
+    {
+        std::string songId;
+    };
+
 } // namespace sonora::online::contracts

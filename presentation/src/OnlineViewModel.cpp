@@ -668,6 +668,8 @@ namespace sonora::presentation
             entry.title = row.title;
             entry.artistName = row.artists;
             entry.coverPath = row.coverUrl;
+            // 歌词要靠 songId 找词：filePath 里是 CDN 直链，看不出是哪首歌。
+            entry.onlineSongId = row.songId;
             entries.push_back(std::move(entry));
         }
 

@@ -133,18 +133,20 @@ namespace sonora::presentation
         const auto newCover = coverText.isEmpty() ? QString{}
                               : coverIsUrl      ? coverText
                                                 : QUrl::fromLocalFile(coverText).toString();
+        const auto newSongId = QString::fromStdString(value.onlineSongId);
         const auto newQueue =
             value.queueSize > 0
                 ? QStringLiteral("%1 / %2").arg(value.queueIndex + 1).arg(value.queueSize)
                 : QString{};
         if (newTitle != title_ || newArtist != artist_ || newQueue != queueText_ ||
-            value.hasTrack != hasTrack_ || newCover != coverUrl_)
+            value.hasTrack != hasTrack_ || newCover != coverUrl_ || newSongId != onlineSongId_)
         {
             title_ = newTitle;
             artist_ = newArtist;
             queueText_ = newQueue;
             hasTrack_ = value.hasTrack;
             coverUrl_ = newCover;
+            onlineSongId_ = newSongId;
             emit trackChanged();
         }
 
@@ -155,7 +157,7 @@ namespace sonora::presentation
         // 不会重复查库——它只在 filePath 真的变了才动一次。
         if (lyrics_ != nullptr)
         {
-            lyrics_->loadFor(QString::fromStdString(value.filePath));
+            lyrics_->loadFor(QString::fromStdString(value.filePath), newSongId);
         }
 
         const auto nowPlaying = value.state == playback::contracts::PlaybackState::Playing;

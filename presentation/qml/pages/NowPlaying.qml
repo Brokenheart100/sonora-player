@@ -560,6 +560,33 @@ Item {
             horizontalAlignment: Text.AlignHCenter
             wrapMode: Text.WordWrap
         }
+
+        // 在线歌词的来源标记（N3-3）。用户会问"这词哪来的"——本地没有 .lrc、
+        // 也没内嵌标签，答案就是"网上取的"。放右下角、比正文小一号，
+        // 不抢歌词的位置；小圆点是同一个朱红的低饱和版本，不与当前句争色。
+        Row {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 2
+            spacing: 5
+            visible: Lyrics.onlineSource && Lyrics.visible
+            opacity: 0.55
+
+            Rectangle {
+                width: 5
+                height: 5
+                radius: 2.5
+                color: Theme.accent
+                anchors.verticalCenter: parent.verticalCenter
+            }
+
+            Text {
+                text: qsTr("在线歌词")
+                color: Theme.inkSoft
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textSmall - 1
+            }
+        }
     }
 
     Connections {

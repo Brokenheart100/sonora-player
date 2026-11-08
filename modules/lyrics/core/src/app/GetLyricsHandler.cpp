@@ -35,12 +35,12 @@ LyricsView instrumentalView(std::string source)
 kernel::Result<contracts::LyricsView> GetLyricsHandler::handle(
     const contracts::GetLyrics &query) const
 {
-    if (query.filePath.empty()) {
+    if (query.filePath.empty() && query.onlineSongId.empty()) {
         return kernel::Result<LyricsView>::fail(
             kernel::Error{kernel::ErrorCode::InvalidArgument, "没有给音频路径，找不了歌词"});
     }
 
-    auto document = source_.load(query.filePath);
+    auto document = source_.load(LyricsRequest{query.filePath, query.onlineSongId});
     if (!document) {
         return kernel::Result<LyricsView>::fail(document.error());
     }
@@ -51,18 +51,31 @@ kernel::Result<contracts::LyricsView> GetLyricsHandler::handle(
     }
 
     const LyricsDocument &found = *document.value();
+    if (found.pending) {
+        // 在线那份还在路上：状态仍是 NotFound（没有词可显示），但带 pending
+        // 让表现层隔一秒再问，而不是把"稍后就有"当成"这首歌没词"。
+        LyricsView view;
+        view.status = LyricsStatus::NotFound;
+        view.pending = true;
+        view.source = found.source;
+        view.onlineSource = true;
+        return kernel::Result<LyricsView>::ok(std::move(view));
+    }
     const ParsedLyrics parsed = LrcParser::parse(found.text);
     const Lyrics lyrics = Lyrics::create(parsed.entries);
 
     if (lyrics.empty()) {
         // 文件读到了、但一条时间标签都没有——可能是纯音乐，也可能是不认识的格式。
         // 两种都按"纯音乐"呈现：给用户一句可读的话，比一个空盒子有用。
-        return kernel::Result<LyricsView>::ok(instrumentalView(found.source));
+        LyricsView placeholder = instrumentalView(found.source);
+        placeholder.onlineSource = found.online;
+        return kernel::Result<LyricsView>::ok(std::move(placeholder));
     }
 
     LyricsView view;
     view.status = LyricsStatus::Found;
     view.source = found.source;
+    view.onlineSource = found.online;
     view.lines.reserve(lyrics.size());
     for (const LyricEntry &entry : lyrics.entries()) {
         LyricLine line;

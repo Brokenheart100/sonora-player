@@ -55,8 +55,13 @@ enum class LyricsStatus : std::uint8_t {
 // 一次查询的全部结果。
 struct LyricsView {
     LyricsStatus status = LyricsStatus::NotFound;
+    // 在线那份还没取回来（界面据此再等一秒，而不是显示"没有歌词"）。
+    // 本地来源永远不会置这个位。
+    bool pending = false;
     // 人读的来源说明："同名 .lrc" / "内嵌标签" / 空。出错时放错误原因。
     std::string source;
+    // 这份词是不是在线来的（界面据此显示"在线歌词"）。
+    bool onlineSource = false;
     std::vector<LyricLine> lines;
 };
 

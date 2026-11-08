@@ -131,6 +131,9 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - 「我喜欢的音乐」只能靠 `specialType == 5` 认，**不要按名字匹配**——用户可以把歌单改名。
 - 收藏是唯一的写操作：`__csrf` 从 cookie 里取、只进 POST body，**不进日志/事件/DTO**；失败单独记 `favoriteFailures`，不要混进读路径的降级计数。
 - 在 QML 绑定表达式里调用会改绑定的函数（如 `Online.refreshDiagnostics()`）会立刻换来 `Binding loop detected`：要刷新就挂 `Timer`，别写在 `text:` 里。
+- 在线歌词是**异步**的：`OnlineLyricDto.ready == false` 表示"还没取回来"，不是"没词"。`LyricsDocument.pending` / `LyricsView.pending` 就是为这层语义存在的；把它当 `nullopt` 处理，界面会把"网络慢"显示成"这首歌没有歌词"。
+- `IQueryBus::ask()` 不是 const，而 `ILyricsSource::load()` 是 const——在线歌词来源里的 `const_cast<IQueryBus &>` 是**有意的**（查询无副作用，作者不是它）。别改成 mutable 成员或绕过总线。
+- 应用日志是**控制台代码页（GBK）**，bash 里 `grep`/`cat` 中文全是 `����`。要看得先 `open(path,'rb').read().decode('gbk', errors='replace')`，再写 UTF-8 文件。
 
 **打包 / 发布**
 

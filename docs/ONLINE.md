@@ -1096,3 +1096,68 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 
 - `Commands.h` 里用脚本按 `s.index('};', …)` 插新结构体是危险的——`SourceKind kind{SourceKind::Playlist};` 这一行里也有 `};`。要么按整段匹配，要么手工插。
 - `Theme.fontBody` 不存在（真实属性是 `fontDisplay` / `fontText`），QML 里写到不存在的属性只会得到一条 `Unable to assign [undefined] to QString`，不会告诉你写错了名字。
 - 每日推荐是**匿名可用**的（31 首），所以"未登录 → 登录后可见"这条只对「我的歌单」成立；文档里别把两者混成一句。
+
+## 22. N3 实施记录：在线歌词（2026-11-08）
+
+### 22.1 接通的端点
+
+| 用途 | 端点 | 方法 | 匿名 |
+| --- | --- | --- | --- |
+| 歌词（原词 + 翻译） | `/api/song/lyric?id=<songId>&lv=-1&tv=-1` | GET | 可用 |
+
+实包形状：`{"code":200,"lrc":{"lyric":"[00:01.00]…"},"tlyric":{"lyric":"[00:01.00]…"}}`；`nolyric` / `uncollected` 为 `true` 时**没有词但也不是失败**（纯音乐或未收录）。
+
+### 22.2 三态语义
+
+在线歌词是异步的：查询进去时词可能还没回来。所以 `OnlineLyricDto` 用 `ready` 区分两种"没词"：
+
+| `ready` | `lrc` | 含义 | 界面 |
+| --- | --- | --- | --- |
+| `false` | 空 | 还没取回来 | 继续等（`pending`），1 秒后再问 |
+| `true` | 空 | 确实没词 | 纯音乐占位，不再问 |
+| `true` | 有词 | 拿到了 | 正常滚动 |
+
+`pending` 一路上行：`OnlineLyricsSource` → `LyricsSourceChain`（见到 `pending` 就停，不再问更后面的来源）→ `GetLyricsHandler` → `LyricsView.pending` → `LyricsModel.retryTimer_`。**本地没词不会启动这个定时器**（只有 `pending` 且 songId 非空才重试），所以离线时不会空转。
+
+### 22.3 代码落点
+
+| 位置 | 做什么 |
+| --- | --- |
+| `modules/lyrics/core/.../ports/Ports.h` | 新增 `LyricsRequest{audioFilePath, onlineSongId}`；`ILyricsSource` 加带 `LyricsRequest` 的 `load` 重载（默认退回旧实现）；`LyricsDocument` 加 `pending` / `online` |
+| `modules/lyrics/adapters/.../OnlineLyricsSource.{h,cpp}` | 新来源：经 `IQueryBus` 问 `FetchOnlineLyrics`，把 `lrc` + `tlyric` 拼成双语 LRC 交给同一个 `LrcParser` |
+| `modules/lyrics/core/src/app/GetLyricsHandler.cpp` | 空路径且空 songId 才报错；`pending` → `NotFound + pending=true`；Found/Instrumental 都带 `onlineSource` |
+| `modules/online/.../Queries.h` | `FetchOnlineLyrics{songId}` |
+| `modules/online/core/src/codec/NeteaseJson.cpp` | `decodeLyric`：只认顶层 code，`nolyric`/`uncollected` 是"没词"不是错误 |
+| `modules/online/adapters/src/OnlineService.cpp` | 内存缓存 16 首 + `drainLyrics()`；退避中直接返回 `ready=false`，不报错 |
+| `modules/playback/contracts/.../Commands.h` | `QueueEntry` / `PlayerSnapshot` 加 `onlineSongId` |
+| `presentation/.../PlayerViewModel` → `LyricsModel` | `onlineSongId` 一路带下去；`LyricsModel.loadFor(filePath, onlineSongId)` + 1 秒重试 |
+| `presentation/qml/pages/NowPlaying.qml` | 歌词列右下角红点 + 「在线歌词」 |
+
+依赖方向：`lyrics/adapters` → `online/contracts`（只认查询契约），**Online 不知道 Lyrics 存在**。
+
+### 22.4 真机实测
+
+| 项 | 结果 |
+| --- | --- |
+| 在线曲目播放 | `sid=2668397359`（晴天）`st=播放中` |
+| 歌词来源 | `src=在线歌词`、`online=true` |
+| 行数 | `lines=64`（原词 64 行，含翻译已按同时间戳合并） |
+| 高亮推进 | `idx=1→7`，每 2 秒日志一跳，与播放位置同步 |
+| `[qml]` 告警 | 0 |
+| 截图 | `.demo/n3_lyrics.png`（1792×1256）；歌词列当前句为朱红 `rgb(217,58,58)`，行 y 576–600、x 1282–1554 |
+| 单测 | 174 用例 / 5210 断言 |
+
+探针（临时）：`OnlinePage.qml` 1.5 s `Online.search("晴天")`、4 s `Online.play(0)`；`Shell.qml` 7 s 后切到"正在播放"；`NowPlaying.qml` 每 2 s 打 `N3LYR …`。验证完已从 `.test_tmp/n3_*.orig` 还原，`grep -rn "TEMP N3\|N3LYR" presentation/` 为空。
+
+### 22.5 没做的，以及为什么
+
+- **DB 缓存歌词**：歌词是一次性小文本，内存 16 首够用；写库要新增一张表和一次迁移，收益不抵风险。
+- **逐字歌词**：接口 `yrc`/`klyric` 能取到逐字时间轴，但 `LyricLine.words` 目前没被界面使用，先不接。
+- **歌词来源切换开关**：`Preferences` 还是空壳（见 §12 待定问题 2），不给存不下来的开关。
+
+### 22.6 给下一轮的教训
+
+- **异步来源要能表达"还没好"**：`optional<LyricsDocument>` 只有"有/没有"两态，硬塞进来就会把"网络慢"误报成"这首歌没词"。加 `pending` 比加超时判断省事得多。
+- `IQueryBus::ask` 不是 const，而 `ILyricsSource::load` 是 const——`const_cast` 在这里是合适的：查询没有副作用，作者不是它。
+- `startGet` 只吃 path（自己拼 baseUrl），`makeLyricRequest` 返回的是完整 `HttpRequest`；要么走 path 形态，要么另写一个 POST 用的骨架，别指望两者能混。
+- 本机日志是 GBK：`data.decode('gbk', errors='replace')` 后再写 UTF-8 文件，直接 `cat` 只会看到 `����`。

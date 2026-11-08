@@ -23,6 +23,7 @@ using sonora::online::core::codec::decodePersonalizedPlaylists;
 using sonora::online::core::codec::decodePlaylistDetail;
 using sonora::online::core::codec::decodeSongDetails;
 using sonora::online::core::codec::decodeDailySongs;
+using sonora::online::core::codec::decodeLyric;
 using sonora::online::core::codec::decodeFavoriteToggle;
 using sonora::online::core::codec::decodeToplist;
 using sonora::online::core::codec::decodeUserPlaylists;
@@ -267,4 +268,43 @@ TEST_CASE("收藏：只看顶层 code，不看 body 里的 status")
 
     const auto badParam = decodeFavoriteToggle(R"({"code": 400, "msg": "参数错误"})");
     CHECK(!badParam.ok);
+}
+
+TEST_CASE("在线歌词：原词与翻译分开取，翻译可能为空")
+{
+    const auto both = decodeLyric(R"({"code": 200,
+        "lrc": {"version": 1, "lyric": "[00:01.00]Hello\n[00:03.00]World"},
+        "tlyric": {"version": 1, "lyric": "[00:01.00]你好\n[00:03.00]世界"}})");
+
+    CHECK(both.ok);
+    CHECK(both.instrumental == false);
+    CHECK(both.lrc.find("Hello") != std::string::npos);
+    CHECK(both.translated.find("你好") != std::string::npos);
+
+    const auto noTranslation = decodeLyric(R"({"code": 200, "lrc": {"lyric": "[00:01.00]词"}, "tlyric": {"lyric": ""}})");
+    CHECK(noTranslation.ok);
+    CHECK(noTranslation.translated.empty());
+}
+
+TEST_CASE("在线歌词：nolyric / uncollected 是「没有词」，不是失败")
+{
+    const auto instrumental = decodeLyric(R"({"code": 200, "nolyric": true})");
+    CHECK(instrumental.ok);
+    CHECK(instrumental.instrumental);
+    CHECK(instrumental.lrc.empty());
+
+    const auto uncollected = decodeLyric(R"({"code": 200, "uncollected": true, "lrc": {"lyric": ""}})");
+    CHECK(uncollected.ok);
+    CHECK(uncollected.instrumental);
+}
+
+TEST_CASE("在线歌词：缺 lrc 字段也按纯音乐处理，不抛也不崩")
+{
+    const auto missing = decodeLyric(R"({"code": 200})");
+    CHECK(missing.ok);
+    CHECK(missing.instrumental);
+    CHECK(missing.lrc.empty());
+
+    const auto notObject = decodeLyric("[]");
+    CHECK(!notObject.ok);
 }

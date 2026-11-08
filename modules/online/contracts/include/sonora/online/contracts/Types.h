@@ -243,6 +243,21 @@ namespace sonora::online::contracts
     };
 
     // 一次性诊断快照。只在用户点开"诊断"时取，不进 50ms 轮询。
+    // 一首歌的在线歌词。
+    //
+    // `ready` 区分"还没取回来"与"取回来了但确实没词"——这两件事在界面上
+    // 完全不同：前者要等一秒再看，后者该显示本地歌词或"没有歌词"。
+    struct OnlineLyricDto
+    {
+        bool ready{false};
+        // 原歌词（LRC 原文，带时间标签）与翻译。没有翻译就是空串。
+        std::string lrc;
+        std::string translated;
+        // 接口明说这首歌没有词（纯音乐 / 未收录）。
+        bool instrumental{false};
+        OnlineError error;
+    };
+
     struct OnlineDiagnosticsDto
     {
         std::string provider{"ncm"};

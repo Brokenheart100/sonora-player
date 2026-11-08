@@ -24,6 +24,11 @@ struct QueueEntry {
     // 封面绝对路径（UTF-8），没有封面就是空串。播放器不知道封面怎么存的，
     // 它只负责把"这一路带过来的东西"原样交给界面——唱片中心和播放条都用它。
     std::string coverPath;
+    // 在线曲目的网易云 songId；本地曲目是空串。
+    //
+    // 播放器同样不解释它，只原样带进快照——在线歌词要靠它去问在线模块
+    // （歌词模块不认识曲库，也不该认识在线服务）。
+    std::string onlineSongId;
 };
 
 /// 一整个列表交给播放器：点第 3 行，就是把整个列表从第 3 行开始播。
@@ -72,6 +77,8 @@ struct PlayerSnapshot {
     std::string filePath;
     // 封面绝对路径，没有就是空串。理由同上：界面要显示封面，但不该去查曲库。
     std::string coverPath;
+    // 在线曲目的 songId，本地曲目是空串。在线歌词靠它取词。
+    std::string onlineSongId;
 };
 
 }  // namespace sonora::playback::contracts

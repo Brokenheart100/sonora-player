@@ -892,6 +892,38 @@ namespace sonora::online::core::codec
         return out;
     }
 
+    LyricResult decodeLyric(const std::string &body)
+    {
+        LyricResult out;
+        const json root = json::parse(body, nullptr, false);
+        if (root.is_discarded() || !root.is_object())
+        {
+            out.error = contracts::OnlineError{kernel::ErrorCode::Upstream, "响应不是合法 JSON", false, 0};
+            return out;
+        }
+        // `nolyric`/`uncollected` 是"确实没词"，不是失败：接口就是这么回答的。
+        const bool noLyric = root.contains("nolyric") && root["nolyric"].is_boolean() && root["nolyric"].get<bool>();
+        const bool uncollected =
+            root.contains("uncollected") && root["uncollected"].is_boolean() && root["uncollected"].get<bool>();
+        if (!noLyric && !uncollected && !topCodeOk(root, out.error))
+        {
+            return out;
+        }
+
+        if (const json *lrc = findMember(root, "lrc"))
+        {
+            out.lrc = asText(member(*lrc, "lyric"));
+        }
+        if (const json *translated = findMember(root, "tlyric"))
+        {
+            out.translated = asText(member(*translated, "lyric"));
+        }
+        // 只有时间标签没有字的"空词"也按纯音乐处理：拿它去解析只会得到一堆空行。
+        out.instrumental = noLyric || uncollected || out.lrc.empty();
+        out.ok = true;
+        return out;
+    }
+
     FavoriteResult decodeFavoriteToggle(const std::string &body)
     {
         FavoriteResult out;

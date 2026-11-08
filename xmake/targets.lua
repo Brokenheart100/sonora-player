@@ -240,8 +240,13 @@ add_packages("taglib")
 -- 内嵌歌词也要读标签（M7 的第二来源），所以 Lyrics.Adapters 同样挂 taglib。
 -- 只读不写：我们从不 setProperties，MPL-1.1 那条"改动过的 TagLib 源文件继续开源"
 -- 对我们不适用（引用许可证的理由见 docs/DEPENDENCIES.md §3）。
+--
+-- 第三来源是在线歌词（N3）：它要调 Online.Contracts 的查询，所以这里多一条
+-- "模块 → 别人的契约"的依赖。方向是 lyrics → online 的 contracts，不是 Core，
+-- 也不是反向——Online 至今不知道 Lyrics 的存在。
 target("Sonora.Lyrics.Adapters")
 add_packages("taglib")
+add_deps("Sonora.Online.Contracts")
 
 -- ── 表现层（MVVM）───────────────────────────────────────────────────────────
 -- 只依赖各模块的 Contracts。**这一行下面不许出现任何 *.Core。**
