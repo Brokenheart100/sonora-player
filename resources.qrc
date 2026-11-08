@@ -24,6 +24,7 @@
         <file alias="qml/comic/TrackRow.qml">presentation/qml/comic/TrackRow.qml</file>
         <file alias="qml/comic/SfxText.qml">presentation/qml/comic/SfxText.qml</file>
         <file alias="qml/comic/Mascot.qml">presentation/qml/comic/Mascot.qml</file>
+        <file alias="qml/comic/FirstRunCard.qml">presentation/qml/comic/FirstRunCard.qml</file>
 
         <!-- 页面 -->
         <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>

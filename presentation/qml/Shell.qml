@@ -75,7 +75,9 @@ Item {
                 Text {
                     x: 108
                     y: 60
-                    text: qsTr("v0.1")
+                    // 版本号来自 QCoreApplication::applicationVersion()，最终出处是
+                    // xmake.lua 的 SONORA_VERSION——界面里不再写第二份。
+                    text: qsTr("v") + Qt.application.version
                     color: Theme.inkSoft
                     font.family: "Consolas"
                     font.pixelSize: Theme.textSmall

@@ -11,7 +11,16 @@
 set_xmakever("2.9.5")
 
 set_project("Sonora")
-set_version("0.1.0")
+
+-- 版本号的**唯一出处**。改这一行，`QCoreApplication::applicationVersion()`、
+-- 侧栏底部的 `v0.1.0`、打包产物名都会跟着变；只有 `assets/app.rc` 的
+-- VERSIONINFO 要手动同步（资源编译器不读 Lua）。
+SONORA_VERSION = "0.1.0"
+set_version(SONORA_VERSION)
+
+-- 同一份版本号进 C++：host/main.cpp 用它调 setApplicationVersion()；
+-- QML 侧读 `Qt.application.version`，两侧永远一致。
+add_defines('SONORA_VERSION="' .. SONORA_VERSION .. '"')
 
 -- 平台与架构是架构决定，不是可选项。
 -- 放开跨平台会立刻把 #ifdef _WIN32 漏进 core/，那正是要防的东西。

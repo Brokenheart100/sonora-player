@@ -35,6 +35,10 @@ namespace sonora::presentation
         Q_OBJECT
         Q_PROPERTY(int count READ count NOTIFY countChanged)
         Q_PROPERTY(QString status READ status NOTIFY statusChanged)
+        // 首次启动：既没记过曲库目录、库里也是一首都没有。QML 据此弹引导页。
+        // 它只是**视图状态**——目录记在哪儿由宿主决定（见 host/main.cpp 的 QSettings），
+        // 这一层不碰持久化。
+        Q_PROPERTY(bool needsSetup READ needsSetup NOTIFY needsSetupChanged)
 
     public:
         enum Role
@@ -72,6 +76,16 @@ namespace sonora::presentation
         // 导入一个文件夹。path 来自 QML（UTF-8），交给命令总线时也保持 UTF-8。
         Q_INVOKABLE void importFolder(const QString &path);
 
+        // 首次启动引导页选中的曲库目录：导入它，并广播 folderChosen——
+        // 宿主接住这个信号把它记进设置。**不在这里写 QSettings**：
+        // 设置迟早属于 Preferences 模块，presentation 现在先别抢那块地。
+        Q_INVOKABLE void chooseFolder(const QString &path);
+
+        [[nodiscard]] bool needsSetup() const { return needs_setup_; }
+        void setNeedsSetup(bool value);
+        // 引导页上点"以后再说"。只是把这张卡收起来；下次启动还是会问。
+        Q_INVOKABLE void dismissSetup();
+
         // 过滤：传空串即取消过滤。命中判定在 SQL 侧（FTS5），模型只负责重新取第一页。
         Q_INVOKABLE void setSearchText(const QString &text);
         [[nodiscard]] QString searchText() const { return search_text_; }
@@ -87,6 +101,9 @@ namespace sonora::presentation
     signals:
         void countChanged();
         void statusChanged();
+        void needsSetupChanged();
+        // 引导页选了目录。宿主（host/main.cpp）负责记住它。
+        void folderChosen(const QString &path);
 
         // 已经开始播放（或尝试播放）。组合根据此刷新 PlayerViewModel。
         void playbackStarted();
@@ -114,6 +131,7 @@ namespace sonora::presentation
         static constexpr std::int32_t kPageSize = 200;
         // 导入是后台线程跑的；同一时刻只允许一批，否则两个线程会抢同一个写事务。
         std::atomic<bool> busy_{false};
+        bool needs_setup_ = false;
     };
 
 } // namespace sonora::presentation

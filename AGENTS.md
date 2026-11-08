@@ -38,7 +38,7 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 6. Handler 同步耗时 **< 5ms**；更慢的活投 `ITaskQueue::post()`，不要就地等。
 7. **先 commit 事务，再发领域事件**。不做 outbox、不做最终一致。
 8. 一个命令一个 `UnitOfWorkScope`；单个文件失败只计数，不回滚整批。
-9. ViewModel 只持 DTO + 视图状态，**不持聚合**。QML 只认注入的单例 `Library` / `Player` / `Lyrics` / `Online` / `Settings` / `Sfx`（全部注册在 `Sonora.Presentation` 下）。
+9. ViewModel 只持 DTO + 视图状态，**不持聚合**。QML 只认注入的单例 `Library` / `Player` / `Lyrics` / `Online`（全部由 `host/main.cpp` 的 `qmlRegisterSingletonInstance` 注册在 `Sonora.Presentation` 下；**没有 `Settings` / `Sfx` 这两个单例**，别再凭印象引用）。
 10. 播放位置走 `IPositionStream` 旁路，**不进命令总线**（60Hz 会淹掉事件循环）。
 11. 仓储不提供 `findAll()`；列表查询走 `*.Contracts` 里的 Query + 投影视图，直接出 DTO。
 
@@ -127,6 +127,15 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - **迁移里不要写"顺手回填"的 UPDATE**：200 行 × 78KB 的老库上，`UPDATE ... SET last_used_at = fetched_at` 会让 SQLite 报 `unable to open database file`，而迁移失败 = 应用打不开。加列就只加列。
 - 降级必须留痕：失败走 `Diagnostics::recordError()`（分类计数 + 最近 10 条），取消（`Internal` + `"已取消"`）不计数，否则打字时每敲一个字就多一条"错误"。
 
+**打包 / 发布**
+
+- **版本号只有 `xmake.lua` 的 `SONORA_VERSION` 一处**（`set_version` + `add_defines` → `host/main.cpp` 传给 `setApplicationVersion`，QML 读 `Qt.application.version`）。只有 `assets/app.rc` 的 `VERSIONINFO` 是第二份，改版本时要一起改，否则资源管理器属性对不上。
+- **`windeployqt --compiler-runtime` 在普通 shell 里是空操作**：它靠 `VCINSTALLDIR` 找 Redist，没在 VS 开发者命令行里就静默跳过。症状是包在本机能跑、干净机上报"缺少 VCRUNTIME140.dll"。`tools/package.ps1` 改成用 `vswhere` 找 `VC\Redist\MSVC\<版本>\x64\Microsoft.VC*.CRT` 自己拷。
+- **GUI 子系统程序的 stdout，PowerShell 抓不到**：`& $exe --version` 与 `Start-Process -RedirectStandardOutput` 都得到空串（bash/MSYS 里正常）。要用 `[System.Diagnostics.Process]` 显式接管道，且**必须在 DLL 就位之后**（release 目录里 Qt DLL 没拷过去时进程根本起不来，同样得到空串）。
+- 数据目录统一走 `host/main.cpp` 的 `dataDirectory()`（`AppLocalDataLocation` → `exe/data` 兜底）：曲库、`settings.ini`、封面、`instance.lock` 都在里面。**设置用 INI（`QSettings::IniFormat`），不用默认注册表**——注册表卸载后留残留。
+- 单实例靠 `QLockFile`；第二个进程只做一件事：`platform/win` 的 `raiseWindowByTitle(L"Sonora Music")` 把已有窗口提到前台。别在这里弹"已经在运行"对话框。
+- QML 里改 C++ 的只读属性要用 `Q_INVOKABLE`（例如 `Library.dismissSetup()`，不是 `Library.needsSetup = false`——只读属性赋值在 QML 里是静默失败）。
+
 **调试**
 
 - QML 类型错误看 **stderr 的 `[qml]` 行**——`host/main.cpp` 把 `QQmlApplicationEngine::warnings` 接出来了。没有这段，`/SUBSYSTEM:WINDOWS` 进程里这类错误完全不可见。
@@ -171,6 +180,8 @@ python xmake/checks/boundaries.py
 | `host/main.cpp` | **组合根**：唯一一处把实现 new 出来并接线的地方 | `sonora` |
 | `tests/` | doctest；只链纯 C++ target | `sonora_tests` |
 | `third_party/sqlite3/` | amalgamation，编译开关见 `xmake/targets.lua` | `Sonora.ThirdParty.Sqlite` |
+| `tools/package.ps1` | 出绿色发布包到 `dist/`（windeployqt + 运行库 + 硬核对 + zip） | — |
+| `installer/sonora.iss` | Inno Setup 6 安装脚本（本机无 ISCC，未编译过） | — |
 
 业务模块：`catalog` / `playback` / `playlists` / `lyrics` / `preferences` / `online`（**无聚合**，只有端口 + 流程）。新增模块 = 三个 target（Contracts / Core / Adapters）+ 在 `xmake/targets.lua` 的 `BUSINESS` 表里加一个名字。
 

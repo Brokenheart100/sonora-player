@@ -198,6 +198,31 @@ namespace sonora::presentation
         startImport(QStringList{path}, QString{});
     }
 
+    void TrackListModel::setNeedsSetup(bool value)
+    {
+        if (needs_setup_ == value)
+        {
+            return;
+        }
+        needs_setup_ = value;
+        emit needsSetupChanged();
+    }
+
+    void TrackListModel::dismissSetup()
+    {
+        setNeedsSetup(false);
+    }
+
+    void TrackListModel::chooseFolder(const QString &path)
+    {
+        // 先记下路径再导入：导入是后台线程，失败时用户至少知道自己选的是哪儿。
+        // 记的是"用户选过的目录"，与导入是否扫出歌曲无关——空文件夹也是他的选择，
+        // 下次启动不该再弹一次引导页。
+        emit folderChosen(path);
+        setNeedsSetup(false);
+        importFolder(path);
+    }
+
     void TrackListModel::startImport(const QStringList &folders, const QString &firstFile)
     {
         // 一次只跑一批。

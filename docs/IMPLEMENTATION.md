@@ -21,18 +21,18 @@
 | **M6** | 播放完整体验（队列聚合） | 4 | M4, M5 | 全流程无鼠标操作 |
 | **M7** | 歌词 | 3.5 | M5, M6 | 歌词同步误差 < 50ms | **✅ 已完成**（滞后上限 33ms） |
 | **M8** | 漫画表现力 | 5 | M2 | **✅ 已完成**（集中线改 Canvas，`qmlcachegen` 未做） |
-| **M9** | 打包发布 | 1.5 | 全部 | 干净 Windows 机器双击能跑 |
+| **M9** ✅ | 打包发布 | 1.5 | 全部 | 干净 Windows 机器双击能跑 |
 | **R0** ✅ | 在线音源可行性探针（`curl`，不建 target） | 0.5 | — | 六个端点零 `-460`，直链 `http://` + 20 分钟过期，匿名封顶 `exhigh` |
 | **R1** ✅ | `online` 三 target + `platform/net` | 1.5 | M9 骨架 | 27（后 30）个 target 编译通过，空壳在线页 |
 | **R2** ✅ | 搜索闭环（JSON codec + fixtures + 防抖 + 三态 UI） | 2–3 | R1 | 连打 5 个字只发 1 次请求 |
 | **R3** ✅ | 在线出声（直链批量解析 + `Buffering` + 过期重解析） | 2 | R2, M4 | 点在线歌能出声，进度/暂停/切歌与本地无异 |
 | **R4** ✅ | 登录（扫码 + 粘贴 cookie + DPAPI + 账号胶囊） | 2 | R1 | 重启仍登录，库里 `grep MUSIC_U` 为空 |
 | **R5** ✅ | 收尾（降级矩阵 / 缓存 LRU / 诊断 / 文档 / CI 断言） | 1 | R3, R4 | 端点改成 404 域名后本地照常播、在线页提示「接口可能已变更」 |
-| | **合计** | **≈ 33 + 9.5（在线音源）** | | 本地曲库 M0–M9；在线音源 R0–R5 见 [ONLINE.md](ONLINE.md) |
+| | **合计** | **≈ 33 + 9.5（在线音源）** | | 本地曲库 M0–M9 全部完成；在线音源 R0–R5 见 [ONLINE.md](ONLINE.md) |
 
 **关键路径**：`M0 → M1 → M3 → M4 → M6 → M7 → M9`。这条链上任何一环延期都顺延交付。
 
-**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**M5 ✅ 已完成**：搜索 / 增量扫描 / 真标签 / 分批与后台导入 / 分页 / 封面缓存 / 分组 / `TrackRow` 全部落地并实测（一万首首扫 9.4s、二扫 403ms、滚动帧 2–5ms）。**M6 ✅ 已完成**：四种播放模式与随机排列、随机模式精确回溯、`TrackFinished` 集成事件 → `play_count`、队列抽屉、`NowPlaying` 页、快捷键、文件被删的优雅降级（实测：连放自动推进、`play_count` 0→1→2、边界 143 文件、单测 94 用例 / 4686 断言）。**M7 ✅ 已完成**：LRC 解析（offset / 多标签 / 翻译 / 逐字）、两个来源与优先级、`LyricsModel` + `NowPlaying` 歌词列（实测：`D:\Music` 6 首真曲 24 行歌词滚动、同步滞后上限 33ms、边界 166 文件、单测 115 用例 / 4795 断言）。**M8 ✅ 已完成**：拟声字池 / 翻页转场 / 角色立绘（喵）/ 组件胶囊化 / 集中线（`Canvas` 重写）全部落地，1480 帧 median 1ms、p99 6ms，启动后无单帧 > 8ms（实测：边界 166 文件、单测 115 用例 / 4795 断言）。**下一步是 M9（打包发布）**。**R0–R5 ✅ 已完成**：在线音源从探针（`curl` 脚本，不建 target）、`online` 三 target + `platform/net`、搜索闭环（280ms 防抖）、直链播放（批量取地址 + 缓冲态 + 过期重解析）、扫码登录（DPAPI 落盘）一路做到收尾（降级矩阵实测、搜索缓存 200 行/4 MiB LRU、`GetOnlineDiagnostics` 诊断、release 包硬核对）。R5 实测记录与 12 条验收清单见 [ONLINE.md](ONLINE.md) §18；**唯一没在真 runner 上跑过的是 release 流水线本身**。
+**进度**：M0 ✅、M1 ✅、M2 ✅、M3 ✅、M4 ✅ 已完成并实测通过（构建、运行、边界探针、边界脚本、单测、截图、帧时间、真音频四格式播放、FFmpeg 引擎替换），记录见 §2 下的「M0」～「M4」小节。**M5 ✅ 已完成**：搜索 / 增量扫描 / 真标签 / 分批与后台导入 / 分页 / 封面缓存 / 分组 / `TrackRow` 全部落地并实测（一万首首扫 9.4s、二扫 403ms、滚动帧 2–5ms）。**M6 ✅ 已完成**：四种播放模式与随机排列、随机模式精确回溯、`TrackFinished` 集成事件 → `play_count`、队列抽屉、`NowPlaying` 页、快捷键、文件被删的优雅降级（实测：连放自动推进、`play_count` 0→1→2、边界 143 文件、单测 94 用例 / 4686 断言）。**M7 ✅ 已完成**：LRC 解析（offset / 多标签 / 翻译 / 逐字）、两个来源与优先级、`LyricsModel` + `NowPlaying` 歌词列（实测：`D:\Music` 6 首真曲 24 行歌词滚动、同步滞后上限 33ms、边界 166 文件、单测 115 用例 / 4795 断言）。**M8 ✅ 已完成**：拟声字池 / 翻页转场 / 角色立绘（喵）/ 组件胶囊化 / 集中线（`Canvas` 重写）全部落地，1480 帧 median 1ms、p99 6ms，启动后无单帧 > 8ms（实测：边界 166 文件、单测 115 用例 / 4795 断言）。**R0–R5 ✅ 已完成**：在线音源从探针（`curl` 脚本，不建 target）、`online` 三 target + `platform/net`、搜索闭环（280ms 防抖）、直链播放（批量取地址 + 缓冲态 + 过期重解析）、扫码登录（DPAPI 落盘）一路做到收尾（降级矩阵实测、搜索缓存 200 行/4 MiB LRU、`GetOnlineDiagnostics` 诊断、release 包硬核对）。R5 实测记录与 12 条验收清单见 [ONLINE.md](ONLINE.md) §18；**唯一没在真 runner 上跑过的是 release 流水线本身**。**M9 ✅ 已完成**：版本号单一出处、`tools/package.ps1` 一键出绿色 zip、`installer/sonora.iss`（Inno Setup，未编译）、首次启动引导页、单实例锁、数据目录与 INI 设置、`LICENSE` + `THIRD-PARTY-NOTICES.md` + `dist/README.txt`（实测：`--version`、引导页遮罩 luma 126→223、选目录落盘并导入 6 首、重启自动回到上次目录、第二个实例 197ms 退出、`PATH=C:\Windows\system32` 下发布包能跑；边界 217 文件、单测 155 用例 / 5115 断言、字体 1000 字形）
 
 > 依赖清单（哪个库在哪一层、版本、许可证、获取渠道）见 **[DEPENDENCIES.md](DEPENDENCIES.md)**。
 
@@ -715,20 +715,44 @@ python xmake/checks/boundaries.py
 
 
 
-### M9 · 打包发布（1.5 人日）
+### M9 · 打包发布（✅ 已完成 · 实际 1.2 人日）
 
-- [ ] 版本号从 `xmake.lua` 的 `set_version` 注入 `QCoreApplication`
-- [ ] `windeployqt --qmldir presentation/qml`
-- [ ] **必须一起打包**：`avcodec-*.dll` `avformat-*.dll` `avutil-*.dll` `swresample-*.dll`（vcpkg 的 `x64-windows/bin`，若是动态链接）
-- [ ] 绿色版 zip + Inno Setup 安装包
-- [ ] 首次启动引导页（选音乐目录）
-- [ ] 单实例锁（避免两个进程抢同一个 SQLite）
-- [ ] 数据目录用 `QStandardPaths::AppDataLocation`，不是 exe 旁边
+| | 内容 |
+| --- | --- |
+| 版本号 | `xmake.lua` 顶部 `SONORA_VERSION = "0.1.0"` → `set_version()` + `add_defines('SONORA_VERSION="…"')`，`host/main.cpp` 用宏调 `setApplicationVersion()`；QML 侧读 `Qt.application.version`（侧栏 `v0.1` 改成绑定）。**唯一需要手工同步的是 `assets/app.rc` 的 `VERSIONINFO`** |
+| 打包 | `tools/package.ps1`：切 release → `windeployqt --qmldir presentation/qml --no-translations --compiler-runtime` → 拷 MSVC 运行库 → 硬核对 15 个必需文件 → 组装 `dist/Sonora-<ver>-win64/` → `Compress-Archive` 出 zip |
+| 安装包 | `installer/sonora.iss`（Inno Setup 6）：装到 `{autopf}\Sonora Music`、开始/桌面快捷方式、**卸载时单独问一句要不要删用户数据**（默认不删） |
+| 首次引导 | `presentation/qml/comic/FirstRunCard.qml`：`Library.needsSetup` 为真时盖住整窗，选目录 → `Library.chooseFolder()` → 写 `settings.ini` + 立即导入；可"以后再说" |
+| 单实例 | `QLockFile` 放数据目录 `instance.lock`；第二个实例调 `platform/win` 的 `raiseWindowByTitle(L"Sonora Music")` 把已有窗口提到前台，然后 `return 0` |
+| 数据目录 | 抽 `dataDirectory()`（`AppLocalDataLocation` → `exe/data` 兜底），库 / 设置 / 封面 / 锁全在里面；设置**用 INI 不用注册表**，卸载时能一起删干净（磁盘上实测在 `%LOCALAPPDATA%\Sonora\Sonora\`） |
+| 许可证 | 新增 `LICENSE`（MIT）、`THIRD-PARTY-NOTICES.md`（Qt LGPLv3 动态链接可替换、FFmpeg LGPLv2.1 无 GPL 组件、TagLib 静态链接的说明与源码途径）、`dist/README.txt`（怎么跑 / 数据在哪 / 怎么卸干净） |
 
-**验收**
+**验收（实测）**
 
-- 在**没装 Qt、没装 VS 运行时**的干净 Windows 上双击能跑（VS2022 应用需 `vc_redist`，或用 `/MT` 静态 CRT——但那样就不能用 Qt 的 `/MD` 库，所以选前者）
-- 卸载后无残留目录
+| 验收项 | 结果 | 判据 |
+| --- | --- | --- |
+| 版本号单一出处 | ✅ | `sonora.exe --version` → `Sonora Music 0.1.0`；打包脚本还会拿它与 `xmake.lua` 比对 |
+| 首次启动引导页 | ✅ | 空设置启动截图 mean luma 126.0（遮罩生效），`Library.dismissSetup()` 后 223.1；零 `[qml]` 告警 |
+| 选目录 → 落盘 → 导入 | ✅ | 引导页选 `.demo/audio` → `settings.ini` 出现 `[library] root=…`，日志 `导入完成：扫描 6，新增 6` |
+| 下次启动自动回到上次目录 | ✅ | 删除引导态重启 → `扫描 6，新增 0，未变 6`，不再弹引导卡（luma 221.8） |
+| 单实例 | ✅ | 第二个进程 197 ms 退出（`exit 0`），系统里始终只有 1 个窗口 |
+| 最小 PATH 下能跑 | ✅ | `PATH=C:\Windows\system32` 启动发布包：窗口打开、`曲库位置`/`在线音源就绪`/`导入完成` 三行正常，截图 luma 221.8 |
+| 运行库自包含 | ✅ | 发布目录含 `vcruntime140.dll`/`vcruntime140_1.dll`/`msvcp140*.dll` 与 `av*/sw*.dll`、`tls/qschannelbackend.dll`、`platforms/qwindows.dll`、`qml/` |
+| 卸载无残留 | ⚠️ 设计已定、**未实测** | 绿色包删除目录即卸载；安装器卸载时提示删 `%LOCALAPPDATA%\Sonora`。本机没有 Inno Setup，安装包未编译、更没跑过卸载 |
+| 干净 Windows 双击 | ⚠️ **未实测** | 只能在有 VS/Qt 的本机收窄 PATH 模拟；真干净机（Windows Sandbox）没跑 |
+
+**踩到的坑**
+
+1. **`windeployqt --compiler-runtime` 在普通 shell 里什么都不拷**：它靠 `VCINSTALLDIR` 找 Redist，非 VS 开发者命令行里没有这个变量，于是静默跳过。症状是包在本机能跑、干净机上"缺少 VCRUNTIME140.dll"。改成用 `vswhere` 找 `VC\Redist\MSVC\*\x64\Microsoft.VC*.CRT` 自己拷。
+2. **GUI 子系统程序的 stdout 在 PowerShell 里抓不到**：`& $exe --version` 与 `Start-Process -RedirectStandardOutput` 都得到空串，只有 `[System.Diagnostics.Process]` 显式接管道、或者 bash 里跑才行。打包脚本因此把版本一致性核对**放在 `windeployqt` 之后**（那时 DLL 才在 exe 旁边，进程才起得来）。
+3. **`Copy-Item` 的目标变量还没定义**：`$releaseDir` 原本在硬核对段才赋值，运行库拷贝段先用它 → 拷到当前目录（仓库根）里去了。变量定义必须放在第一次使用之前。
+4. **`QSettings("Sonora","Sonora")` 在 Windows 上写注册表**：能工作，但卸载残留。改用数据目录下的 `settings.ini`（`QSettings::IniFormat`）。
+5. **替换脚本里的 `\v`、`\x64` 被当成转义**：用 Python 批量改 PowerShell/C++ 源码时，`\\` 经 heredoc 少一层 → `\v` 变成垂直制表符、`\x64` 变成 `d`。含反斜杠的改动一律用 `chr(92)` 拼。
+
+**没做的**
+
+- Inno Setup 安装包**没有编译过**（本机无 `ISCC.exe`），`installer/sonora.iss` 是"写好了、等有工具的人跑"的状态。
+- 自动更新、代码签名都不在 M9 范围内。
 
 ---
 
