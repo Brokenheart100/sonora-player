@@ -1,3 +1,4 @@
+#include "sonora/presentation/Format.h"
 #include "sonora/presentation/TrackListModel.h"
 
 #include <QCoreApplication>
@@ -22,20 +23,6 @@ namespace sonora::presentation
         QString fromUtf8(const std::string &text)
         {
             return QString::fromStdString(text);
-        }
-
-        // 毫秒 → "3:45"。放这里而不是 QML，是因为时长格式化属于"数据怎么显示"的一部分，
-        // 而 QML 里写 JS 时间运算既慢又容易在 59.6 秒这种边上出岔子。
-        QString formatDuration(qint64 milliseconds)
-        {
-            if (milliseconds <= 0)
-            {
-                return QStringLiteral("--:--");
-            }
-            const auto totalSeconds = milliseconds / 1000;
-            const auto minutes = totalSeconds / 60;
-            const auto seconds = totalSeconds % 60;
-            return QStringLiteral("%1:%2").arg(minutes).arg(seconds, 2, 10, QLatin1Char('0'));
         }
 
     } // namespace
@@ -202,9 +189,10 @@ QVariant TrackListModel::data(const QModelIndex &index, int role) const
         }
 
         const auto loaded = static_cast<qlonglong>(rows_.size());
+        // %n 走 Qt 的复数机制（英文会选 song / songs）；%1 仍是普通的"已加载"数。
         setStatus(loaded < static_cast<qlonglong>(total_count_)
-                      ? tr("共 %1 首（已加载 %2）").arg(static_cast<qlonglong>(total_count_)).arg(loaded)
-                      : tr("共 %1 首").arg(static_cast<qlonglong>(total_count_)));
+                      ? tr("共 %n 首（已加载 %1）", "", static_cast<int>(total_count_)).arg(loaded)
+                      : tr("共 %n 首", "", static_cast<int>(total_count_)));
     }
 
     void TrackListModel::setSearchText(const QString &text)

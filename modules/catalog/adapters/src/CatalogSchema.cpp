@@ -103,11 +103,38 @@ ALTER TABLE tracks ADD COLUMN play_count INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE tracks ADD COLUMN last_played_at INTEGER NOT NULL DEFAULT 0;
 )sql";
 
-constexpr std::array<Migration, 4> kMigrations{{
+// M6：索引体从"C++ 手写两次"改成"写一列、触发器同步"。
+//
+// 旧做法是 refreshSearchRow() 先 DELETE 再 INSERT track_fts —— 两处写、两份真相，
+// 漏一处就是"搜不到"，而且 rebuild 必须先把 fts 清空再重灌。现在：
+//   1. body 只写进 tracks.search_body（一列、一次写）；
+//   2. 三个触发器负责把它同步到 fts，包括 UPDATE 与 DELETE；
+//   3. 老库升级时 search_body 是空串，由 rebuildSearchIndex() 在启动时逐行补。
+//
+// 触发器用 AFTER UPDATE OF search_body：只有那条语句的 SET 里出现这一列才触发，
+// 因此普通字段（播放次数之类）的更新不会白白重写全文索引。
+constexpr std::string_view kSchemaV5 = R"sql(
+ALTER TABLE tracks ADD COLUMN search_body TEXT NOT NULL DEFAULT '';
+
+CREATE TRIGGER tracks_fts_ai AFTER INSERT ON tracks BEGIN
+    INSERT INTO track_fts(rowid, body) VALUES (new.id, new.search_body);
+END;
+
+CREATE TRIGGER tracks_fts_au AFTER UPDATE OF search_body ON tracks BEGIN
+    UPDATE track_fts SET body = new.search_body WHERE rowid = new.id;
+END;
+
+CREATE TRIGGER tracks_fts_ad AFTER DELETE ON tracks BEGIN
+    DELETE FROM track_fts WHERE rowid = old.id;
+END;
+)sql";
+
+constexpr std::array<Migration, 5> kMigrations{{
     {1, "曲目/艺术家/专辑三表 + 列表投影视图", kSchemaV1},
     {2, "增量扫描列 + 全文索引表", kSchemaV2},
     {3, "列表投影视图加封面键", kSchemaV3},
     {4, "播放次数与最近播放时间（由 TrackFinished 事件累计）", kSchemaV4},
+    {5, "全文索引改由触发器同步（tracks.search_body）", kSchemaV5},
 }};
 
 }  // namespace

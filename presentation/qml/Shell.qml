@@ -251,7 +251,7 @@ Item {
             Text {
                 width: parent.width
                 text: Player.queue.length > 0
-                      ? qsTr("%1 首 · %2").arg(Player.queue.length).arg(Player.modeLabel)
+                      ? qsTr("%n 首 · %1", "", Player.queue.length).arg(Player.modeLabel)
                       : qsTr("队列是空的")
                 color: Theme.inkSoft
                 font.family: Theme.fontText

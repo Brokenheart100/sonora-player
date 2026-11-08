@@ -1,3 +1,4 @@
+#include "sonora/presentation/Format.h"
 #include "sonora/presentation/PlayerViewModel.h"
 
 #include <QCoreApplication>
@@ -39,20 +40,6 @@ namespace sonora::presentation
                 return QCoreApplication::translate("PlayerViewModel", "出错");
             }
             return QString();
-        }
-
-        // 与 TrackListModel 里的同名函数一致：毫秒 → "3:45"。放两处是刻意的——
-        // 一个纯函数不值得为它开一个公共头，重复 6 行比多一个 target 便宜。
-        QString formatClock(std::int64_t milliseconds)
-        {
-            if (milliseconds <= 0)
-            {
-                return QStringLiteral("--:--");
-            }
-            const auto totalSeconds = milliseconds / 1000;
-            return QStringLiteral("%1:%2")
-                .arg(totalSeconds / 60)
-                .arg(totalSeconds % 60, 2, 10, QLatin1Char('0'));
         }
 
         QString fromUtf8(const std::string &text) { return QString::fromStdString(text); }
@@ -100,7 +87,7 @@ namespace sonora::presentation
         if (current != lastPositionMs_)
         {
             lastPositionMs_ = current;
-            positionText_ = formatClock(current);
+            positionText_ = formatDuration(current);
             progress_ = durationMs_ > 0
                             ? static_cast<double>(current) / static_cast<double>(durationMs_)
                             : 0.0;
@@ -172,7 +159,7 @@ namespace sonora::presentation
         }
 
         durationMs_ = value.durationMs;
-        durationText_ = formatClock(durationMs_);
+        durationText_ = formatDuration(durationMs_);
 
         // 换歌就换歌词。loadFor() 自己会对同一路径早退，所以放在 2Hz 的 refresh 里
         // 不会重复查库——它只在 filePath 真的变了才动一次。

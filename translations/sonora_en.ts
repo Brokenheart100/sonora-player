@@ -199,13 +199,13 @@ It remembers this folder next time.</translation>
     </message>
     <message>
         <location filename="../presentation/qml/pages/OnlinePage.qml" line="97" />
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="658" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="681" />
         <source>推荐</source>
         <translation>Discover</translation>
     </message>
     <message>
         <location filename="../presentation/qml/pages/OnlinePage.qml" line="107" />
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="667" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="690" />
         <source>榜单</source>
         <translation>Charts</translation>
     </message>
@@ -240,175 +240,180 @@ It remembers this folder next time.</translation>
         <translation>Connecting to NetEase…</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="259" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="272" />
+        <source>离线·上次结果</source>
+        <translation>Offline · last result</translation>
+    </message>
+    <message>
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="281" />
         <source>处理中…</source>
         <translation>Working…</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="270" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="293" />
         <source>加载更多</source>
         <translation>Load more</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="279" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="302" />
         <source>重试</source>
         <translation>Retry</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="322" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="345" />
         <source>在线诊断</source>
         <translation>Online diagnostics</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="334" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="357" />
         <source>暂无数据</source>
         <translation>No data</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="335" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="358" />
         <source>连续失败 %1 次 · 令牌 %2/%3</source>
         <translation>%1 consecutive failures · tokens %2/%3</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="350" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="373" />
         <source>搜索缓存 %1/%2 行 · %3/%4 KB（LRU）</source>
         <translation>Search cache %1/%2 rows · %3/%4 KB (LRU)</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="366" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="389" />
         <source>降级：离线 %1 · 超时 %2 · 限流 %3 · 未登录 %4 · 上游 %5 · 地址过期 %6 · 缓存命中 %7</source>
         <translation>Degraded: offline %1 · timeout %2 · rate-limited %3 · signed out %4 · upstream %5 · expired URL %6 · cache hit %7</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="382" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="405" />
         <source>最近错误</source>
         <translation>Last error</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="439" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="462" />
         <source>已登录</source>
         <translation>Signed in</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="439" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="462" />
         <source>扫码登录</source>
         <translation>Scan to sign in</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="439" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="462" />
         <source>粘贴网易云 Cookie</source>
         <translation>Paste NetEase cookie</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="458" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="481" />
         <source>退出后本地密文会被删除，下次要重新登录。</source>
         <translation>Signing out deletes the local encrypted token; you will need to sign in again.</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="470" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="493" />
         <source>扫码</source>
         <translation>Scan</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="479" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="502" />
         <source>粘贴 Cookie</source>
         <translation>Paste cookie</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="526" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="549" />
         <source>用网易云音乐手机端扫码</source>
         <translation>Scan with the NetEase Cloud Music app</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="554" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="577" />
         <source>浏览器登录 music.163.com → F12 → Network → 任选一个请求，
 复制请求头里的整段 Cookie（只要有 MUSIC_U 就行）</source>
         <translation>Sign in at music.163.com → F12 → Network → pick any request,
 copy the whole Cookie header (MUSIC_U is all that matters)</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="568" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="591" />
         <source>正在核对…</source>
         <translation>Verifying…</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="579" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="602" />
         <source>刷新二维码</source>
         <translation>Refresh code</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="586" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="609" />
         <source>请稍候</source>
         <translation>Please wait</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="586" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="609" />
         <source>登录</source>
         <translation>Sign in</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="593" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="616" />
         <source>退出登录</source>
         <translation>Sign out</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="602" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="625" />
         <source>关闭</source>
         <translation>Close</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="676" />
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="678" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="699" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="701" />
         <source>新歌速递</source>
         <translation>New releases</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="682" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="705" />
         <source>每日推荐</source>
         <translation>Daily mix</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="689" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="712" />
         <source>私人 FM</source>
         <translation>Personal FM</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="699" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="722" />
         <source>我的</source>
         <translation>Mine</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="713" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="736" />
         <source>返回搜索</source>
         <translation>Back to search</translation>
     </message>
-    <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="796" />
-        <source>%1 首</source>
-        <translation>%1 songs</translation>
+    <message numerus="yes">
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="819" />
+        <source>%n 首</source>
+        <translation><numerusform>%n song</numerusform><numerusform>%n songs</numerusform></translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="812" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="835" />
         <source>还没有歌单</source>
         <translation>No playlists yet</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="812" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="835" />
         <source>登录后可见</source>
         <translation>Sign in to see</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="824" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="847" />
         <source>正在拉取…</source>
         <translation>Fetching…</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="878" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="901" />
         <source>收藏</source>
         <translation>Save</translation>
     </message>
     <message>
-        <location filename="../presentation/qml/pages/OnlinePage.qml" line="884" />
+        <location filename="../presentation/qml/pages/OnlinePage.qml" line="907" />
         <source>取消</source>
         <translation>Cancel</translation>
     </message>
@@ -416,14 +421,14 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>OnlineViewModel</name>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="49" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="36" />
         <source>%1 / %2 首</source>
         <translation>%1 / %2 songs</translation>
     </message>
-    <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="51" />
-        <source>%1 首</source>
-        <translation>%1 songs</translation>
+    <message numerus="yes">
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="38" />
+        <source>%n 首</source>
+        <translation><numerusform>%n song</numerusform><numerusform>%n songs</numerusform></translation>
     </message>
 </context>
 <context>
@@ -482,58 +487,58 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>PlayerViewModel</name>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="27" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="28" />
         <source>就绪</source>
         <translation>Ready</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="29" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="30" />
         <source>装载中</source>
         <translation>Loading</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="31" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="32" />
         <source>缓冲中</source>
         <translation>Buffering</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="33" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="34" />
         <source>播放中</source>
         <translation>Playing</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="35" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="36" />
         <source>已暂停</source>
         <translation>Paused</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="37" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="38" />
         <source>已停止</source>
         <translation>Stopped</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="39" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="40" />
         <source>出错</source>
         <translation>Error</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="67" />
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="75" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="54" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="62" />
         <source>顺序</source>
         <translation>Sequential</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="69" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="56" />
         <source>循环</source>
         <translation>Loop</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="71" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="58" />
         <source>单曲</source>
         <translation>Single</translation>
     </message>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="73" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="60" />
         <source>随机</source>
         <translation>Shuffle</translation>
     </message>
@@ -678,10 +683,10 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
         <source>关闭</source>
         <translation>Close</translation>
     </message>
-    <message>
+    <message numerus="yes">
         <location filename="../presentation/qml/Shell.qml" line="254" />
-        <source>%1 首 · %2</source>
-        <translation>%1 songs · %2</translation>
+        <source>%n 首 · %1</source>
+        <translation><numerusform>%n song · %1</numerusform><numerusform>%n songs · %1</numerusform></translation>
     </message>
     <message>
         <location filename="../presentation/qml/Shell.qml" line="255" />
@@ -692,12 +697,12 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>TrackListModel</name>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="70" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="57" />
         <source>未知艺术家</source>
         <translation>Unknown artist</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="79" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="66" />
         <source>未知专辑</source>
         <translation>Unknown album</translation>
     </message>
@@ -721,143 +726,143 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>sonora::presentation::OnlineViewModel</name>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="257" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="244" />
         <source>先输入关键词</source>
         <translation>Type a keyword first</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="296" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="283" />
         <source>正在搜索：%1</source>
         <translation>Searching: %1</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="323" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="310" />
         <source>正在加载第 %1 页…</source>
         <translation>Loading page %1…</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="352" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="339" />
         <source>正在重试…</source>
         <translation>Retrying…</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="480" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="467" />
         <source>这首歌没有歌手信息</source>
         <translation>This song has no artist info</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="603" />
-        <source>%1 首</source>
-        <translation>%1 songs</translation>
-    </message>
-    <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="634" />
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="959" />
-        <location filename="../presentation/include/sonora/presentation/OnlineViewModel.h" line="251" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="626" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="951" />
+        <location filename="../presentation/include/sonora/presentation/OnlineViewModel.h" line="254" />
         <source>输入关键词，回车搜索</source>
         <translation>Type a keyword and press Enter</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="637" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="629" />
         <source>正在搜索…</source>
         <translation>Searching…</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="640" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="632" />
         <source>正在加载下一页…</source>
         <translation>Loading the next page…</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="647" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="639" />
         <source>没有找到结果</source>
         <translation>No results</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="651" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="643" />
         <source>出错了</source>
         <translation>Something went wrong</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="656" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="648" />
         <source>当前网络不可用</source>
         <translation>Network unavailable</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="736" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="728" />
         <source>这些歌都没有可播放的地址</source>
         <translation>None of these songs has a playable URL</translation>
     </message>
-    <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="817" />
-        <source>已加入队列：%1 首</source>
-        <translation>Added to queue: %1 songs</translation>
+    <message numerus="yes">
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="590" />
+        <source>%n 首</source>
+        <translation><numerusform>%n song</numerusform><numerusform>%n songs</numerusform></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="809" />
+        <source>已加入队列：%n 首</source>
+        <translation><numerusform>Added to queue: %n song</numerusform><numerusform>Added to queue: %n songs</numerusform></translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="852" />
-        <location filename="../presentation/include/sonora/presentation/OnlineViewModel.h" line="253" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="844" />
+        <location filename="../presentation/include/sonora/presentation/OnlineViewModel.h" line="256" />
         <source>未登录</source>
         <translation>Not signed in</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="924" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="916" />
         <source>正在打开：%1</source>
         <translation>Opening: %1</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1006" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="998" />
         <source>每日推荐</source>
         <translation>Daily mix</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1015" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1007" />
         <source>正在取每日推荐…</source>
         <translation>Loading the daily mix…</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1036" />
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1151" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1028" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1143" />
         <source>登录后才能收藏</source>
         <translation>Sign in to save songs</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1044" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1036" />
         <source>正在取「我喜欢的音乐」，稍后再试</source>
         <translation>Loading “Liked Songs”, try again shortly</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1055" />
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1161" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1047" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1153" />
         <source>我喜欢的音乐</source>
         <translation>Liked Songs</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1067" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1059" />
         <source>收藏《%1》到「我喜欢的音乐」？</source>
         <translation>Save “%1” to “Liked Songs”?</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1094" />
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1190" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1086" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1182" />
         <source>已收藏</source>
         <translation>Saved</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1104" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1096" />
         <source>私人 FM：正在取第一批</source>
         <translation>Personal FM: loading the first batch</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1139" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1131" />
         <source>已跳过这首（以后不再出现）</source>
         <translation>Skipped this song (it will not appear again)</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1173" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1165" />
         <source>正在取「我喜欢的音乐」</source>
         <translation>Loading “Liked Songs”</translation>
     </message>
     <message>
-        <location filename="../presentation/src/OnlineViewModel.cpp" line="1235" />
+        <location filename="../presentation/src/OnlineViewModel.cpp" line="1227" />
         <source>正在生成二维码…</source>
         <translation>Generating the QR code…</translation>
     </message>
@@ -865,7 +870,7 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>sonora::presentation::PlayerViewModel</name>
     <message>
-        <location filename="../presentation/src/PlayerViewModel.cpp" line="322" />
+        <location filename="../presentation/src/PlayerViewModel.cpp" line="309" />
         <source>%1 失败：%2</source>
         <translation>%1 failed: %2</translation>
     </message>
@@ -883,42 +888,42 @@ copy the whole Cookie header (MUSIC_U is all that matters)</translation>
 <context>
     <name>sonora::presentation::TrackListModel</name>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="148" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="135" />
         <source>正在读取…</source>
         <translation>Reading…</translation>
     </message>
-    <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="206" />
-        <source>共 %1 首（已加载 %2）</source>
-        <translation>%1 songs (%2 loaded)</translation>
+    <message numerus="yes">
+        <location filename="../presentation/src/TrackListModel.cpp" line="194" />
+        <source>共 %n 首（已加载 %1）</source>
+        <translation><numerusform>%n song (%1 loaded)</numerusform><numerusform>%n songs (%1 loaded)</numerusform></translation>
+    </message>
+    <message numerus="yes">
+        <location filename="../presentation/src/TrackListModel.cpp" line="195" />
+        <source>共 %n 首</source>
+        <translation><numerusform>%n song</numerusform><numerusform>%n songs</numerusform></translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="207" />
-        <source>共 %1 首</source>
-        <translation>%1 songs</translation>
-    </message>
-    <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="224" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="212" />
         <source>没有选择文件夹</source>
         <translation>No folder selected</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="264" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="252" />
         <source>上一批还在导入，等它跑完</source>
         <translation>The previous batch is still importing; wait for it</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="268" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="256" />
         <source>正在导入…（%1 个文件夹）</source>
         <translation>Importing… (%1 folders)</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="350" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="338" />
         <source>正在播放：%1</source>
         <translation>Playing: %1</translation>
     </message>
     <message>
-        <location filename="../presentation/src/TrackListModel.cpp" line="385" />
+        <location filename="../presentation/src/TrackListModel.cpp" line="373" />
         <source>拖进来的东西没有文件，也没有文件夹</source>
         <translation>Nothing dropped contained files or folders</translation>
     </message>

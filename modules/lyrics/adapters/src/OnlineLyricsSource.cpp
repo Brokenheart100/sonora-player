@@ -1,6 +1,7 @@
 #include "sonora/lyrics/adapters/OnlineLyricsSource.h"
 
 #include <utility>
+#include <optional>
 
 #include "sonora/online/contracts/Queries.h"
 #include "sonora/online/contracts/Types.h"

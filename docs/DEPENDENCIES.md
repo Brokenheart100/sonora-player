@@ -127,7 +127,7 @@ add_requires("spdlog 1.17.0", {configs = {header_only = true, std_format = true}
 | 线程池 | `TaskFlow` / `oneTBB` | 自己写：`std::jthread` + 队列，150 行（`ITaskQueue` 的实现） |
 | 信号槽（领域层） | `boost::signals2` | `IDomainEvent` + 显式分发 |
 
-**关于 `std::expected`**：它能让 `Kernel/Result.h` 瘦到 20 行，但在 MSVC 上目前仍要走 `/std:c++23preview`。**决定**：M1 的 `Result<T>` 先用 `std::variant<T, Error>` 实现（30 行，行为一致），等项目整体迁到 C++23 时再换——一行 typedef 的事。不要为了一个类型把全项目切到 preview 标准。
+**关于 `std::expected`**：**已迁移**。项目整体切到 `c++23`（xmake 在 MSVC 上探测出 `/std:c++23preview`）后，`Kernel/Result.h` 的内部成员换成 `std::expected<T, Error>`，公开 API（`ok` / `fail` / `value` / `error` / `map` / `andThen` …）一字未改，所以 500 多处调用点不用动。**为什么不做成 `using Result<T> = std::expected<T, Error>`**：`.error()` 是 `std::expected` 的成员名，而我们的 `error()` 返回 `const Error&` 且被大量代码直接 `.error()` 取用；`Result<void>` 的 `take()` 语义也与 `expected::value()` 不同。薄包装能让两边都成立。
 
 ---
 
@@ -170,7 +170,7 @@ add_requires("spdlog 1.17.0", {configs = {header_only = true, std_format = true}
 
 两个渠道，分工固定：
 
-**渠道 A：xmake-repo**（`add_requires`）——纯源码构建，和项目同编译器、同 `/MD`、同 C++20：
+**渠道 A：xmake-repo**（`add_requires`）——纯源码构建，和项目同编译器、同 `/MD`、同 C++23：
 
 ```lua
 -- 版本在引入那一刻按仓库最新写死，别留浮动版本
@@ -196,7 +196,7 @@ xmake f --vcpkg=D:/vcpkg -m debug -a x64
 **一致性四条**（违反任意一条，症状都是链接期的 `LNK2038` / `__imp_*` 找不到）：
 1. 全部 **`/MD`**（vcpkg 的 `x64-windows` 三元组默认就是 `/MD`；`x64-windows-static` 是 `/MT`，**不要用**）；
 2. 全部 **x64**；
-3. 全部 **C++20**（库要求更高就统一抬高，不要混）；
+3. 全部 **C++23**（库要求更高就统一抬高，不要混）；
 4. 版本写死。xmake 侧写进 `add_requires`；vcpkg 侧用 manifest（`vcpkg.json` + `builtin-baseline`）锁定。
 
 ---
@@ -252,7 +252,7 @@ xmake
 
 1. **标准库有没有？** 有没有 `std::` 的东西能顶（§3 那张表）？
 2. **它只出现在 adapters 吗？** 如果要进 `*.Core`，先改架构，别改构建。
-3. **MSVC + `/MD` + x64 + C++20 上能一键装吗？** xmake-repo 或 vcpkg 有没有现成包？没有的话，源码编一遍要多久、要不要打补丁？
+3. **MSVC + `/MD` + x64 + C++23 上能一键装吗？** xmake-repo 或 vcpkg 有没有现成包？没有的话，源码编一遍要多久、要不要打补丁？
 4. **许可证是什么？** GPL 一律不碰。LGPL 只允许动态链接。MIT/BSD/Apache 随便用。
 5. **它失败时我损失多少？** 能用一个 `#if` 换掉、或者退回 200 行手写实现的，可以加；成了不可替换的基石的，必须有第二个方案。
 

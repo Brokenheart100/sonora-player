@@ -1,5 +1,7 @@
 #include "sonora/catalog/adapters/BasicMetadataReader.h"
 
+#include "sonora/kernel/Text.h"
+
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -22,14 +24,6 @@ std::string toUtf8(const fs::path &path)
     return std::string(reinterpret_cast<const char *>(text.data()), text.size());
 }
 
-std::string trim(std::string text)
-{
-    const auto notSpace = [](unsigned char c) { return !std::isspace(c); };
-    text.erase(text.begin(), std::find_if(text.begin(), text.end(), notSpace));
-    text.erase(std::find_if(text.rbegin(), text.rend(), notSpace).base(), text.end());
-    return text;
-}
-
 }  // namespace
 
 kernel::Result<core::TrackMetadata> BasicMetadataReader::read(std::string_view filePath) const
@@ -50,8 +44,8 @@ kernel::Result<core::TrackMetadata> BasicMetadataReader::read(std::string_view f
     // "艺术家 - 标题"：分隔符有三种（半角、全角、破折号），中文歌名里都常见。
     const auto separator = stem.find(" - ");
     if (separator != std::string::npos) {
-        metadata.artist = trim(stem.substr(0, separator));
-        metadata.title = trim(stem.substr(separator + 3));
+        metadata.artist = kernel::trimSpaceCopy(stem.substr(0, separator));
+        metadata.title = kernel::trimSpaceCopy(stem.substr(separator + 3));
     }
     if (metadata.title.empty()) {
         // 一首叫 "01.flac" 的歌比列表里一行空白强，也比"导入失败"强。

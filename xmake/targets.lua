@@ -36,7 +36,9 @@ local VCPKG_INSTALLED = path.join(VCPKG_ROOT, "installed", VCPKG_TRIPLET)
 
 -- 所有 target 共同的 Windows / MSVC 约束。集中一处，避免某个 target 漏规则。
 local function msvc()
-    set_languages("c++20")
+    -- c++23：xmake 会给 MSVC 探测 /std:c++23preview（cl 14.5x 认这个），
+    -- 不是 /std:c++latest —— 后者会连 C++26 预览一起打开。
+    set_languages("c++23")
     set_encodings("utf-8")   -- /utf-8：中文注释与 QML 字面量都指望它
     -- 运行库**故意不写死**：xmake 会按模式给 debug=/MDd、release=/MD。
     -- 有 Qt 的 target 必须按这个配对走——Qt 的 debug DLL（Qt6Cored.dll）是
@@ -148,7 +150,7 @@ add_packages("nlohmann_json", "qr-code-generator-cpp")
 target("Sonora.ThirdParty.Sqlite")
 set_kind("static")
 -- 故意不调 msvc()：这是 C 文件，/Zc:__cplusplus、/permissive-、set_languages("c++20")
--- 都是 C++ 专用；把 sqlite3.c 当 C++ 编会直接爆掉。
+-- 都是 C++ 专用；把 sqlite3.c 当 C++ 编会直接爆掉。语言标准跟着顶层走（c++23）。
 set_encodings("utf-8")
 -- 运行库跟随模式（同 msvc() 里的说明）：sqlite3.obj 必须与链接它的库同一套 CRT
 add_defines(
@@ -308,7 +310,7 @@ end)
 target("sonora_tests")
 set_kind("binary")
 set_default(false)   -- 不参与默认构建：xmake build sonora_tests 显式构建
-set_languages("c++20")
+set_languages("c++23")
 set_encodings("utf-8")
 add_defines("NOMINMAX", "WIN32_LEAN_AND_MEAN")
 add_cxflags("/Zc:__cplusplus", "/permissive-", "/bigobj", {tools = "cl"})

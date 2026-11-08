@@ -1,4 +1,5 @@
 #include "sonora/lyrics/adapters/LyricsSourceChain.h"
+#include <optional>
 
 namespace sonora::lyrics::adapters {
 

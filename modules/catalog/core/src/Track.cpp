@@ -1,5 +1,7 @@
 #include "sonora/catalog/core/domain/Track.h"
 
+#include "sonora/kernel/Text.h"
+
 #include <string_view>
 #include <utility>
 
@@ -10,21 +12,6 @@ using kernel::ErrorCode;
 using kernel::Result;
 
 namespace {
-
-bool isBlank(char c) noexcept
-{
-    return c == ' ' || c == '\t' || c == '\r' || c == '\n';
-}
-
-// 全角空格在中文标题里很常见（从网页复制来的），只 trim ASCII 会把
-// "　夜航西飞" 当成非空标题存进去，然后列表里出现一行看起来是空的记录。
-bool isFullWidthSpaceAt(std::string_view text, std::size_t index) noexcept
-{
-    // U+3000 的 UTF-8 是 E3 80 80
-    return index + 2 < text.size() && static_cast<unsigned char>(text[index]) == 0xE3
-           && static_cast<unsigned char>(text[index + 1]) == 0x80
-           && static_cast<unsigned char>(text[index + 2]) == 0x80;
-}
 
 // 统一校验：新增与重建都走这里，避免两条路径的不变量慢慢分叉。
 Result<void> validate(const TrackDetails &details)
@@ -63,35 +50,9 @@ TrackDetails normalized(TrackDetails details)
 
 std::string trimTitle(std::string_view text)
 {
-    std::size_t begin = 0;
-    std::size_t end = text.size();
-
-    while (begin < end) {
-        if (isBlank(text[begin])) {
-            ++begin;
-        } else if (isFullWidthSpaceAt(text, begin)) {
-            begin += 3;
-        } else {
-            break;
-        }
-    }
-
-    while (end > begin) {
-        // 从后往前找，多字节只能整段退，所以先在 [begin, end) 里定位最后一个
-        // 非空白字节，再判断它是不是全角空格的结尾。
-        const std::size_t last = end - 1;
-        if (isBlank(text[last])) {
-            end = last;
-            continue;
-        }
-        if (end >= begin + 3 && isFullWidthSpaceAt(text, end - 3)) {
-            end -= 3;
-            continue;
-        }
-        break;
-    }
-
-    return std::string{text.substr(begin, end - begin)};
+    // 规则住在 Kernel：导入侧（adapters）与领域侧（这里）必须用同一套空白定义，
+    // 否则会出现"标签里带全角空格的标题被存成非空"这种只在数据里才看得见的错。
+    return kernel::trimSpaceCopy(text);
 }
 
 Track::Track(TrackId id, TrackDetails details) : id_(id), details_(std::move(details)) {}

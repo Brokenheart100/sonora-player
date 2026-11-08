@@ -146,8 +146,8 @@ TEST_CASE("端到端：迁移 → 导入 20 首 → 列表 20 行 → 重开仍�
         const auto version = migrator.apply(adapters::migrations());
         REQUIRE(version.hasValue());
         // v2 = 增量扫描列 + 全文索引表，v3 = 列表视图补 cover_key（M5），
-        // v4 = 播放次数与最近播放时间（M6）。
-        CHECK(version.value() == 4);
+        // v4 = 播放次数与最近播放时间（M6），v5 = 全文索引改由触发器同步。
+        CHECK(version.value() == 5);
 
         auto handler = stack.handler();
         const auto imported = handler.import(catalog::contracts::ImportFolder{sandbox.musicDir()});
@@ -191,10 +191,10 @@ TEST_CASE("端到端：迁移 → 导入 20 首 → 列表 20 行 → 重开仍�
         Stack stack{std::move(reopened).take()};
 
         platform::storage::Migrator migrator{stack.connection, adapters::kModuleName};
-        // 再跑一遍迁移不该执行任何脚本，版本保持在 v4。
+        // 再跑一遍迁移不该执行任何脚本，版本保持在 v5。
         const auto version = migrator.apply(adapters::migrations());
         REQUIRE(version.hasValue());
-        CHECK(version.value() == 4);
+        CHECK(version.value() == 5);
 
         const auto count = stack.tracks->count();
         REQUIRE(count.hasValue());

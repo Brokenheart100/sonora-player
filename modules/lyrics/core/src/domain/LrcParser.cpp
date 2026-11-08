@@ -4,6 +4,7 @@
 #include <charconv>
 #include <string>
 #include <vector>
+#include <optional>
 
 namespace sonora::lyrics::core {
 namespace {

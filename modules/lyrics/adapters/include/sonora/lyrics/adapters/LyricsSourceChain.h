@@ -10,6 +10,7 @@
 
 #include <string_view>
 #include <vector>
+#include <optional>
 
 #include "sonora/kernel/Result.h"
 #include "sonora/lyrics/core/ports/Ports.h"

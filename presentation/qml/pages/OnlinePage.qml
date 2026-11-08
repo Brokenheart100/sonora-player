@@ -816,7 +816,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.margins: 10
-                    text: modelData.trackCount > 0 ? qsTr("%1 首").arg(modelData.trackCount) : ""
+                    text: modelData.trackCount > 0 ? qsTr("%n 首", "", modelData.trackCount) : ""
                     color: Theme.inkSoft
                     font.family: Theme.fontText
                     font.pixelSize: 13

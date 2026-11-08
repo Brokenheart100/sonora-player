@@ -1,5 +1,7 @@
 #include "sonora/catalog/adapters/TagLibMetadataReader.h"
 
+#include "sonora/kernel/Text.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -32,14 +34,6 @@ std::string toUtf8(const fs::path &path)
 {
     const auto text = path.u8string();
     return std::string(reinterpret_cast<const char *>(text.data()), text.size());
-}
-
-std::string trim(std::string text)
-{
-    const auto notSpace = [](unsigned char c) { return !std::isspace(c); };
-    text.erase(text.begin(), std::find_if(text.begin(), text.end(), notSpace));
-    text.erase(std::find_if(text.rbegin(), text.rend(), notSpace).base(), text.end());
-    return text;
 }
 
 // TagLib::String 到 std::string 一律走 UTF-8 —— 库里存的是 UTF-8，
@@ -107,9 +101,9 @@ kernel::Result<core::TrackMetadata> TagLibMetadataReader::read(std::string_view 
 #endif
     if (!ref.isNull()) {
         if (const TagLib::Tag *tag = ref.tag(); tag != nullptr) {
-            metadata.title = trim(toUtf8(tag->title()));
-            metadata.artist = trim(toUtf8(tag->artist()));
-            metadata.album = trim(toUtf8(tag->album()));
+            metadata.title = kernel::trimSpaceCopy(toUtf8(tag->title()));
+            metadata.artist = kernel::trimSpaceCopy(toUtf8(tag->artist()));
+            metadata.album = kernel::trimSpaceCopy(toUtf8(tag->album()));
         }
         if (const TagLib::AudioProperties *audio = ref.audioProperties(); audio != nullptr) {
             metadata.durationMs = audio->lengthInMilliseconds();

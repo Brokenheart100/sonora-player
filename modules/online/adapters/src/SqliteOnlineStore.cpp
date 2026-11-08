@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <string>
+#include <optional>
 
 namespace sonora::online::adapters
 {

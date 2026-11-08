@@ -250,39 +250,42 @@ Result<void> SqliteTrackRepository::refreshSearchRow(core::TrackId id)
                                         statement.value().columnString(1),
                                         statement.value().columnString(2));
 
-    auto erase = connection_.prepare("DELETE FROM track_fts WHERE rowid = ?");
-    if (!erase) {
-        return Result<void>::fail(erase.error());
+    // 只写一列：tracks.search_body。track_fts 由 Schema V5 的触发器同步
+    // （AFTER UPDATE OF search_body），所以这里不再有"两份真相要同时改"的问题。
+    auto update = connection_.prepare("UPDATE tracks SET search_body = ? WHERE id = ?");
+    if (!update) {
+        return Result<void>::fail(update.error());
     }
-    if (auto bound = erase.value().bind(1, idValue); !bound) {
+    if (auto bound = update.value().bind(1, std::string_view{body}); !bound) {
         return Result<void>::fail(bound.error());
     }
-    if (auto stepped = erase.value().step(); !stepped) {
+    if (auto bound = update.value().bind(2, idValue); !bound) {
+        return Result<void>::fail(bound.error());
+    }
+    if (auto stepped = update.value().step(); !stepped) {
         return Result<void>::fail(stepped.error());
     }
-
-    auto insert = connection_.prepare("INSERT INTO track_fts(rowid, body) VALUES(?, ?)");
-    if (!insert) {
-        return Result<void>::fail(insert.error());
-    }
-    if (auto bound = insert.value().bind(1, idValue); !bound) {
-        return Result<void>::fail(bound.error());
-    }
-    if (auto bound = insert.value().bind(2, std::string_view{body}); !bound) {
-        return Result<void>::fail(bound.error());
-    }
-    if (auto stepped = insert.value().step(); !stepped) {
-        return Result<void>::fail(stepped.error());
+    if (connection_.changes() == 0) {
+        // 读取与更新之间那行被删了：触发器不会响（new 都没有），索引得手动清。
+        auto erase = connection_.prepare("DELETE FROM track_fts WHERE rowid = ?");
+        if (!erase) {
+            return Result<void>::fail(erase.error());
+        }
+        if (auto bound = erase.value().bind(1, idValue); !bound) {
+            return Result<void>::fail(bound.error());
+        }
+        if (auto stepped = erase.value().step(); !stepped) {
+            return Result<void>::fail(stepped.error());
+        }
     }
     return Result<void>::ok();
 }
 
 Result<std::int64_t> SqliteTrackRepository::rebuildSearchIndex()
 {
-    auto wiped = connection_.exec("DELETE FROM track_fts");
-    if (!wiped) {
-        return Result<std::int64_t>::fail(wiped.error());
-    }
+    // 不再先清空 fts：老库升级到 V5 时 search_body 全是空串，
+    // 逐行 UPDATE 会把触发器当成"补写"，等于幂等重建；清空反而会在
+    // 中途失败时留下"曲目在、索引空"的半截状态。
     return rebuildSearchIndexFromTracks();
 }
 
@@ -295,9 +298,9 @@ Result<std::int64_t> SqliteTrackRepository::rebuildSearchIndexFromTracks()
     if (!select) {
         return Result<std::int64_t>::fail(select.error());
     }
-    auto insert = connection_.prepare("INSERT INTO track_fts(rowid, body) VALUES(?, ?)");
-    if (!insert) {
-        return Result<std::int64_t>::fail(insert.error());
+    auto update = connection_.prepare("UPDATE tracks SET search_body = ? WHERE id = ?");
+    if (!update) {
+        return Result<std::int64_t>::fail(update.error());
     }
 
     std::int64_t indexed = 0;
@@ -313,16 +316,16 @@ Result<std::int64_t> SqliteTrackRepository::rebuildSearchIndexFromTracks()
         const std::string body = searchBody(select.value().columnString(1),
                                             select.value().columnString(2),
                                             select.value().columnString(3));
-        if (auto bound = insert.value().bind(1, id); !bound) {
+        if (auto bound = update.value().bind(1, std::string_view{body}); !bound) {
             return Result<std::int64_t>::fail(bound.error());
         }
-        if (auto bound = insert.value().bind(2, std::string_view{body}); !bound) {
+        if (auto bound = update.value().bind(2, id); !bound) {
             return Result<std::int64_t>::fail(bound.error());
         }
-        if (auto stepped = insert.value().step(); !stepped) {
+        if (auto stepped = update.value().step(); !stepped) {
             return Result<std::int64_t>::fail(stepped.error());
         }
-        if (auto cleared = insert.value().reset(); !cleared) {
+        if (auto cleared = update.value().reset(); !cleared) {
             return Result<std::int64_t>::fail(cleared.error());
         }
         ++indexed;

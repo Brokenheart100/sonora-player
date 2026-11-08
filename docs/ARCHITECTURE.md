@@ -1,6 +1,6 @@
 # Sonora 架构设计
 
-> **栈**：Qt 6.12 (MSVC；实测 VS 2026) · C++20 · QML · FFmpeg · TagLib · SQLite · xmake · Windows x64 only
+> **栈**：Qt 6.12 (MSVC；实测 VS 2026) · C++23 · QML · FFmpeg · TagLib · SQLite · xmake · Windows x64 only
 > **架构**：Clean Architecture（同心圆）+ 严格 DDD（战术模式）+ CQRS（通道分离）+ MVVM（表现层）+ 模块化单体（Modular Monolith）
 > **边界**：模块边界由 **xmake 目标图强制**，不靠自觉
 >
@@ -720,7 +720,7 @@ Sonora/
 | CRT     | `/MD`（`set_runtimes("MD")`）                             | 与 Qt 的 `/MD` 不一致 → 链接错或跨 dll 释放堆崩溃 |
 | Qt 套件 | `msvc2022_64`                                               | 用错套件会在链接期爆炸，且报错信息完全指不到根因     |
 | 字符集  | `/utf-8` + 源文件 UTF-8 with BOM 不必需                     | 中文注释变乱码、`L"中文"` 编译警告                 |
-| 标准    | `/std:c++20` + `/Zc:__cplusplus`                          | `__cplusplus` 谎报 199711                          |
+| 标准    | `c++23`（xmake 探测出 `/std:c++23preview`）+ `/Zc:__cplusplus` | `__cplusplus` 谎报 199711；`/std:c++latest` 会带进 C++26 预览 |
 | 严格性  | `/permissive-`                                              | 依赖 MSVC 扩展的代码悄悄通过                         |
 | 宏      | `NOMINMAX` `WIN32_LEAN_AND_MEAN` `UNICODE` `_UNICODE` | `<windows.h>` 的 `min/max` 宏摧毁 `std::min`   |
 | 大对象  | `/bigobj`                                                   | 模板 + `std::variant` 多的 TU 报 C1128             |
@@ -732,7 +732,7 @@ set_project("Sonora")
 set_version("0.1.0")
 set_xmakever("2.9.5")
 set_encodings("utf-8")
-set_languages("c++20")
+set_languages("c++23")
 
 add_rules("mode.debug", "mode.release")
 
@@ -1078,7 +1078,8 @@ private:
     T m_v{};
 };
 
-// result.h —— C++20 没有 std::expected，自己写一个 40 行的
+// result.h —— 内部存 std::expected<T, Error>（C++23）；对外的 Result<T> 保持原名
+// （500 多处调用点不动），只在实现里把存储与异常安全交给标准库
 enum class Error : std::uint16_t {
     None = 0, NotFound, InvalidArgument, Conflict, Unsupported, IoFailure, Internal,
     NoHandler, QueueFull, Canceled,

@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <optional>
 
 #include "sonora/catalog/contracts/Queries.h"
 #include "sonora/catalog/contracts/TrackDto.h"

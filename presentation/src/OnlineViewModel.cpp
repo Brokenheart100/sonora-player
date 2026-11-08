@@ -1,3 +1,4 @@
+#include "sonora/presentation/Format.h"
 #include "sonora/presentation/OnlineViewModel.h"
 
 #include <QCoreApplication>
@@ -24,20 +25,6 @@ namespace sonora::presentation
     {
         using online::contracts::JobPhase;
 
-        // 毫秒 → "3:45"。界面不自己算：列表里两千行各自算一遍没有意义，
-        // 而且一旦两处算法不同，就会看到"表头和行对不上"。
-        QString formatDurationMs(std::int64_t ms)
-        {
-            if (ms <= 0)
-            {
-                return QStringLiteral("--:--");
-            }
-            const auto total = ms / 1000;
-            const auto seconds = total % 60;
-            const auto minutes = total / 60;
-            return QStringLiteral("%1:%2").arg(minutes).arg(seconds, 2, 10, QLatin1Char('0'));
-        }
-
         QString fromUtf8(const std::string &text) { return QString::fromStdString(text); }
 
         // 与服务端的 "loaded / total" 对齐：total 为 0 时说明接口没给总数，
@@ -48,7 +35,7 @@ namespace sonora::presentation
             {
                 return QCoreApplication::translate("OnlineViewModel", "%1 / %2 首").arg(state.loaded).arg(state.total);
             }
-            return QCoreApplication::translate("OnlineViewModel", "%1 首").arg(state.loaded);
+            return QCoreApplication::translate("OnlineViewModel", "%n 首", "", static_cast<int>(state.loaded));
         }
 
         // QML 里传的是字符串（锚点跟着标签页走），到这里换成枚举；
@@ -125,7 +112,7 @@ namespace sonora::presentation
         case AlbumRole:
             return fromUtf8(track.album);
         case DurationRole:
-            return formatDurationMs(track.durationMs);
+            return formatDuration(track.durationMs);
         case CoverRole:
             return fromUtf8(track.coverUrl);
         case QualityRole:
@@ -600,7 +587,7 @@ namespace sonora::presentation
             if (detail && detail.value().ok)
             {
                 collectionSubtitle_ = detail.value().trackCount > 0
-                                          ? tr("%1 首").arg(detail.value().trackCount)
+                                          ? tr("%n 首", "", detail.value().trackCount)
                                           : QString{};
                 if (!detail.value().creator.empty())
                 {
@@ -819,7 +806,7 @@ namespace sonora::presentation
             {
                 errorText_.clear();
                 retryable_ = false;
-                statusText_ = tr("已加入队列：%1 首").arg(static_cast<int>(appended));
+                statusText_ = tr("已加入队列：%n 首", "", static_cast<int>(appended));
                 statusHoldTicks_ = 100;
             }
             emit statusChanged();

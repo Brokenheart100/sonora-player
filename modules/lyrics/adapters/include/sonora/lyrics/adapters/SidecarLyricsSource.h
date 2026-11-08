@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string_view>
+#include <optional>
 
 #include "sonora/kernel/Result.h"
 #include "sonora/lyrics/core/ports/Ports.h"
