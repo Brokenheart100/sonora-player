@@ -182,8 +182,10 @@ namespace sonora::online::adapters
         if (const auto cached = store_.loadSearch(kProvider, request.keywords, request.offset))
         {
             diag_.recordCacheHit();
+            cachedTokens_.insert(token);
             Pending pending;
             pending.token = token;
+            pending.fromCache = true;
             pending.keywords = request.keywords;
             pending.offset = request.offset;
             pending.rawForDecode = *cached;
@@ -352,7 +354,9 @@ namespace sonora::online::adapters
     {
         drain();
         drainAuth();
-        return kernel::Result<c::OnlineJobState>::ok(jobs_.state(query.token));
+        auto state = jobs_.state(query.token);
+        state.fromCache = cachedTokens_.count(query.token) > 0;
+        return kernel::Result<c::OnlineJobState>::ok(state);
     }
 
     kernel::Result<c::OnlinePageDto> OnlineService::handle(const c::FetchOnlineRows &query)
@@ -1236,6 +1240,11 @@ namespace sonora::online::adapters
             if (const auto it = inflight_.find(item.token); it != inflight_.end())
             {
                 inflight_.erase(it);
+            }
+            if (!item.fromCache)
+            {
+                // 真正的网络回包：这一页不再是"上次结果"。
+                cachedTokens_.erase(item.token);
             }
             if (!item.rawForDecode.empty())
             {

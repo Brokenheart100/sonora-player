@@ -13,6 +13,7 @@
 #include <functional>
 #include <mutex>
 #include <string>
+#include <unordered_set>
 #include <unordered_map>
 #include <vector>
 
@@ -112,6 +113,8 @@ namespace sonora::online::adapters
             std::string rawForDecode;
             std::string keywords;
             std::int32_t offset{0};
+            // 这份回包是不是缓存：缓存命中时置 true，drain 里就不清 cachedTokens_。
+            bool fromCache{false};
         };
 
         // 投一个抓取任务。`bypassCache` 供重试用——重试的语义是"别给我缓存"。
@@ -322,6 +325,8 @@ namespace sonora::online::adapters
 
         std::unordered_map<std::uint64_t, std::uint64_t> inflight_;              // token → requestId
         std::unordered_map<std::uint64_t, contracts::RequestOnlinePage> requests_; // token → 原命令（重试要参数）
+        // 哪些 token 的结果来自缓存：命中时记一笔，重试（bypassCache）成功时划掉。
+        std::unordered_set<std::uint64_t> cachedTokens_;
 
         contracts::SourceStatusDto status_{};
         contracts::QrLoginDto qr_{};

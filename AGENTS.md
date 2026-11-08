@@ -139,6 +139,8 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - **追加式队列的"喊饿"有两个入口**：播完（`handleFinished`）与手动下一首（`next()`）。漏一个就是"播着播着停了"，而且只在用户按下一首时才复现。
 - **后台批次要有心跳**：私人 FM 不走 `JobRegistry`，排水挂在 `GetSourceStatus` 上——那条查询每一拍都会到，别依赖"用户正在搜索"才排水。
 - 私人 FM 失败只记 `fmFailures`，**不进 `noteFailure`**：否则一次 FM 抽风会把搜索那条退避闸门按下 5 秒。
+- **"这页是不是缓存"要单独记一笔**：`OnlineJobState.fromCache` 由服务侧 `cachedTokens_` 决定——缓存命中时插 token、**真正的网络回包在 `drain()` 里擦掉**。不擦的话，一旦命中过缓存，这一页永远显示「离线·上次结果」；界面据此显示角标，别在 QML 里猜。
+- `Online.diagnostics` 是**快照**，不是常驻属性：读之前要先 `Online.refreshDiagnostics()`（诊断面板靠 `Timer` 每 2 秒调一次）。在绑定里直接读会拿到 undefined 或旧值。
 
 - 应用日志是**控制台代码页（GBK）**，bash 里 `grep`/`cat` 中文全是 `����`。要看得先 `open(path,'rb').read().decode('gbk', errors='replace')`，再写 UTF-8 文件。
 

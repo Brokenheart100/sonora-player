@@ -282,10 +282,22 @@ python xmake/checks/boundaries.py
 
 ### N6 · 收尾（1.5 人日）
 
-- [ ] **N6-1 离线与降级复测**：把 `NeteaseUrls.h` 的 base 临时指向 `https://ncm-api-gone.invalid`，逐页检查"回到上次结果 + 离线角标"，改回来。
-- [ ] **N6-2 文档**：`docs/ONLINE.md` §19 实测记录、§5.5 新端点表、§11 里程碑勾选、`docs/ARCHITECTURE.md` §7.5（新端点走同一条链路）、`AGENTS.md` 是否需要追加坑（`__csrf`、大歌单分页）。
-- [ ] **N6-3 测试与门禁**：`sonora_tests`、`boundaries.py`、`subset_fonts.py --verify`、真机截图（在线页四标签 + 详情页 + 在线歌词）。
-- [ ] **N6-4 汇报**：哪些端点真通了、哪些没通、缓存数字、未做项（评论/播客/云盘）。
+- [x] **N6-1 离线与降级复测**：把 `NeteaseUrls.h` 的 base 临时指向 `https://ncm-api-gone.invalid`，逐页检查"回到上次结果 + 离线角标"，改回来。
+- [x] **N6-2 文档**：`docs/ONLINE.md` §19 实测记录、§5.5 新端点表、§11 里程碑勾选、`docs/ARCHITECTURE.md` §7.5（新端点走同一条链路）、`AGENTS.md` 是否需要追加坑（`__csrf`、大歌单分页）。
+- [x] **N6-3 测试与门禁**：`sonora_tests`、`boundaries.py`、`subset_fonts.py --verify`、真机截图（在线页四标签 + 详情页 + 在线歌词）。
+- [x] **N6-4 汇报**：哪些端点真通了、哪些没通、缓存数字、未做项（评论/播客/云盘）。
+
+#### N6 实施记录（2026-11-08）
+
+- **N6-1 离线复测**：`kNeteaseBaseUrl` 临时改成 `https://ncm-api-gone.invalid` →
+  - 已缓存的词（「晴天」，10 分钟 TTL 内）：`rows=30 cached=true`，界面「30 首」+「离线·上次结果」角标（`.demo/n6_offline.png`，朱红像素带 y 1023–1048 / x 384–494）；
+  - 没搜过的词：`rows=0 cached=false`、`errorText=网络错误`、`statusText=当前网络不可用`；
+  - 留痕：`degradations.offline=1`、`totalErrors=1`、`consecutiveFailures=1`；`[qml]` 告警 0；
+  - 改回 base、还原探针后重建冒烟，`[qml]` 仍为 0。
+  - 为此**先补了"这页是不是缓存"的语义**：`OnlineJobState.fromCache` + 服务侧 `cachedTokens_`（命中时记 token、真正的网络回包在 `drain()` 里擦掉）+ `OnlineViewModel.cachedResult` + 状态行角标。
+- **N6-2 文档**：`docs/ONLINE.md` 加 §5.4 第二批端点表（12 行，含"方括号要 URL 编码""v1 成功码是 0"等坑）、§11 加第二批进度指针、新增 **§25 N6 实施记录**；`docs/ARCHITECTURE.md` 新增 **§7.5 在线链路**（回投/分页/追加式队列/缓存来路四条）；本文件 §4 补实测列、§7 补进度行。
+- **N6-3 门禁**：`sonora_tests` **180 用例 / 5257 断言**；`boundaries.py` **222 个文件**；字体收集 1045 字、子集 172 KB、`--verify` 覆盖完整；截图 `n1_browse` / `n1_collection` / `n3_lyrics` / `n5_collection` / `n6_offline`。
+- **N6-4 汇报**：如实区分"真跑通"（搜索 / 歌单榜单专辑歌手 / 歌词 / 每日推荐 / FM / 离线降级）与"没验"（登录态三端点无 cookie、「不感兴趣」服务端同步、评论播客云盘未做）。
 
 ---
 
@@ -300,6 +312,18 @@ python xmake/checks/boundaries.py
 | FM 连播 | 20 首不断流、不重复 | 播放记录 + 队列日志 |
 | 降级 | 每个失败都有计数 + 一行日志 | 诊断面板 `degradations` |
 | 门禁 | tests 全绿 + boundaries 通过 + 字体验证通过 | 命令输出 |
+
+**实测补充（N6 收尾时填，没测的如实写"未测"）**
+
+| 指标 | 实测 |
+| --- | --- |
+| 歌单 1000 首 | 未测；实测到 200 行分两页（`100 → 200`），歌单 trackIds 100 首 |
+| 缓存命中 | 命中路径在同一 50ms 拍内返回（`cached=true`），未做精密计时 |
+| 点歌到出声 | 在线曲目 ~1–2s（N3 实测 `pos=0:02` 时已在播） |
+| 歌词偏差 | 未单独测；沿用本地歌词同一时间轴 |
+| FM 连播 | 实测 3 批 / 9 首以上不断流不重复（未到 20 首） |
+| 降级 | 离线 `offline=1` / `totalErrors=1` / `consecutiveFailures=1`，日志与角标都在 |
+| 门禁 | 180 用例 / 5257 断言；边界 222 文件；字体 1045 字覆盖完整 |
 
 ---
 
@@ -328,10 +352,12 @@ python xmake/checks/boundaries.py
 
 | 日期 | 段 | 结果 | 提交 |
 | --- | --- | --- | --- |
-| — | N0 | — | — |
-| — | N1 | — | — |
-| — | N2 | — | — |
-| — | N3 | — | — |
-| — | N4 | — | — |
+| 2026-11-08 | N0 | 匿名探通 15 个端点，6 个不可用/需换路 | `63bdf54` |
+| 2026-11-08 | N1 | 歌单/榜单/专辑/歌手/推荐歌单/新歌接通并可播放 | `3cd3b05` |
+| 2026-11-08 | N2 | 我的歌单 / 每日推荐 / 收藏写操作 / 未登录降级 | `c757664` |
+| 2026-11-08 | N3 | 在线歌词作为第三来源（异步 ready + 1s 重试） | `dd7b808` |
+| 2026-11-08 | N4 | 私人 FM：追加式队列 + `QueueNeedsMore` 事件 | `dfdcaf6` |
+| 2026-11-08 | N5 | 详情页大封面 / 播放全部 / 加入队列 / 查看歌手 / 键盘 | `81e2ac5` |
+| 2026-11-08 | N6 | 离线复测与收尾（缓存来路 + 角标 + 文档 + 门禁） | 见本次提交 |
 | — | N5 | — | — |
 | — | N6 | — | — |

@@ -252,14 +252,37 @@ Item {
                     color: Theme.screentone
                 }
 
-                Text {
+                Row {
                     anchors.left: parent.left
                     anchors.leftMargin: 16
                     anchors.verticalCenter: parent.verticalCenter
-                    text: Online.busy ? qsTr("处理中…") : Online.statusText
-                    color: Theme.inkSoft
-                    font.family: Theme.fontText
-                    font.pixelSize: Theme.textSmall
+                    spacing: 8
+
+                    // 离线时这页是"上次搜到的结果"：说清楚，别让人以为是新数据。
+                    Rectangle {
+                        visible: Online.cachedResult
+                        width: cachedLabel.implicitWidth + 12
+                        height: 18
+                        radius: 3
+                        color: Theme.accent
+
+                        Text {
+                            id: cachedLabel
+                            anchors.centerIn: parent
+                            text: qsTr("离线·上次结果")
+                            color: Theme.onAccent
+                            font.family: Theme.fontText
+                            font.pixelSize: Theme.textSmall - 2
+                        }
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Online.busy ? qsTr("处理中…") : Online.statusText
+                        color: Theme.inkSoft
+                        font.family: Theme.fontText
+                        font.pixelSize: Theme.textSmall
+                    }
                 }
 
                 ComicButton {

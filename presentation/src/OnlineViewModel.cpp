@@ -624,6 +624,11 @@ namespace sonora::presentation
         }
 
         const auto &state = job.value();
+        if (cachedResult_ != state.fromCache)
+        {
+            cachedResult_ = state.fromCache;
+            emit statusChanged();
+        }
         auto nextStatus = statusText_;
         auto nextError = errorText_;
         auto nextRetryable = retryable_;

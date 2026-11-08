@@ -102,6 +102,8 @@ namespace sonora::presentation
         Q_PROPERTY(bool hasMore READ hasMore NOTIFY statusChanged)
         Q_PROPERTY(bool signedIn READ signedIn NOTIFY statusChanged)
         Q_PROPERTY(bool retryable READ retryable NOTIFY statusChanged)
+        // 当前这页行数据来自本地缓存（离线时唯一能看到的旧结果）。
+        Q_PROPERTY(bool cachedResult READ cachedResult NOTIFY statusChanged)
         Q_PROPERTY(bool signingIn READ signingIn NOTIFY statusChanged)
         Q_PROPERTY(QString loginError READ loginError NOTIFY statusChanged)
         // 扫码登录：矩阵按格问，省得把二维数组搬进 QVariantList。
@@ -132,6 +134,7 @@ namespace sonora::presentation
         [[nodiscard]] bool hasMore() const { return hasMore_; }
         [[nodiscard]] bool signedIn() const { return signedIn_; }
         [[nodiscard]] bool retryable() const { return retryable_; }
+        [[nodiscard]] bool cachedResult() const { return cachedResult_; }
         [[nodiscard]] bool signingIn() const { return signingIn_; }
         [[nodiscard]] QString loginError() const { return loginError_; }
         [[nodiscard]] bool qrActive() const { return qrActive_; }
@@ -255,6 +258,7 @@ namespace sonora::presentation
         bool hasMore_ = false;
         bool signedIn_ = false;
         bool retryable_ = false;
+        bool cachedResult_ = false;
         bool signingIn_ = false;
         QString loginError_;
         // 扫码登录的界面态。矩阵只在 session 变化时更新一次。

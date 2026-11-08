@@ -633,6 +633,26 @@ UI 线程: 订阅进度读模型 → 每 200ms 刷一次进度条（不是每首
 
 ---
 
+### 7.5 在线链路（第二批端点，N1–N4）
+
+第二批只加端点与解析器，**没有新增线程、没有新增网络栈**，全部复用第一批的链路：
+
+```
+Presentation (OnlineViewModel)
+  → ICommandBus: RequestOnlinePage / LoadCollections / LoadMyPlaylists / ToggleFavorite / StartPersonalFm
+    → Online.Adapters: OnlineService（令牌桶 + 失败退避 + 缓存 + 诊断计数）
+      → NeteaseProvider（URL 构造与解码在 Online.Core，纯 C++，单测覆盖）
+        → IHttpTransport（Platform.Net: QtHttpTransport）
+          → SerialWorker：QNetworkAccessManager，send 只许队列线程
+```
+
+- **回投**：网络线程只把回包塞进各服务的 pending 队列；GUI 侧 50ms 轮询里的查询（`GetOnlineJob` / `FetchCollections` / `FetchMyPlaylists` / `GetSourceStatus`）负责排水与切页，不在网络线程里碰 DTO。
+- **分页**：歌单 / 榜单先取 `playlist.trackIds[]`，再按 500 一并发 `/api/song/detail`；专辑 / 歌手 / 新歌一次取全、在内存里切片。
+- **追加式队列**：Playback 只发布集成事件 `QueueNeedsMore`，组合根收到后发 `StartPersonalFm` ——播放模块不知道"FM"是什么，`PlayQueue` 只多一个 `appendable` 位。
+- **缓存来路**：页面数据来自本地缓存时 `GetOnlineJob` 带 `fromCache`，界面显示「离线·上次结果」；真正的网络回包在 `drain()` 里清掉标记，不会一直挂着"上次结果"。
+
+---
+
 ## 8. 目录结构
 
 ```

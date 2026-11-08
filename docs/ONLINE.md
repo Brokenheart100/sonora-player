@@ -394,6 +394,26 @@ public:
 
 任何降级都必须留痕：一行日志 + 计数器 +1，不允许"静默为空"。
 
+### 5.4 第二批端点（N1–N4 落地，2026-11-08）
+
+| 端点 | 用途 | 形态与坑 | 落地 |
+| --- | --- | --- | --- |
+| `/api/v6/playlist/detail` | 歌单 / 榜单详情 | 200；`playlist.trackIds[]` 才是全量（`tracks` 只给前 10 首） | N1 |
+| `/api/song/detail?ids=[…]` | 批量取歌（500/批） | **方括号必须 URL 编码成 `%5B…%5D`**，裸 `[` 回 400「参数错误」 | N1 |
+| `/api/v1/album/{id}` | 专辑 | 200；`album` + 顶层 `songs[]` | N1 |
+| `/api/v1/artist/{id}` | 歌手 | 200；`artist` + `hotSongs[]`；搜索结果里的 `artistId` 常为 0，不能拿它拼 URL | N1 |
+| `/api/toplist` | 榜单列表（65 张） | 200；`list[]`，`updateFrequency` 当副标题 | N1 |
+| `/api/personalized/playlist` | 推荐歌单 | 200；`result[]` | N1 |
+| `/api/personalized/newsong` | 新歌速递 | 200；`result[]`，歌曲在 `result[].song` 里（旧字段） | N1 |
+| `/api/song/lyric?id=&lv=-1&tv=-1` | 歌词（含翻译） | 200；`lrc.lyric` / `tlyric.lyric`；`nolyric`/`uncollected` 是"没词"，不是失败 | N3 |
+| `/api/user/playlist?uid=` | 我的歌单 | 200；`playlist[]`，`specialType == 5` 才是「我喜欢的音乐」 | N2 |
+| `/api/v3/discovery/recommend/songs` | 每日推荐 | 200；`data.dailySongs[]`，**匿名也能取** | N2 |
+| `POST /api/playlist/manipulate/tracks` | 收藏 / 取消收藏 | `__csrf` 从会话 cookie 取、**只进请求体**；未登录必失败 | N2 |
+| `/api/v1/radio/get` | 私人 FM | **顶层 `code` 是 0**、`data[]` 一次只回一首，凑一批要并发多次 | N4 |
+
+失败形态只有四种顶层码：`200` 成功 / `301` 未登录 / `400` 参数错 / `404` 接口不存在（v1 系列成功码是 `0`）。**只认顶层 `code`**——嵌套对象里常也有一个 `code`。
+
+
 ---
 
 ## 6. 凭据与安全
@@ -564,6 +584,8 @@ struct QueueEntry {
 | **R5 收尾** | 降级矩阵落实、缓存上限设置、诊断查询、文档同步、CI 打包断言 | 1 | 把 provider 端点改成 404 域名 → 应用照常播本地曲库，仅在线页显示"接口可能已变更" |
 
 **合计 9–10 人日**（R0 判定需加密签名时 +1~2）。R0 是唯一能证伪整件事的一步，必须第一个做。
+
+**第二批（N0–N6）进度**：N0–N6 的清单已拆到 [`docs/todolist.md`](todolist.md) 维护（N0 探通 ✅ / N1 只读资源 ✅ / N2 登录侧 ✅ / N3 在线歌词 ✅ / N4 私人 FM ✅ / N5 详情页与交互 ✅ / N6 收尾 ✅），本节的 R0–R5 只覆盖第一批（搜索 / 直链 / 登录 / 收尾），端点与坑以 [§19](#19-常用接口第二批n0-匿名探通2026-11-08) 与 [§20](#20-n1-实施记录只读资源2026-11-08)–[§25](#25-n6-实施记录离线复测与收尾2026-11-08) 为准。
 
 ### 11.1 关键路径
 
@@ -1277,3 +1299,38 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 
 - 子目录里的 QML 组件用主题色要**自己 import 主题目录**；缺了不报错，直到换页那一刻才 `ReferenceError`。
 - 状态行是"每拍覆写"的公共资源：一次性反馈必须显式"按住"若干拍，否则用户永远看不到。
 - 批量异步动作要报**实际生效数量**（79），不是请求数（100）——差的那 21 首用户一刷新就发现对不上。
+
+---
+
+## 25. N6 实施记录：离线复测与收尾（2026-11-08）
+
+### 25.1 先补齐"这页是不是缓存"的语义
+
+N6-1 要求离线时"回到上次结果 + 离线角标"，但代码里 `OnlineTrackDto.fromCache` 从没被赋过值，界面也无从判断。补法：
+
+- `OnlineJobState` 加 `bool fromCache{false}`；`OnlineService` 用 `std::unordered_set<std::uint64_t> cachedTokens_` 记录"哪些 token 的行是缓存给的"，缓存命中时插入、**真正的网络回包在 `drain()` 里擦掉**（`Pending` 加 `bool fromCache` 区分来路）。
+- `OnlineViewModel` 加 `cachedResult` 属性（`refreshJob()` 里跟 `state.fromCache` 比较），QML 在状态行左侧显示朱红小标签「离线·上次结果」。
+
+### 25.2 离线实测（base 临时指向 `https://ncm-api-gone.invalid`）
+
+| 场景 | 判据 |
+| --- | --- |
+| 已缓存的词（晴天，10 分钟 TTL 内） | `rows=30 cached=true`，界面显示「30 首」+「离线·上次结果」角标（截图 `.demo/n6_offline.png`，朱红像素带 y 1023–1048 / x 384–494） |
+| 没搜过的词 | `rows=0 cached=false`，`errorText=网络错误`、`statusText=当前网络不可用` |
+| 降级留痕 | `degradations.offline=1`、`totalErrors=1`、`consecutiveFailures=1` |
+| `[qml]` 告警 | 0 |
+| 改回 base 后 | 重建 + 冒烟 `[qml]` 0，`曲库位置`/`在线音源就绪`/`导入完成` 三行正常 |
+
+### 25.3 门禁
+
+- `sonora_tests`：**180 用例 / 5257 断言**。
+- `boundaries.py`：**222 个文件**。
+- `subset_fonts.py`：收集 1045 字、子集 172 KB，`--verify` 覆盖完整。
+- 截图：`n1_browse.png`（四标签 + 卡片墙）、`n1_collection.png`（详情页）、`n3_lyrics.png`（在线歌词）、`n5_collection.png`（新版详情页）、`n6_offline.png`（离线角标）。
+
+### 25.4 没做的
+
+- **评论 / 播客 / 云盘 / 私信**：不在本轮清单（`docs/todolist.md` §6 已列）。
+- **离线写操作**：收藏未做本地队列，断网时直接报错——写操作要么成功要么明确失败，不做"稍后重试"的假象。
+- **缓存落盘**：搜索/详情缓存有 10 分钟 TTL 与 200 行上限，但没有"离线可读的完整歌单快照"；离线只能看刚搜过的东西。
+

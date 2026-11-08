@@ -112,6 +112,9 @@ namespace sonora::online::contracts
         // 行数据变化时才 +1。界面据此决定"要不要 Fetch 一次行"，
         // 避免每次轮询都把整页 DTO 拷一遍。
         std::uint64_t revision{0};
+        // 这一页的行是不是从本地缓存来的（离线时唯一能看到的旧结果）。
+        // 界面据此显示"离线 · 上次结果"，而不是让用户以为这是刚搜到的新数据。
+        bool fromCache{false};
     };
 
     // 行数据页。`token` 与 `revision` 都要回传给界面：
