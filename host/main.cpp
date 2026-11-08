@@ -278,12 +278,19 @@ int main(int argc, char *argv[])
     // 全文索引与曲目表对齐。
     //
     // 迁移只建 track_fts（索引体要 C++ 算，SQL 造不出来），所以老库升级上来时
-    // 索引是空的——表现是"列表里有、搜不到"。这里比对行数补一次，
-    // 一致就直接跳过（正常启动零开销）。
+    // 索引是空的——表现是"列表里有、搜不到"。V5 之后索引体存在 tracks.search_body、
+    // 由触发器同步，所以除了"行数对不上"，还要看"有多少行的 search_body 还是空串"
+    // （V5 之前的老库升级上来就是这种状态：fts 里有旧数据，新列全是空）。
+    // 两种不一致都走同一条补写路径；一致就直接跳过（正常启动零开销）。
     {
         const auto tracks = connection.queryInt("SELECT COUNT(*) FROM tracks");
         const auto indexed = connection.queryInt("SELECT COUNT(*) FROM track_fts");
-        if (tracks && indexed && tracks.value() != indexed.value())
+        const auto unindexed = connection.queryInt(
+            "SELECT COUNT(*) FROM tracks WHERE search_body = ''");
+        const bool stale = tracks && indexed
+                           && (tracks.value() != indexed.value()
+                               || (unindexed && unindexed.value() > 0));
+        if (stale)
         {
             if (auto rebuilt = trackRepository->rebuildSearchIndex(); rebuilt)
             {

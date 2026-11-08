@@ -66,7 +66,7 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 
 **曲库 / 搜索**
 
-- 搜索走 FTS5，`track_fts.body` 存的是**逐字空格分隔**的文本（`夜 航 西 飞`），查询侧用短语 `"夜 航"`。原因：`unicode61` 把连续汉字当一个词，`MATCH '夜航'` 匹配不到 `夜航西飞`。改 `SearchText` 时**两侧必须一起改**——只改一边的症状是"搜不到"或"什么都搜到"。
+- 搜索走 FTS5。**索引体只写 `tracks.search_body` 一列**，`track_fts` 由三个触发器（Schema V5）同步——不要在仓储里手写 `INSERT/DELETE track_fts`，两份真相漏一处就是"搜不到"。`search_body` 存的是**逐字空格分隔**的文本（`夜 航 西 飞`），查询侧用短语 `"夜 航"`。原因：`unicode61` 把连续汉字当一个词，`MATCH '夜航'` 匹配不到 `夜航西飞`。改 `SearchText` 时**两侧必须一起改**——只改一边的症状是"搜不到"或"什么都搜到"。
 - FTS5 里**标点不算 token**：`"%"*` 会直接是 MATCH 语法错误。`matchQuery()` 会丢掉没有 token 的段，纯标点输入等于不筛选——这是刻意的降级，不是 bug。
 - **Windows 上 `TagLib::FileName` 不是 `const char*`**，而是一个同时收 `wchar_t*` 和 `char*` 的类；它的 `char*` 构造按**本地 8 位编码**（中文机器上是 GBK）打开文件。喂 UTF-8 字节，文件名带汉字就打不开——**不报错**，症状是"标签读不出来、时长 0、标题退回文件名"。传 `std::filesystem::path::c_str()`（Windows 上就是 `wchar_t*`）。
 - 增量扫描靠 `tracks.file_mtime` + `file_size_bytes`：没变就**连标签都不读**。改动导入逻辑时别顺手把 `findFileState` 跳过，二次扫描的 250ms 全靠它。
