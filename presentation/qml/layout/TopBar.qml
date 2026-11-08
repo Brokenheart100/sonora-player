@@ -22,19 +22,9 @@ Item {
 
     readonly property bool onlineMode: page === 2
 
-    Rectangle {
-        anchors.fill: parent
-        color: Theme.paperHigh
-    }
-
-    // 漫画的粗底线：顶部条与内容是"两格"，得有一笔画开。
-    Rectangle {
-        anchors.left: parent.left
-        anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 2
-        color: Theme.ink
-    }
+    // 不铺自己的底色：整窗的网点纸就是它的底色。
+    // 之前用 Theme.paperHigh（面板色）会在顶部多出一条更亮的横带，看着像
+    // "另一个面板浮在上面"；盖一层纯色又会把网点截断，所以干脆透明。
 
     // ── 搜索框 ──────────────────────────────────────────────────────────
     Rectangle {
@@ -46,7 +36,8 @@ Item {
         width: Math.max(180, Math.min(520, topBar.width - accountArea.width - 44))
         height: 34
         radius: 17
-        color: Theme.paper
+        // 背景是纸色，输入框用更亮的面板色才立得住
+        color: Theme.paperHigh
         border.width: searchInput.activeFocus ? 2 : 1.5
         border.color: searchInput.activeFocus ? Theme.accent : Theme.stroke
 
