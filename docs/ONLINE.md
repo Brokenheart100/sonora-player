@@ -595,17 +595,19 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 
 #### R1 骨架
 
-- [ ] **R1-1** `xmake/targets.lua:78` 的 `BUSINESS` 加 `"online"`，确认三个 target 自动生成并出现在 `presentation_deps` 里
-- [ ] **R1-2** `platform/net` 新 lib target + `SerialWorker`（`QThread` + `moveToThread`）+ pimpl 公开头（`include/sonora/platform/net/QtHttpTransport.h`），**全项目唯一** `qt = {"QtCore","QtNetwork"}` 的地方
-- [ ] **R1-3** `online/contracts/Transport.h`：`HttpRequest` / `HttpResponse` / `IHttpTransport`（签名照 §3.4）
-- [ ] **R1-4** `QtHttpTransport::send`（**异步**）：QNAM 单线程成员 + `setTransferTimeout()` + `QNetworkReply::finished` → 回调 + `cancel()` 映射 `abort()` + **GUI 线程断言** + `maxBodyBytes` 截断 + 非 `https://` 的**API 请求**直接拒绝（播放直链是 `http://`，不经这里，直接交给 FFmpeg）
-- [ ] **R1-5** `platform/net/SerialWorker`：`post()` 走 `QMetaObject::invokeMethod(Qt::QueuedConnection)` + `stop()` 幂等；**不放进 Kernel**（理由见 [§4.2](#42-执行器platformnetserialworker不进-kernel)）
-- [ ] **R1-6** `online/contracts`：§3.1–§3.3 的全部 DTO / 命令 / 查询（只签名，无实现）
-- [ ] **R1-7** `online/core` + `adapters/OnlineService` 骨架 + 4 个策略纯函数（`Backoff` / `FailureCounter` / `TokenBucket` / `ErrorMap`）+ 单测（假钟、假 transport）；**不写熔断器**（[§5.1](#51-数值可直接写进代码)）
-- [ ] **R1-8** `online/adapters`：`SqliteOnlineStore` + 迁移（`online_search_cache` / `online_detail_cache` / `online_song_cache` / `online_session` 四张表）+ 单测
-- [ ] **R1-9** `host/main.cpp`：`new` 出 `SerialWorker` / `QtHttpTransport` / `OnlineService`，注册第 4 个单例 `Online`，**关停顺序 worker 先于 transport**
-- [ ] **R1-10** `OnlineViewModel` 空壳 + `OnlinePage.qml` 空壳 + `resources.qrc` 登记 + `Shell.qml` 侧栏入口（替掉 `enabled: false` 的"歌单"）
-- [ ] **R1-11** gate：`xmake -r -j8` 通过；`dumpbin /dependents sonora_tests.exe` 无 `Qt6*.dll`；`python xmake/checks/boundaries.py` pass
+> 这 11 项在 R2 开工前就已全部落地（R2–R4 都建在它上面），但复选框一直漏勾。R5 收尾时按代码逐条复核后补勾：`BUSINESS` 含 `online`（`xmake/targets.lua:80`）、`platform/net` 是全项目唯一 `QtNetwork` 出现处、`QtHttpTransport.cpp:74` 有 GUI 线程断言（`Q_ASSERT(QThread::currentThread() != app->thread())`）、四个策略纯函数在 `tests/online_policy.cpp` 有 5 个用例、四张缓存表在 `OnlineSchema.cpp:22-45`、`host/main.cpp:307-457` 的构造与关停顺序（`netWorker.post(reset transport)` → `netWorker.stop()`）都对得上。
+
+- [x] **R1-1** `xmake/targets.lua:78` 的 `BUSINESS` 加 `"online"`，确认三个 target 自动生成并出现在 `presentation_deps` 里
+- [x] **R1-2** `platform/net` 新 lib target + `SerialWorker`（`QThread` + `moveToThread`）+ pimpl 公开头（`include/sonora/platform/net/QtHttpTransport.h`），**全项目唯一** `qt = {"QtCore","QtNetwork"}` 的地方
+- [x] **R1-3** `online/contracts/Transport.h`：`HttpRequest` / `HttpResponse` / `IHttpTransport`（签名照 §3.4）
+- [x] **R1-4** `QtHttpTransport::send`（**异步**）：QNAM 单线程成员 + `setTransferTimeout()` + `QNetworkReply::finished` → 回调 + `cancel()` 映射 `abort()` + **GUI 线程断言** + `maxBodyBytes` 截断 + 非 `https://` 的**API 请求**直接拒绝（播放直链是 `http://`，不经这里，直接交给 FFmpeg）
+- [x] **R1-5** `platform/net/SerialWorker`：`post()` 走 `QMetaObject::invokeMethod(Qt::QueuedConnection)` + `stop()` 幂等；**不放进 Kernel**（理由见 [§4.2](#42-执行器platformnetserialworker不进-kernel)）
+- [x] **R1-6** `online/contracts`：§3.1–§3.3 的全部 DTO / 命令 / 查询（只签名，无实现）
+- [x] **R1-7** `online/core` + `adapters/OnlineService` 骨架 + 4 个策略纯函数（`Backoff` / `FailureCounter` / `TokenBucket` / `ErrorMap`）+ 单测（假钟、假 transport）；**不写熔断器**（[§5.1](#51-数值可直接写进代码)）
+- [x] **R1-8** `online/adapters`：`SqliteOnlineStore` + 迁移（`online_search_cache` / `online_detail_cache` / `online_song_cache` / `online_session` 四张表）+ 单测
+- [x] **R1-9** `host/main.cpp`：`new` 出 `SerialWorker` / `QtHttpTransport` / `OnlineService`，注册第 4 个单例 `Online`，**关停顺序 worker 先于 transport**
+- [x] **R1-10** `OnlineViewModel` 空壳 + `OnlinePage.qml` 空壳 + `resources.qrc` 登记 + `Shell.qml` 侧栏入口（替掉 `enabled: false` 的"歌单"）
+- [x] **R1-11** gate：`xmake -r -j8` 通过；`dumpbin /dependents sonora_tests.exe` 无 `Qt6*.dll`；`python xmake/checks/boundaries.py` pass
 
 #### R2 搜索闭环
 
@@ -633,7 +635,7 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 - [x] **R3-8** `SqlitePlaybackRecorder`：`trackId == 0` 显式早退 + 单测（不能依靠"UPDATE 零行命中"）
 - [x] **R3-9** 直链过期重解析：`Failed` + URL 命中本会话表 → 重解析 1 次 + 同 `queueIndex` 重跳；连续 2 次失败停手
 - [x] **R3-10** 顺手修 `PlayerBar.qml` 里 `stateText.indexOf("失败") >= 0` 这个永不成立的判断
-- [ ] **R3-11** gate：切歌 10 次无一次卡超 1 秒；拔网线 15 秒内进 `Failed` 不永久卡；连播 30 分钟不自跳
+- [ ] **R3-11** gate：切歌 10 次无一次卡超 1 秒；拔网线 15 秒内进 `Failed` 不永久卡；连播 30 分钟不自跳（R5 收尾未复测：切歌 10 次与 30 分钟连播未做，拔网线 15 s 未做；见 §18.4 #8/#9）
       > 已实测：切歌 10 次（0 warn / 0 error / 队列连续推进，见 [§16.2](#162-直链播放的实测数字)）。
       > **未实测**：断网 15 秒、连播 30 分钟——本机不能摘网，挂机时长也不够，见 [§16.3](#163-未在本机验证的两件事如实记录)。
 
@@ -647,7 +649,7 @@ R4 与 R3 无依赖关系，可以并行；R1 的 `IHttpTransport` 一旦定稿�
 - [x] **R4-6** 会话表 + `secret_ref` + 顺序（登录先密文后行、登出先删密文；行写失败会把密文 `erase` 掉）；**未用 `UnitOfWorkScope`**——只有一条 `INSERT OR REPLACE`，包裹起来只多两次 begin/commit
 - [x] **R4-7** 账号胶囊 + 登录/登出 + 登录中的等待态（`Expiring` 还没触发源，留到 R5）
 - [x] **R4-8** 审计通过：`MUSIC_U`/`__csrf` 只出现在 5 个生产文件（`auth/CookieHeader.{h,cpp}`、`codec/NeteaseJson.{h,cpp}`、`adapters/OnlineService.cpp`）+ 2 个测试文件；`sonora.sqlite` 原始字节里 `MUSIC_U`/`__csrf` 计数都是 0（本机没装 `sqlite3`，用 Python 直接扫文件）
-- [ ] **R4-9** gate：重启仍登录 / 换号 / 服务端失效后提示重登
+- [ ] **R4-9** gate：重启仍登录 / 换号 / 服务端失效后提示重登（R5 无可用账号，未重测；R4 时实测过，见 §18.4 #10）
   - 已实测：失效提示（假 cookie → 「这个 cookie 已经失效，请重新复制一次」）。
   - **未实测**：重启仍登录、换号——需要一个真实网易云账号扫码成功一次，本机没有。代码路径（`restoreSession()` 先读库昵称渲染胶囊再异步校验；登出删密文再删行）已就绪，等有账号的人补一次。
 
@@ -722,18 +724,18 @@ R0-1 ─► R0-2 ─┬─► R0-3 ┐
 
 ## 13. 验收清单（可当 PR checklist）
 
-- [ ] `python xmake/checks/boundaries.py` pass，且 `grep -rn "Q[A-Z]" modules/online/core modules/online/contracts` 为空（注释也算）
-- [ ] `xmake build sonora_tests && ./build/windows/x64/debug/sonora_tests.exe` pass，且 exe **不依赖 Qt DLL**
-- [ ] `python tools/subset_fonts.py --verify` pass（939 → 新增文案后的新数字）
-- [ ] 命令/查询同步耗时 < 5ms（`CommandBus` 无告警）
-- [ ] 连打 5 个字只发 1 次请求；改词后旧结果不进模型
-- [ ] 断网：在线页 Offline，本地曲库与播放全程无感；重连点重试可恢复
-- [ ] 播在线曲：`stateText` 依次"装载中→缓冲中→播放中"；`durationMs<=0` 时进度条进不确定态且不出现 `45:28 / 2:02`
-- [ ] 播放中切歌 10 次，无一次卡超 1 秒；拔网线 15 秒内进 Failed 不永久卡
-- [ ] 直链过期：自动重解析 1 次成功则继续播；失败 2 次给出"换一首/重试"
-- [ ] 扫码登录 → 重启仍登录；登出后密文删除；`.sqlite` 里搜不到 `MUSIC_U`
-- [ ] 打包：release 包内含 `Qt6Network.dll` 与 `tls/qschannelbackend.dll`，最小 PATH 下能搜能播
-- [ ] 真机跑一遍：侧栏"在线音乐"可点，`[qml]` stderr 无 `undefined` 类告警
+- [x] `python xmake/checks/boundaries.py` pass，且 `grep -rn "Q[A-Z]" modules/online/core modules/online/contracts` 为空（注释也算）
+- [x] `xmake build sonora_tests && ./build/windows/x64/debug/sonora_tests.exe` pass，且 exe **不依赖 Qt DLL**
+- [x] `python tools/subset_fonts.py --verify` pass（939 → 新增文案后的新数字）
+- [x] 命令/查询同步耗时 < 5ms（`CommandBus` 无告警）
+- [x] 连打 5 个字只发 1 次请求；改词后旧结果不进模型
+- [x] 断网：在线页 Offline，本地曲库与播放全程无感；重连点重试可恢复
+- [ ] 播在线曲：`stateText` 依次"装载中→缓冲中→播放中"；`durationMs<=0` 时进度条进不确定态且不出现 `45:28 / 2:02`（⚠️ 状态序列已验；`durationMs<=0` 的不确定态没单独造，见 §18.4 #7）
+- [ ] 播放中切歌 10 次，无一次卡超 1 秒；拔网线 15 秒内进 Failed 不永久卡（⚠️ R5 未重测，见 §18.4 #8）
+- [ ] 直链过期：自动重解析 1 次成功则继续播；失败 2 次给出"换一首/重试"（⚠️ R5 未复测，见 §18.4 #9；R3 实测过）
+- [ ] 扫码登录 → 重启仍登录；登出后密文删除；`.sqlite` 里搜不到 `MUSIC_U`（⚠️ R5 无可用账号，见 §18.4 #10；R4 实测过）
+- [ ] 打包：release 包内含 `Qt6Network.dll` 与 `tls/qschannelbackend.dll`，最小 PATH 下能搜能播（✅ 流水线硬核对；⚠️ 未在真 CI runner 上跑过，见 §18.4 #11）
+- [x] 真机跑一遍：侧栏"在线音乐"可点，`[qml]` stderr 无 `undefined` 类告警
 
 ---
 
