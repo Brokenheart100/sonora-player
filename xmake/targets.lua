@@ -348,4 +348,8 @@ add_deps({
     -- Online.Adapters 自身零 Qt（传输由 Platform.Net 注入），所以这个二进制
     -- 仍然不拖 Qt DLL——这一条正是"适配器层零 Qt"的直接好处。
     "Sonora.Online.Adapters",
+    -- Preferences / Playlists：两层适配器也都零 Qt（只有 SQLite），
+    -- 所以"设置写进去能读回来""歌单重排不撞唯一索引"可以跑在真库上。
+    "Sonora.Preferences.Adapters",
+    "Sonora.Playlists.Adapters",
 })

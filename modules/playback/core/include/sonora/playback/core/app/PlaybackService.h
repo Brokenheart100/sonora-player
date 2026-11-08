@@ -5,7 +5,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
+#include <utility>
 
 #include <sonora/kernel/IEventBus.h>
 #include <sonora/kernel/ILogger.h>
@@ -51,6 +53,17 @@ public:
     [[nodiscard]] contracts::QueueView queueView() const;
     [[nodiscard]] const PlayQueue& queue() const noexcept { return queue_; }
 
+    /// 「音量或播放模式变了」的通知口。
+    ///
+    /// 播放模块**不认识**设置模块（Preferences 是另一个业务模块），所以这里只开
+    /// 一个回调；谁来存、存到哪儿由组合根决定。没有这个口，"上次拖到 40% 的音量"
+    /// 每次启动都会回到 100。
+    ///
+    /// 回调在调用 setVolume/setMode 的线程上同步执行——它只写一行键值，
+    /// 在 5ms 预算里没问题。别在里面重排数据库。
+    using SettingsListener = std::function<void(std::int32_t volume, contracts::PlaybackMode mode)>;
+    void onSettingsChanged(SettingsListener listener) { settingsListener_ = std::move(listener); }
+
 private:
     kernel::Result<void> loadCurrentAndPlay();
     void handleFinished();
@@ -63,6 +76,8 @@ private:
     std::int32_t volume_ = 100;
     // 追加式队列停在末尾、已经喊过 QueueNeedsMore：等新一批来了直接接上开播。
     bool waitingMore_ = false;
+    // 组合根注入的设置回写口（音量/模式变化时调一次）。可以为空。
+    SettingsListener settingsListener_{};
 };
 
 } // namespace sonora::playback::core

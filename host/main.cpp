@@ -57,6 +57,14 @@
 #include "sonora/platform/audio/FfmpegOutput.h"
 #include "sonora/playback/core/app/PlaybackHandlers.h"
 #include "sonora/playback/core/app/PlaybackService.h"
+#include "sonora/playlists/adapters/PlaylistsSchema.h"
+#include "sonora/playlists/adapters/SqlitePlaylistRepository.h"
+#include "sonora/playlists/core/app/PlaylistHandlers.h"
+#include "sonora/playlists/core/app/PlaylistService.h"
+#include "sonora/preferences/adapters/PreferencesSchema.h"
+#include "sonora/preferences/adapters/SqliteSettingsStore.h"
+#include "sonora/preferences/core/app/PreferencesHandlers.h"
+#include "sonora/preferences/core/app/PreferencesService.h"
 #include "sonora/lyrics/adapters/LyricsSourceChain.h"
 #include "sonora/lyrics/adapters/OnlineLyricsSource.h"
 #include "sonora/lyrics/adapters/SidecarLyricsSource.h"
@@ -71,6 +79,7 @@
 #include "sonora/presentation/Appearance.h"
 #include "sonora/presentation/LyricsModel.h"
 #include "sonora/presentation/OnlineViewModel.h"
+#include "sonora/presentation/PlaylistsViewModel.h"
 #include "sonora/presentation/PlayerViewModel.h"
 #include "sonora/presentation/TrackListModel.h"
 
@@ -85,6 +94,8 @@ namespace
     namespace presentation = sonora::presentation;
     namespace lyrics = sonora::lyrics;
     namespace contracts = sonora::contracts;
+    namespace preferences = sonora::preferences;
+    namespace playlists = sonora::playlists;
 
     // 临时的控制台日志。M4 之前没有真正的日志后端，但"命令慢于 5ms 要有人喊一声"
     // 这件事从第一天就得成立，否则性能预算是一句废话。
@@ -248,6 +259,24 @@ int main(int argc, char *argv[])
     if (auto migrated = onlineMigrator.apply(sonora::online::adapters::migrations()); !migrated)
     {
         std::fprintf(stderr, "在线缓存迁移失败：%s\n", migrated.error().message().c_str());
+        return 1;
+    }
+
+    // 设置与歌单各有自己的版本序列。偏好表只有一张两列的 kv，歌单是聚合
+    // （playlist + playlist_item）。两者都只加列/建表，不回填——R5 那次教训。
+    auto preferencesMigrator =
+        storage::Migrator{connection, sonora::preferences::adapters::kModuleName};
+    if (auto migrated = preferencesMigrator.apply(sonora::preferences::adapters::migrations());
+        !migrated)
+    {
+        std::fprintf(stderr, "设置迁移失败：%s\n", migrated.error().message().c_str());
+        return 1;
+    }
+
+    auto playlistsMigrator = storage::Migrator{connection, sonora::playlists::adapters::kModuleName};
+    if (auto migrated = playlistsMigrator.apply(sonora::playlists::adapters::migrations()); !migrated)
+    {
+        std::fprintf(stderr, "歌单迁移失败：%s\n", migrated.error().message().c_str());
         return 1;
     }
 
@@ -471,6 +500,44 @@ int main(int argc, char *argv[])
     playback::core::PlaybackService playbackService{audioOutput, &logger, &audioOutput, &events};
     playback::core::registerPlayback(commands, queries, playbackService);
 
+    // ---- 设置与歌单 ----
+    // 设置是所有模块的公共习惯（音量、播放模式、将来源设置），但不属于任何一个
+    // 业务模块；歌单是核心域里的一个小聚合。两者都只通过总线被看见。
+    preferences::adapters::SqliteSettingsStore settingsStore{connection};
+    preferences::core::PreferencesService preferencesService{settingsStore, &logger};
+    preferences::core::registerPreferences(commands, queries, preferencesService);
+
+    // 音量与播放模式跨会话恢复：先直接调服务恢复（**在挂回调之前**，否则恢复
+    // 动作自己会触发一次回写），再挂"变了就存"的口。播放模块不认识 Preferences，
+    // 它只有一个 std::function。
+    {
+        const auto volumeText = preferencesService.getOrDefault("playback/volume", "100");
+        int restoredVolume = 100;
+        try {
+            restoredVolume = std::stoi(volumeText);
+        } catch (const std::exception &) {
+            // 库里的值被人手改坏了：按默认 100% 走，不阻断启动。
+            restoredVolume = 100;
+        }
+        (void)playbackService.setVolume(restoredVolume);
+
+        const auto modeText = preferencesService.getOrDefault("playback/mode", "sequential");
+        (void)playbackService.setMode(playback::contracts::modeFromName(modeText));
+
+        playbackService.onSettingsChanged(
+            [&preferencesService](std::int32_t volume, playback::contracts::PlaybackMode mode)
+            {
+                // 失败不打断播放：设置存不下比一首歌放不出来轻得多。
+                (void)preferencesService.set("playback/volume", std::to_string(volume));
+                (void)preferencesService.set("playback/mode",
+                                             playback::contracts::toName(mode));
+            });
+    }
+
+    playlists::adapters::SqlitePlaylistRepository playlistRepository{connection};
+    playlists::core::PlaylistService playlistService{playlistRepository, &clock};
+    playlists::core::registerPlaylists(commands, queries, playlistService);
+
     // ---- N4：私人 FM ----
     // 一批 FM 曲目解析好直链后，由这里翻成队列条目交给播放服务。
     // 播放模块不知道"FM"是什么，它只会在队列播到末尾时发布 QueueNeedsMore；
@@ -522,6 +589,8 @@ int main(int argc, char *argv[])
     player.attachLyrics(&lyricsModel);
     // 在线页：自己的 ViewModel，自己的轮询计时器（50ms），与播放器互不相干。
     sonora::presentation::OnlineViewModel online{commands, queries};
+    // 歌单页的模型：它自己不认曲库，靠 ListTracks 建索引把 trackId 翻成标题。
+    sonora::presentation::PlaylistsViewModel playlistsModel{commands, queries};
     // 双击列表项后立刻刷新一次播放器条，否则要等下一个 500ms 轮询周期。
     QObject::connect(&library, &presentation::TrackListModel::playbackStarted, &player,
                      &presentation::PlayerViewModel::refresh);
@@ -530,6 +599,7 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Player", &player);
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Lyrics", &lyricsModel);
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Online", &online);
+    qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Playlists", &playlistsModel);
     // 外观（主题三态 + 语言）。它要在 engine 建好之前就装好翻译，
     // 否则第一帧是中文、下一帧才变英文，观感像闪一下。
     sonora::presentation::Appearance appearance{settingsPath()};

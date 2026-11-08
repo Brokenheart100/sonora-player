@@ -94,7 +94,13 @@ kernel::Result<void> PlaybackService::seekTo(std::int64_t positionMs) {
 
 kernel::Result<void> PlaybackService::setVolume(std::int32_t volume) {
     volume_ = clampVolume(volume);
-    return output_.setVolume(volume_);
+    if (auto applied = output_.setVolume(volume_); !applied) {
+        return applied;
+    }
+    if (settingsListener_) {
+        settingsListener_(volume_, queue_.mode());
+    }
+    return kernel::Result<void>::ok();
 }
 
 kernel::Result<void> PlaybackService::next() {
@@ -133,6 +139,9 @@ kernel::Result<void> PlaybackService::setMode(contracts::PlaybackMode mode) {
     queue_.setMode(mode);
     if (logger_ != nullptr) {
         logger_->info("播放模式：{}", contracts::toName(mode));
+    }
+    if (settingsListener_) {
+        settingsListener_(volume_, queue_.mode());
     }
     return kernel::Result<void>::ok();
 }

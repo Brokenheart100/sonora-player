@@ -28,6 +28,17 @@ constexpr std::string_view toName(PlaybackMode mode) noexcept {
     return "unknown";
 }
 
+/// toName 的反向：从设置里存下的那个词还原模式。
+///
+/// 认不出来一律回 Sequential，而不是报错——这是**用户设置**，不是协议：
+/// 一个被手改坏的字符不该让应用起不来，最多是"上次选的随机没了"。
+constexpr PlaybackMode modeFromName(std::string_view name) noexcept {
+    if (name == "repeat-all") return PlaybackMode::RepeatAll;
+    if (name == "repeat-one") return PlaybackMode::RepeatOne;
+    if (name == "shuffle") return PlaybackMode::Shuffle;
+    return PlaybackMode::Sequential;
+}
+
 /// 点一下模式按钮的循环顺序：顺序 → 列表循环 → 单曲循环 → 随机 → 顺序。
 constexpr PlaybackMode nextMode(PlaybackMode mode) noexcept {
     switch (mode) {
