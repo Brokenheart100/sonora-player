@@ -33,6 +33,34 @@ Item {
             anchors.fill: parent
             spacing: 0
 
+            // ── 工具条 ──────────────────────────────────────────────────
+            // 分组开关单独占一行：它原来挤在表头的右端，正好盖住「时长」那一列。
+            // 表头只放列名，工具条只放开关——两件事分开放，谁也不挡谁。
+            Item {
+                width: parent.width
+                height: 30
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("共 %1 首").arg(Library.count)
+                    color: Theme.inkSoft
+                    font.family: Theme.fontText
+                    font.pixelSize: Theme.textSmall
+                }
+
+                ComicButton {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 24
+                    text: page.grouped ? qsTr("分组：专辑") : qsTr("分组：关")
+                    strong: page.grouped
+                    onClicked: page.grouped = !page.grouped
+                }
+            }
+
             // ── 表头 ────────────────────────────────────────────────────
             Item {
                 width: parent.width
@@ -66,25 +94,13 @@ Item {
                     height: Theme.stroke
                     color: Theme.ink
                 }
-
-                // 分组开关原来在搜索条上；搜索移到全局顶部条后，它跟表头一起走。
-                // 用普通按钮而不是复选框：漫画语言里没有"勾选框"，只有按下去变重的按钮。
-                ComicButton {
-                    anchors.right: parent.right
-                    anchors.rightMargin: 10
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: 24
-                    text: page.grouped ? qsTr("分组：专辑") : qsTr("分组：关")
-                    strong: page.grouped
-                    onClicked: page.grouped = !page.grouped
-                }
             }
 
             // ── 列表 ────────────────────────────────────────────────────
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - 34
+                height: parent.height - 64
                 clip: true
                 model: Library
                 boundsBehavior: Flickable.StopAtBounds

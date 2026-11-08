@@ -245,10 +245,47 @@ Item {
             font.pixelSize: Theme.textSmall
         }
 
+        // ── 列名与分隔线 ────────────────────────────────────────────
+        // 详情页原来是"标题直接堆在列表上"，没有列名也没有一条横线，
+        // 和曲库页摆在一起就像少了表头的一格。这里补上同样的表头语言：
+        // 列名 + 一条粗墨线，把"标题区"和"歌曲区"切开。
+        Item {
+            width: parent.width
+            height: 26
+
+            Text {
+                x: 48
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("歌曲")
+                color: Theme.inkSoft
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textSmall
+                font.letterSpacing: 1
+            }
+
+            Text {
+                anchors.right: parent.right
+                anchors.rightMargin: 96
+                anchors.verticalCenter: parent.verticalCenter
+                text: qsTr("时长")
+                color: Theme.inkSoft
+                font.family: Theme.fontText
+                font.pixelSize: Theme.textSmall
+                font.letterSpacing: 1
+            }
+
+            Rectangle {
+                anchors.bottom: parent.bottom
+                width: parent.width
+                height: Theme.stroke
+                color: Theme.ink
+            }
+        }
+
         ListView {
             id: trackList
             width: parent.width
-            height: parent.height - 92
+            height: parent.height - 126
             clip: true
             model: Playlists.entries
             spacing: 2
