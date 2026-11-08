@@ -1214,3 +1214,66 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/probe_ncm_api.ps1 
 - 追加式队列的"喊饿"有**两个入口**（自然播完、手动下一首），漏一个就是"播着播着停了"。
 - 背景能力的排水不能依附于"用户正在搜索"这条路径——需要一个每拍必到的查询当心跳。
 - `findMember` 这种"方便 helper"的语义边界要写死：它只认对象；数组要用另一个名字。名字只差一个字符、行为差一整类，比类型错误更难发现。
+
+---
+
+## 24. N5 实施记录：在线详情页与交互（2026-11-08）
+
+### 24.1 三项分别做了什么
+
+| 项 | 落地形态 |
+| --- | --- |
+| N5-1 详情页 | `CollectionPage.qml` 整页重写：148px 高的 hero（104×104 封面 + 26px 标题 + 副标题 + 「播放全部」「加入队列」），下面沿用原表头/`TrackRow` 列表；每行右侧「···」弹出 `menuLayer`，三项：播放 / 加入队列 / 查看歌手 |
+| N5-2 加载与空态 | `stateLayer` 一套走完三态：`Halftone` 网点当骨架、`MangaPanel` 承载文案、`ComicBubble` 负责换行；文案优先级 `errorText` → `busy` → `statusText`，`retryable` 时给「重试」 |
+| N5-3 键盘与焦点 | `Esc` 两个互斥 Shortcut（菜单开着先关菜单，否者退页）；`TrackRow` / `CollectionCard` 加 `activeFocusOnTab` + `Keys.onReturnPressed`，焦点环用 `Theme.accentAlt`（"可交互"专用色，不与选中态抢） |
+
+「加入队列」不是新命令：复用 `ResolveAndPlayOnline` 取直链，回来后在 `applyPlayback()` 里走 `AppendTracks{playWhenIdle=false}`，**不打断正在播的那首**。
+
+### 24.2 代码落点
+
+| 文件 | 改动 |
+| --- | --- |
+| `modules/online/contracts/include/sonora/online/contracts/Types.h` | `OnlineTrackDto` 加 `artistId`（0 归一成空串） |
+| `modules/online/core/src/codec/NeteaseJson.cpp` | `firstArtistId()`：`artists[]` / `ar[]` 两套字段都认 |
+| `presentation/include/sonora/presentation/OnlineViewModel.h` | `ArtistIdRole`；`collectionCover`；`playAll` / `enqueue` / `enqueueAll` / `openArtist`；`statusHoldTicks_` |
+| `presentation/src/OnlineViewModel.cpp` | 排队分支（`enqueueOnly_` + `enqueueIds_`）；收藏/排队提示"按住 100 拍"；详情页补 `collectionCover_` |
+| `presentation/qml/comic/TrackRow.qml` | `showMenu` / `menuRequested` / `keyboardPlayable` + 「···」按钮 + 焦点环 |
+| `presentation/qml/comic/CollectionCard.qml` | `activeFocusOnTab` + `Keys.onReturnPressed` + 焦点环 |
+| `presentation/qml/comic/ComicBubble.qml` | `wrapWidth`：整句报错要能换行 |
+| `presentation/qml/pages/CollectionPage.qml` | 整页重写（hero / 三态 / 菜单 / 键盘） |
+| `presentation/qml/layout/PageTurner.qml` | 补 `import "../theme"` |
+
+### 24.3 真跑才暴露的问题
+
+1. **`PageTurner.qml` 只用 `Theme.ink` 却没 `import "../theme"`**：每次切页都报 4 条 `ReferenceError: Theme is not defined`，而静态检查看不出来——只有真的换过页才会现形。加一行 import 归零。
+2. **一次性提示被 50ms 的进度刷新盖掉**：`enqueueAll()` 写「已加入队列：79 首」，下一拍 `onTick` 就把状态行改成「100 首」。加 `statusHoldTicks_`（100 拍 ≈ 5 秒）按住，实测 N5B1/N5B2 都是「已加入队列：79 首」，第 16 秒的 N5B3 才回到「100 首」。
+3. **排队只加进 79/100 首**：100 行里有 21 首没解析出直链（版权/试听限制），按设计跳过；状态里报的是**实际加入数**，不是请求数。
+4. **上一次没杀干净的 `sonora.exe` 会让新进程被单实例锁顶掉**：表现为"启动秒退、日志只有 `QML debugging is enabled`"。跑冒烟前先 `taskkill //F //IM sonora.exe`。
+
+### 24.4 实测
+
+| 项 | 结果 |
+| --- | --- |
+| 详情页 | `N5A rows=100 cover=yes title=飙升榜 sub=100 songs · 网易云音乐 active=true` |
+| 播放全部 | `N5B st=Playing playing=true t=烂奇迹(不小心惹了上帝)` |
+| 加入队列 | `enqueue appended=79`；随后状态行 5 秒内保持「已加入队列：79 首」 |
+| 查看歌手 | `N5D title=江辰 rows=50 err=`（歌手页 50 首热歌） |
+| 返回 | `N5E active=false status=Type a keyword and press Enter` |
+| `[qml]` 告警 | 0 |
+| 截图 | `.demo/n5_collection.png`（1792×1256；封面区彩色像素 8/10 档，按钮行红色 14.4%） |
+| 单测 | 180 用例 / 5257 断言（新增 `artistId` 两个用例） |
+| 字体 | 1034 字 → 1035 字形 / 172 KB，`--verify` 覆盖完整 |
+| 边界 | 222 个文件通过 |
+
+### 24.5 没做的，以及为什么
+
+- **1000 首歌单没真机试**：本地只拿得到 100 行的榜单；N1 已经按 500/批分页取过 1200 首的假 transport 用例，界面侧没有额外风险，但"滚动不卡"这条没有实测数字。
+- **`Tab` 焦点顺序没有逐项验证**：只验证了"能 Tab 到行、回车能播"，没验证"从搜索框按 N 次 Tab 能到第一行"。
+- **「···」菜单没有键盘导航**：菜单内三项要鼠标点；键盘路径目前是"Tab 到行 → 回车直接播"。
+- **「查看歌手」只在 `artistId` 非 0 时可用**：搜索结果的 artistId 经常是 0（占位），这时提示"这首歌没有歌手信息"，而不是去请求 `/api/v1/artist/0`。
+
+### 24.6 给下一轮的教训
+
+- 子目录里的 QML 组件用主题色要**自己 import 主题目录**；缺了不报错，直到换页那一刻才 `ReferenceError`。
+- 状态行是"每拍覆写"的公共资源：一次性反馈必须显式"按住"若干拍，否则用户永远看不到。
+- 批量异步动作要报**实际生效数量**（79），不是请求数（100）——差的那 21 首用户一刷新就发现对不上。

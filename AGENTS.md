@@ -116,6 +116,8 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - **自定义 UBO 里的 `vec2` 不可信**：`float` 成员能到 shader，`vector2d` 实测到不了（现象是坐标全错、射线变成一团同心光晕）。要么拆成两个 `float`，要么别用 shader——集中线最后是 `Canvas` 画的。
 - **`Canvas` 会裁剪到自身矩形**，画到边界外的部分被平切。射线、扩散、投影这类"要往外走"的图形，长度要按"还能走多远"收笔，末端收成针尖，末端落在哪都不像被切断。
 - delegate 内部的 `id` **在外面看不见**（`item.pop.restart()` → `TypeError: Cannot call method 'restart' of undefined`）。给 delegate 加一个 `function start()` 当门面。
+- **子目录组件用主题要自己 import 主题目录**：`comic/`、`layout/` 里写 `Theme.xxx` 必须有 `import "../theme"`。缺了不会在加载时报，而是**换页那一刻**丢 4 条 `ReferenceError: Theme is not defined`（`PageTurner.qml` 中过）。
+- **状态行是"每拍覆写"的公共资源**：`onTick()` 每 50ms 按 job 状态重写 `statusText_`。一次性反馈（已加入队列 / 已收藏）要 `statusHoldTicks_ = N` 按住若干拍，否则用户根本看不到那句话。
 - `comic/`、`layout/` 这些子目录里的组件**也要** `import Sonora.Presentation 1.0`，否则 `ReferenceError: Player is not defined`——而且只在运行时炸。
 
 **在线音源**

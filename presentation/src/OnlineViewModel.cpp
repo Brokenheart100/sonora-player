@@ -1,5 +1,7 @@
 #include "sonora/presentation/OnlineViewModel.h"
 
+#include <QCoreApplication>
+
 #include <QVariantList>
 
 
@@ -44,9 +46,9 @@ namespace sonora::presentation
         {
             if (state.total > 0)
             {
-                return QStringLiteral("%1 / %2 首").arg(state.loaded).arg(state.total);
+                return QCoreApplication::translate("OnlineViewModel", "%1 / %2 首").arg(state.loaded).arg(state.total);
             }
-            return QStringLiteral("%1 首").arg(state.loaded);
+            return QCoreApplication::translate("OnlineViewModel", "%1 首").arg(state.loaded);
         }
 
         // QML 里传的是字符串（锚点跟着标签页走），到这里换成枚举；
@@ -91,6 +93,7 @@ namespace sonora::presentation
     {
         return {
             {SongIdRole, "songId"},  {TitleRole, "title"},     {ArtistRole, "artist"},
+            {ArtistIdRole, "artistId"},
             {AlbumRole, "album"},    {DurationRole, "duration"}, {CoverRole, "cover"},
             {QualityRole, "quality"}, {PlayableRole, "playable"},
         };
@@ -117,6 +120,8 @@ namespace sonora::presentation
             return fromUtf8(track.title);
         case ArtistRole:
             return fromUtf8(track.artists);
+        case ArtistIdRole:
+            return fromUtf8(track.artistId);
         case AlbumRole:
             return fromUtf8(track.album);
         case DurationRole:
@@ -249,7 +254,7 @@ namespace sonora::presentation
         const auto trimmed = keywords.trimmed();
         if (trimmed.isEmpty())
         {
-            statusText_ = QStringLiteral("先输入关键词");
+            statusText_ = tr("先输入关键词");
             errorText_.clear();
             emit statusChanged();
             return;
@@ -288,7 +293,7 @@ namespace sonora::presentation
         hasMore_ = false;
         retryable_ = false;
         errorText_.clear();
-        statusText_ = QStringLiteral("正在搜索：%1").arg(trimmed);
+        statusText_ = tr("正在搜索：%1").arg(trimmed);
         emit statusChanged();
 
         const auto token = token_;
@@ -315,7 +320,7 @@ namespace sonora::presentation
 
         const auto offset = model_.count();
         busy_ = true;
-        statusText_ = QStringLiteral("正在加载第 %1 页…").arg(offset / 30 + 2);
+        statusText_ = tr("正在加载第 %1 页…").arg(offset / 30 + 2);
         emit statusChanged();
 
         const auto token = token_;
@@ -344,7 +349,7 @@ namespace sonora::presentation
         }
         busy_ = true;
         errorText_.clear();
-        statusText_ = QStringLiteral("正在重试…");
+        statusText_ = tr("正在重试…");
         emit statusChanged();
 
         const auto token = token_;
@@ -386,6 +391,97 @@ namespace sonora::presentation
                 command.origin = origin;
                 return commands_.dispatch(command);
             });
+    }
+
+    void OnlineViewModel::playAll()
+    {
+        play(0);
+    }
+
+    namespace
+    {
+        // 排队与播放共用"解析整队直链"这一步：解析回来时，`applyPlayback`
+        // 按 enqueueOnly_ 决定派发 AppendTracks 还是 PlayTracks。
+        std::vector<std::string> idsOfRows(const std::vector<online::contracts::OnlineTrackDto> &rows)
+        {
+            auto ids = std::vector<std::string>{};
+            ids.reserve(rows.size());
+            for (const auto &row : rows)
+            {
+                ids.push_back(row.songId);
+            }
+            return ids;
+        }
+    } // namespace
+
+    void OnlineViewModel::enqueue(int index)
+    {
+        const auto &rows = model_.rows();
+        if (index < 0 || static_cast<std::size_t>(index) >= rows.size())
+        {
+            return;
+        }
+        enqueueIds_.clear();
+        enqueueIds_.push_back(rows[static_cast<std::size_t>(index)].songId);
+        enqueueOnly_ = true;
+        playbackSongId_.clear();
+
+        const auto token = token_;
+        const auto origin = pageKind_;
+        auto songIds = idsOfRows(rows);
+        dispatchQuietly(
+            [this, token, origin, songIds = std::move(songIds), index]
+            {
+                online::contracts::ResolveAndPlayOnline command;
+                command.token = token;
+                command.songIds = songIds;
+                command.startIndex = index;
+                command.origin = origin;
+                return commands_.dispatch(command);
+            });
+    }
+
+    void OnlineViewModel::enqueueAll()
+    {
+        const auto &rows = model_.rows();
+        if (rows.empty())
+        {
+            return;
+        }
+        enqueueIds_ = idsOfRows(rows);
+        enqueueOnly_ = true;
+        playbackSongId_.clear();
+
+        const auto token = token_;
+        const auto origin = pageKind_;
+        auto songIds = idsOfRows(rows);
+        dispatchQuietly(
+            [this, token, origin, songIds = std::move(songIds)]
+            {
+                online::contracts::ResolveAndPlayOnline command;
+                command.token = token;
+                command.songIds = songIds;
+                command.startIndex = 0;
+                command.origin = origin;
+                return commands_.dispatch(command);
+            });
+    }
+
+    void OnlineViewModel::openArtist(int index)
+    {
+        const auto &rows = model_.rows();
+        if (index < 0 || static_cast<std::size_t>(index) >= rows.size())
+        {
+            return;
+        }
+        const auto &row = rows[static_cast<std::size_t>(index)];
+        if (row.artistId.empty())
+        {
+            errorText_ = tr("这首歌没有歌手信息");
+            emit statusChanged();
+            return;
+        }
+        openCollection(QStringLiteral("artist"), fromUtf8(row.artistId), fromUtf8(row.artists));
     }
 
     void OnlineViewModel::signOut()
@@ -504,12 +600,13 @@ namespace sonora::presentation
             if (detail && detail.value().ok)
             {
                 collectionSubtitle_ = detail.value().trackCount > 0
-                                          ? QStringLiteral("%1 首").arg(detail.value().trackCount)
+                                          ? tr("%1 首").arg(detail.value().trackCount)
                                           : QString{};
                 if (!detail.value().creator.empty())
                 {
                     collectionSubtitle_ += QStringLiteral(" · ") + fromUtf8(detail.value().creator);
                 }
+                collectionCover_ = fromUtf8(detail.value().coverUrl);
                 emit collectionChanged();
             }
         }
@@ -534,38 +631,48 @@ namespace sonora::presentation
         switch (state.phase)
         {
         case JobPhase::Idle:
-            nextStatus = QStringLiteral("输入关键词，回车搜索");
+            nextStatus = tr("输入关键词，回车搜索");
             break;
         case JobPhase::Loading:
-            nextStatus = QStringLiteral("正在搜索…");
+            nextStatus = tr("正在搜索…");
             break;
         case JobPhase::LoadingMore:
-            nextStatus = QStringLiteral("正在加载下一页…");
+            nextStatus = tr("正在加载下一页…");
             break;
         case JobPhase::Ready:
             nextStatus = countText(state);
             nextError.clear();
             break;
         case JobPhase::Empty:
-            nextStatus = QStringLiteral("没有找到结果");
+            nextStatus = tr("没有找到结果");
             nextError.clear();
             break;
         case JobPhase::Error:
-            nextStatus = QStringLiteral("出错了");
+            nextStatus = tr("出错了");
             nextError = fromUtf8(state.error.message);
             nextRetryable = state.error.retryable;
             break;
         case JobPhase::Offline:
-            nextStatus = QStringLiteral("当前网络不可用");
+            nextStatus = tr("当前网络不可用");
             nextError = fromUtf8(state.error.message);
             nextRetryable = true;
             break;
         }
 
         const auto nextBusy = isBusy(state.phase);
-        const bool changed = nextStatus != statusText_ || nextError != errorText_ ||
-                             nextBusy != busy_ || nextRetryable != retryable_;
-        statusText_ = nextStatus;
+        // 排队 / 收藏成功这类一次性提示不该被每拍的"100 首"立刻盖掉。
+        const bool holdStatus = statusHoldTicks_ > 0;
+        if (holdStatus)
+        {
+            --statusHoldTicks_;
+        }
+        const bool changed = (!holdStatus && nextStatus != statusText_) ||
+                             nextError != errorText_ || nextBusy != busy_ ||
+                             nextRetryable != retryable_;
+        if (!holdStatus)
+        {
+            statusText_ = nextStatus;
+        }
         errorText_ = nextError;
         busy_ = nextBusy;
         retryable_ = nextRetryable;
@@ -626,7 +733,7 @@ namespace sonora::presentation
         if (playback.entries.empty())
         {
             // 整批都取不到地址（版权下架 / 会员曲）：这是"点了放不了"，不是列表坏了。
-            errorText_ = QStringLiteral("这些歌都没有可播放的地址");
+            errorText_ = tr("这些歌都没有可播放的地址");
             retryable_ = false;
             emit statusChanged();
             return;
@@ -645,7 +752,9 @@ namespace sonora::presentation
         }
 
         auto entries = std::vector<playback::contracts::QueueEntry>{};
+        auto entryIds = std::vector<std::string>{};
         entries.reserve(playback.entries.size());
+        entryIds.reserve(playback.entries.size());
         std::int32_t startIndex = 0;
         for (const auto &row : rows)
         {
@@ -670,7 +779,46 @@ namespace sonora::presentation
             entry.coverPath = row.coverUrl;
             // 歌词要靠 songId 找词：filePath 里是 CDN 直链，看不出是哪首歌。
             entry.onlineSongId = row.songId;
+            entryIds.push_back(row.songId);
             entries.push_back(std::move(entry));
+        }
+
+        if (enqueueOnly_)
+        {
+            // 排队：只挑这次要加的那几首，追加到队尾；不打断正在播的那首
+            // （playWhenIdle = false 时，播放服务只在队列空着时才起播）。
+            auto picked = std::vector<playback::contracts::QueueEntry>{};
+            picked.reserve(enqueueIds_.size());
+            for (std::size_t i = 0; i < entries.size(); ++i)
+            {
+                const auto wanted = std::find(enqueueIds_.begin(), enqueueIds_.end(), entryIds[i]);
+                if (wanted != enqueueIds_.end())
+                {
+                    picked.push_back(std::move(entries[i]));
+                }
+            }
+            const auto appended = picked.size();
+            playback::contracts::AppendTracks command;
+            command.entries = std::move(picked);
+            command.playWhenIdle = false;
+            const auto queued = commands_.dispatch(command);
+            enqueueOnly_ = false;
+            enqueueIds_.clear();
+            playbackSongId_.clear();
+            if (!queued)
+            {
+                errorText_ = fromUtf8(queued.error().message());
+                retryable_ = false;
+            }
+            else
+            {
+                errorText_.clear();
+                retryable_ = false;
+                statusText_ = tr("已加入队列：%1 首").arg(static_cast<int>(appended));
+                statusHoldTicks_ = 100;
+            }
+            emit statusChanged();
+            return;
         }
 
         const auto result = commands_.dispatch(playback::contracts::PlayTracks{std::move(entries), startIndex});
@@ -701,7 +849,7 @@ namespace sonora::presentation
         const auto nextSignedIn = value.signedIn;
         auto nextAccount = value.signedIn && !value.nickname.empty()
                                ? fromUtf8(value.nickname)
-                               : QStringLiteral("未登录");
+                               : tr("未登录");
         const auto nextLastError = fromUtf8(value.lastError.message);
 
         // 校验中的状态只由这里收敛：成功 → 清错误；给了 lastError → 显示它。
@@ -766,13 +914,14 @@ namespace sonora::presentation
         pageCollectionId_ = id.toStdString();
         collectionTitle_ = title;
         collectionSubtitle_.clear();
+        collectionCover_.clear();
         keywords_.clear();
         model_.clearRows();
         busy_ = true;
         hasMore_ = false;
         retryable_ = false;
         errorText_.clear();
-        statusText_ = QStringLiteral("正在打开：%1").arg(title);
+        statusText_ = tr("正在打开：%1").arg(title);
         emit statusChanged();
         emit collectionChanged();
 
@@ -797,6 +946,9 @@ namespace sonora::presentation
         pageCollectionId_.clear();
         collectionTitle_.clear();
         collectionSubtitle_.clear();
+        collectionCover_.clear();
+        enqueueOnly_ = false;
+        enqueueIds_.clear();
         model_.clearRows();
         token_ = 0;
         seenRevision_ = 0;
@@ -804,7 +956,7 @@ namespace sonora::presentation
         hasMore_ = false;
         retryable_ = false;
         errorText_.clear();
-        statusText_ = QStringLiteral("输入关键词，回车搜索");
+        statusText_ = tr("输入关键词，回车搜索");
         emit statusChanged();
         emit collectionChanged();
     }
@@ -851,7 +1003,7 @@ namespace sonora::presentation
         // 每日推荐走详情页，但没有具体歌单 id：服务层按 kind 自己发请求。
         pageKind_ = online::contracts::SourceKind::DailyRecommend;
         pageCollectionId_.clear();
-        collectionTitle_ = QStringLiteral("每日推荐");
+        collectionTitle_ = tr("每日推荐");
         collectionSubtitle_.clear();
         model_.clearRows();
         ++token_;
@@ -860,7 +1012,7 @@ namespace sonora::presentation
         hasMore_ = false;
         retryable_ = false;
         errorText_.clear();
-        statusText_ = QStringLiteral("正在取每日推荐…");
+        statusText_ = tr("正在取每日推荐…");
         emit statusChanged();
         emit collectionChanged();
 
@@ -881,7 +1033,7 @@ namespace sonora::presentation
         }
         if (!signedIn())
         {
-            errorText_ = QStringLiteral("登录后才能收藏");
+            errorText_ = tr("登录后才能收藏");
             emit statusChanged();
             return;
         }
@@ -889,7 +1041,7 @@ namespace sonora::presentation
         {
             // 喜欢列表的 id 只能从"我的歌单"里拿：没有任何歌单时先拉一次。
             loadMyPlaylists();
-            errorText_ = QStringLiteral("正在取「我喜欢的音乐」，稍后再试");
+            errorText_ = tr("正在取「我喜欢的音乐」，稍后再试");
             emit statusChanged();
             return;
         }
@@ -900,7 +1052,7 @@ namespace sonora::presentation
         for (const auto &item : myPlaylists_)
         {
             const auto map = item.toMap();
-            if (map.value(QStringLiteral("name")).toString() == QStringLiteral("我喜欢的音乐"))
+            if (map.value(QStringLiteral("name")).toString() == tr("我喜欢的音乐"))
             {
                 favoritePlaylistId_ = map.value(QStringLiteral("playlistId")).toString().toStdString();
                 break;
@@ -912,7 +1064,7 @@ namespace sonora::presentation
             favoritePlaylistId_ = first.value(QStringLiteral("playlistId")).toString().toStdString();
         }
 
-        favoritePromptText_ = QStringLiteral("收藏《%1》到「我喜欢的音乐」？").arg(fromUtf8(row.title));
+        favoritePromptText_ = tr("收藏《%1》到「我喜欢的音乐」？").arg(fromUtf8(row.title));
         favoritePromptVisible_ = true;
         emit favoriteChanged();
     }
@@ -939,7 +1091,7 @@ namespace sonora::presentation
             return;
         }
         errorText_.clear();
-        statusText_ = QStringLiteral("已收藏");
+        statusText_ = tr("已收藏");
         emit statusChanged();
     }
 
@@ -949,7 +1101,7 @@ namespace sonora::presentation
         fmMode_ = true;
         emit fmChanged();
         errorText_.clear();
-        statusText_ = QStringLiteral("私人 FM：正在取第一批");
+        statusText_ = tr("私人 FM：正在取第一批");
         emit statusChanged();
 
         // 喜欢要落到"我喜欢的音乐"里；顺手拉一次歌单，拿到 id 就能直接收藏。
@@ -984,7 +1136,7 @@ namespace sonora::presentation
         online::contracts::DislikeFmSong command;
         command.songId = songId.toStdString();
         (void)commands_.dispatch(command);
-        statusText_ = QStringLiteral("已跳过这首（以后不再出现）");
+        statusText_ = tr("已跳过这首（以后不再出现）");
         emit statusChanged();
     }
 
@@ -996,7 +1148,7 @@ namespace sonora::presentation
         }
         if (!signedIn())
         {
-            errorText_ = QStringLiteral("登录后才能收藏");
+            errorText_ = tr("登录后才能收藏");
             emit statusChanged();
             return;
         }
@@ -1006,7 +1158,7 @@ namespace sonora::presentation
             for (const auto &item : myPlaylists_)
             {
                 const auto map = item.toMap();
-                if (map.value(QStringLiteral("name")).toString() == QStringLiteral("我喜欢的音乐"))
+                if (map.value(QStringLiteral("name")).toString() == tr("我喜欢的音乐"))
                 {
                     fmPlaylistId_ = map.value(QStringLiteral("playlistId")).toString().toStdString();
                     break;
@@ -1018,7 +1170,7 @@ namespace sonora::presentation
             // 还没有歌单列表：记住这首，等 publishMyPlaylists 回来再补。
             pendingLikeSongId_ = songId.toStdString();
             loadMyPlaylists();
-            statusText_ = QStringLiteral("正在取「我喜欢的音乐」");
+            statusText_ = tr("正在取「我喜欢的音乐」");
             emit statusChanged();
             return;
         }
@@ -1035,7 +1187,7 @@ namespace sonora::presentation
             return;
         }
         errorText_.clear();
-        statusText_ = QStringLiteral("已收藏");
+        statusText_ = tr("已收藏");
         emit statusChanged();
     }
 
@@ -1080,7 +1232,7 @@ namespace sonora::presentation
         qrRows_.clear();
         qrSize_ = 0;
         qrSession_ = 0;
-        qrMessage_ = QStringLiteral("正在生成二维码…");
+        qrMessage_ = tr("正在生成二维码…");
         loginError_.clear();
         emit qrChanged();
     }

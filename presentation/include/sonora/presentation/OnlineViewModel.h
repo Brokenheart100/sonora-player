@@ -39,6 +39,7 @@ namespace sonora::presentation
             SongIdRole = Qt::UserRole + 1,
             TitleRole,
             ArtistRole,
+            ArtistIdRole,
             AlbumRole,
             DurationRole,
             CoverRole,
@@ -115,6 +116,8 @@ namespace sonora::presentation
         Q_PROPERTY(OnlineCollectionModel *collections READ collections CONSTANT)
         Q_PROPERTY(QString collectionTitle READ collectionTitle NOTIFY collectionChanged)
         Q_PROPERTY(QString collectionSubtitle READ collectionSubtitle NOTIFY collectionChanged)
+        // 详情页顶上那张大封面。拿不到就留空，界面退回画一张"没有封面"的纸片。
+        Q_PROPERTY(QString collectionCover READ collectionCover NOTIFY collectionChanged)
         Q_PROPERTY(bool collectionActive READ collectionActive NOTIFY collectionChanged)
 
     public:
@@ -138,6 +141,7 @@ namespace sonora::presentation
         [[nodiscard]] OnlineCollectionModel *collections() { return &collections_; }
         [[nodiscard]] QString collectionTitle() const { return collectionTitle_; }
         [[nodiscard]] QString collectionSubtitle() const { return collectionSubtitle_; }
+        [[nodiscard]] QString collectionCover() const { return collectionCover_; }
         [[nodiscard]] bool collectionActive() const
         {
             return pageKind_ != online::contracts::SourceKind::Search;
@@ -154,6 +158,15 @@ namespace sonora::presentation
         Q_INVOKABLE void retry();
         // 点某一行：把整页 id 一起交出去（下一首就是列表的下一行）。
         Q_INVOKABLE void play(int index);
+        // "播放全部" = 从第一首起播。单独一个方法是为了 QML 不必知道 index 语义。
+        Q_INVOKABLE void playAll();
+        // 加入队列：只解析直链、追加到队尾，不打断正在播的那首
+        // （playWhenIdle = false —— 空队列时才起播）。
+        Q_INVOKABLE void enqueue(int index);
+        Q_INVOKABLE void enqueueAll();
+        // 查看歌手：靠 `artistId` 开一个 Artist 资源页；搜索结果的 artistId
+        // 常常是 0，那就什么都不做，由 QML 把菜单项灰掉。
+        Q_INVOKABLE void openArtist(int index);
         Q_INVOKABLE void signOut();
         // 粘贴 cookie 登录。校验是异步的：这里只负责发命令，
         // 成败由 refreshStatus() 从 SourceStatusDto 里读回来（signingIn/loginError）。
@@ -235,9 +248,9 @@ namespace sonora::presentation
         int reResolveAttempts_ = 0;
         QString keywords_;
 
-        QString statusText_ = QStringLiteral("输入关键词，回车搜索");
+        QString statusText_ = tr("输入关键词，回车搜索");
         QString errorText_;
-        QString accountText_ = QStringLiteral("未登录");
+        QString accountText_ = tr("未登录");
         bool busy_ = false;
         bool hasMore_ = false;
         bool signedIn_ = false;
@@ -258,6 +271,14 @@ namespace sonora::presentation
         std::string pageCollectionId_;
         QString collectionTitle_;
         QString collectionSubtitle_;
+        QString collectionCover_;
+        // "加入队列"复用了取直链那条异步流程：解析回来时按 enqueueIds_ 挑行，
+        // 派发 AppendTracks 而不是 PlayTracks。空 vector = 当前不是在排队。
+        bool enqueueOnly_{false};
+        // 一次性提示（如"已加入队列"）会被 50ms 一拍的进度刷新立刻盖掉；
+        // 用"按住 N 拍"给它留出可读时间（100 拍 ≈ 5 秒）。
+        int statusHoldTicks_{0};
+        std::vector<std::string> enqueueIds_;
         // 卡片列表：哪些 kind 已经请求过、各自看到第几版。
         QHash<int, std::uint64_t> seenCollectionRevisions_;
         // 当前要看哪一类卡片（-1 = 不看）；界面切标签页时改它。

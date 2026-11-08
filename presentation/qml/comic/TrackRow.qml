@@ -35,6 +35,21 @@ Item {
     // "哪一列是曲名"这件事挤歪。
     signal favoriteRequested()
 
+    // 行尾的「···」：只有在线详情页打开它（曲库页没有这些动作）。
+    // 用信号而不是内联菜单：菜单要有唯一一份，不能每行各画一个。
+    property bool showMenu: false
+    signal menuRequested()
+
+    // 在线详情页把它打开：Tab 能走进来，回车播放。
+    // 曲库页保持关闭——那里列表几千行，Tab 一个个走过去还不如用搜索。
+    property bool keyboardPlayable: false
+    activeFocusOnTab: keyboardPlayable
+    Keys.onReturnPressed: {
+        if (row.keyboardPlayable) {
+            row.activated()
+        }
+    }
+
     signal activated()
 
     width: parent ? parent.width : 0
@@ -43,6 +58,16 @@ Item {
     Rectangle {
         anchors.fill: parent
         color: rowHover.hovered ? Theme.paperAlt : "transparent"
+    }
+
+    // 焦点环：键盘走到哪一行要看得见。用 accentAlt（"可交互焦点"专用色），
+    // 不用 accent——accent 的含义是"正在播放"。
+    Rectangle {
+        anchors.fill: parent
+        visible: row.activeFocus
+        color: "transparent"
+        border.width: 2
+        border.color: Theme.accentAlt
     }
 
     // 双击播放。用 TapHandler 的 onDoubleTapped，而不是自己数点击次数：
@@ -182,12 +207,47 @@ Item {
         font.pixelSize: Theme.textSmall
     }
 
+    // 「···」：判定"用户想对这一行做点别的"。它自己不开菜单，只把行号喊出去。
+    Item {
+        id: menuButton
+        visible: row.showMenu
+        x: row.width - 30
+        anchors.verticalCenter: parent.verticalCenter
+        width: 24
+        height: 24
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 3
+            color: menuHover.hovered ? Theme.paperAlt : "transparent"
+            border.width: menuHover.hovered ? 1 : 0
+            border.color: Theme.ink
+        }
+
+        Text {
+            anchors.centerIn: parent
+            text: "···"
+            color: Theme.ink
+            font.family: Theme.fontText
+            font.pixelSize: Theme.textBody
+            font.weight: Font.Bold
+        }
+
+        HoverHandler { id: menuHover }
+
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onTapped: row.menuRequested()
+        }
+    }
+
     Text {
         id: durationText
         // 58 而不是 90：这一列只放 "5:10"，给它 90 逻辑像素等于从专辑列身上
         // 偷 32px——在 1180 宽的窗口里这不是小数目（列表只有约 927 逻辑像素宽，
         // 百分比 + 固定像素混着算，固定值吃掉的比重比看起来大得多）。
-        x: row.width - 58
+        // 有「···」时整列左移 30px，免得端头被按住。
+        x: row.width - (row.showMenu ? 88 : 58)
         width: 50
         horizontalAlignment: Text.AlignRight
         anchors.verticalCenter: parent.verticalCenter

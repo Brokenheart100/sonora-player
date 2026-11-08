@@ -11,7 +11,7 @@ import Sonora.Presentation 1.0
 Item {
     id: shell
 
-    property int currentPage: 2 // TEMP N5B        // 0 = 曲库，1 = 正在播放，2 = 在线
+    property int currentPage: 0        // 0 = 曲库，1 = 正在播放，2 = 在线
     property bool queueOpen: false     // 右下角抽屉：当前播放队列
 
     // 焦点落在文本输入框里时（曲库页的搜索框），空格和方向键属于输入法，

@@ -108,6 +108,27 @@ namespace sonora::online::core::codec
             return &*it;
         }
 
+        // 第一位歌手的 id（"查看歌手"要用）。搜索结果里经常是 0——那不是"Wei 0"，
+        // 是网易云没给 id，当作没有。
+        std::string firstArtistId(const json &song)
+        {
+            const json *list = nullptr;
+            if (song.contains("artists") && song.at("artists").is_array())
+            {
+                list = &song.at("artists");
+            }
+            else if (song.contains("ar") && song.at("ar").is_array())
+            {
+                list = &song.at("ar");
+            }
+            if (list == nullptr || list->empty())
+            {
+                return {};
+            }
+            const std::string id = asText(member(list->at(0), "id"));
+            return id == "0" ? std::string{} : id;
+        }
+
         std::string artistNames(const json &song)
         {
             const json *list = nullptr;
@@ -182,6 +203,7 @@ namespace sonora::online::core::codec
             track.coverUrl = asText(member(album, "picUrl"));
 
             track.artists = artistNames(song);
+            track.artistId = firstArtistId(song);
 
             std::int64_t durationMs = asInt(member(song, "duration"));
             if (durationMs == 0)

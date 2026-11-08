@@ -87,6 +87,9 @@ namespace sonora::online::contracts
         std::string songId;
         std::string title;
         std::string artists;
+        // 第一位歌手的 id，给"查看歌手"用。搜索结果里这个字段常常是 0（占位），
+        // 那就当作"没有歌手信息"，别拼一个 /api/v1/artist/0 出去。
+        std::string artistId;
         std::string album;
         std::int64_t durationMs{0};
         std::string coverUrl;     // http(s) 封面地址，加载由界面层负责

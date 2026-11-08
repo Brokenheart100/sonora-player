@@ -889,25 +889,4 @@ Item {
         }
     }
 
-    // TEMP N5B
-    Timer {
-        id: n5bProbe
-        interval: 1000
-        repeat: true
-        running: true
-        property int step: 0
-        onTriggered: {
-            n5bProbe.step += 1
-            if (n5bProbe.step === 2) {
-                Online.openCollection("chart", "19723756", "飙升榜")
-            } else if (n5bProbe.step === 5) {
-                Online.enqueueAll()
-            } else if (n5bProbe.step === 6) {
-                console.log("N5B1 status=" + Online.statusText)
-            } else if (n5bProbe.step === 11) {
-                console.log("N5B2 status=" + Online.statusText)
-                n5bProbe.running = false
-            }
-        }
-    }
 }

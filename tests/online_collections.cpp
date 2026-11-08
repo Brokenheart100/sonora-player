@@ -41,6 +41,16 @@ const char *kFlatSong = R"json({
   "fee": 0
 })json";
 
+// 搜索结果里的 artist id 常常是 0：那是"没给"，不是"歌手编号 0"。
+const char *kSearchSong = R"json({
+  "id": 2668397359,
+  "name": "晴天 (原唱 周杰伦)",
+  "artists": [{"id": 0, "name": "周杰伦"}],
+  "album": {"id": 260499608, "name": "晴天", "picUrl": "https://p1.music.126.net/b.jpg"},
+  "duration": 269000,
+  "fee": 0
+})json";
+
 } // namespace
 
 TEST_CASE("在线歌单：trackIds 是对象数组，名字与曲目数照抄")
@@ -100,6 +110,20 @@ TEST_CASE("歌曲详情：平铺的 songs[] 必须解出整行（外层包裹的
     CHECK(row.album == "飞行器的执行周期");
     CHECK(row.durationMs == 269000);
     CHECK(row.playable);
+    // 第一位歌手的 id：给"查看歌手"用。
+    CHECK(row.artistId == "123");
+}
+
+TEST_CASE("在线歌曲：artist id 为 0 时当作没有歌手信息")
+{
+    const std::string body = std::string(R"({"code": 200, "songs": [)") + kSearchSong + "]}";
+
+    const auto result = decodeSongDetails(body);
+
+    CHECK(result.ok);
+    REQUIRE(result.rows.size() == 1);
+    CHECK(result.rows.front().artists == "周杰伦");
+    CHECK(result.rows.front().artistId.empty());
 }
 
 TEST_CASE("推荐的新歌：result[] 里每项是 {\"song\":{…}}，取里层")

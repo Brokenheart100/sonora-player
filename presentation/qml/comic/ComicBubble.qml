@@ -13,6 +13,9 @@ Item {
     property string text: "……"
     property string tailSide: "left"    // left | right | none
     property int    duration: 0         // > 0 时到点自动消失
+    // > 0 时按这个宽度换行。留 0 保持"一句话气泡"的原样：
+    // 状态提示会有整句报错（"接口可能已变更，稍后再试（…）"），不换行会顶出屏幕。
+    property real   wrapWidth: 0
     property bool   autoShow: true
 
     signal dismissed()
@@ -32,7 +35,7 @@ Item {
 
     Rectangle {
         id: body
-        width: label.implicitWidth + 34
+        width: root.wrapWidth > 0 ? root.wrapWidth + 34 : label.implicitWidth + 34
         height: label.implicitHeight + 22
         radius: 14
         color: Theme.paperHigh
@@ -62,6 +65,9 @@ Item {
     Text {
         id: label
         anchors.centerIn: body
+        width: root.wrapWidth > 0 ? root.wrapWidth : implicitWidth
+        wrapMode: root.wrapWidth > 0 ? Text.WordWrap : Text.NoWrap
+        horizontalAlignment: Text.AlignHCenter
         text: root.text
         color: Theme.ink
         font.family: Theme.fontText

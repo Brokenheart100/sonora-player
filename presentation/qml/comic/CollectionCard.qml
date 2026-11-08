@@ -17,8 +17,21 @@ Item {
 
     signal activated()
 
+    // Tab 能走进卡片、回车能打开——"进歌单"这一步不该只有鼠标能做。
+    activeFocusOnTab: true
+    Keys.onReturnPressed: card.activated()
+
     width: 168
     height: 228
+
+    Rectangle {
+        anchors.fill: parent
+        visible: card.activeFocus
+        radius: 12
+        color: "transparent"
+        border.width: 3
+        border.color: Theme.accentAlt
+    }
 
     Rectangle {
         id: frame
