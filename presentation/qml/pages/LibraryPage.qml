@@ -92,7 +92,7 @@ Item {
                     anchors.rightMargin: 10
                     anchors.verticalCenter: parent.verticalCenter
                     height: 28
-                    text: page.grouped ? "分组：专辑" : "分组：关"
+                    text: page.grouped ? qsTr("分组：专辑") : qsTr("分组：关")
                     strong: page.grouped
                     onClicked: page.grouped = !page.grouped
                 }

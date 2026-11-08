@@ -122,7 +122,7 @@ namespace sonora::presentation
             statusText_ = fromUtf8(view.source);
             break;
         case lyrics::contracts::LyricsStatus::Instrumental:
-            statusText_ = QStringLiteral("纯音乐");
+            statusText_ = tr("纯音乐");
             break;
         case lyrics::contracts::LyricsStatus::NotFound:
         default:

@@ -1,4 +1,5 @@
 import QtQuick
+import "../theme"
 
 // 翻页转场（ARCHITECTURE.md §10.7 / IMPLEMENTATION.md M8）。
 //
@@ -93,7 +94,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             visible: Math.abs(turnPage.angle) > 1
-            color: "#12100E"
+            color: Theme.ink
             opacity: Math.min(Math.abs(turnPage.angle) / 82, 1) * 0.18
         }
 

@@ -23,6 +23,8 @@ Item {
     property real padding: 12
     property color fillColor: Theme.paperHigh
     property color strokeColor: Theme.ink
+    // 硬阴影单独一个令牌：深色配色下用纯黑，用线稿色会变成"发光块"
+    property color shadowColor: Theme.shadow
 
     default property alias content: contentArea.data
     property alias contentItem: contentArea
@@ -38,7 +40,7 @@ Item {
         width: root.width
         height: root.height
         radius: root.cornerRadius
-        color: root.strokeColor
+        color: root.shadowColor
     }
 
     // 面板本体

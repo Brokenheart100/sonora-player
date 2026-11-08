@@ -118,10 +118,10 @@ namespace sonora::presentation
         QString queueText_;
         QString coverUrl_;
         QString onlineSongId_;
-        QString stateText_ = QStringLiteral("未播放");
+        QString stateText_ = tr("未播放");
         QString positionText_ = QStringLiteral("0:00");
         QString durationText_ = QStringLiteral("--:--");
-        QString modeLabel_ = QStringLiteral("顺序");
+        QString modeLabel_ = tr("顺序");
         QVariantList queue_;
         bool hasTrack_ = false;
         bool playing_ = false;

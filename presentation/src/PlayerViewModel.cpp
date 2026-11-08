@@ -1,5 +1,7 @@
 #include "sonora/presentation/PlayerViewModel.h"
 
+#include <QCoreApplication>
+
 #include <algorithm>
 #include <functional>
 #include <utility>
@@ -22,19 +24,19 @@ namespace sonora::presentation
             switch (state)
             {
             case playback::contracts::PlaybackState::Idle:
-                return QStringLiteral("就绪");
+                return QCoreApplication::translate("PlayerViewModel", "就绪");
             case playback::contracts::PlaybackState::Loading:
-                return QStringLiteral("装载中");
+                return QCoreApplication::translate("PlayerViewModel", "装载中");
             case playback::contracts::PlaybackState::Buffering:
-                return QStringLiteral("缓冲中");
+                return QCoreApplication::translate("PlayerViewModel", "缓冲中");
             case playback::contracts::PlaybackState::Playing:
-                return QStringLiteral("播放中");
+                return QCoreApplication::translate("PlayerViewModel", "播放中");
             case playback::contracts::PlaybackState::Paused:
-                return QStringLiteral("已暂停");
+                return QCoreApplication::translate("PlayerViewModel", "已暂停");
             case playback::contracts::PlaybackState::Stopped:
-                return QStringLiteral("已停止");
+                return QCoreApplication::translate("PlayerViewModel", "已停止");
             case playback::contracts::PlaybackState::Failed:
-                return QStringLiteral("出错");
+                return QCoreApplication::translate("PlayerViewModel", "出错");
             }
             return QString();
         }
@@ -54,6 +56,25 @@ namespace sonora::presentation
         }
 
         QString fromUtf8(const std::string &text) { return QString::fromStdString(text); }
+
+        // 播放模式按钮上的词。契约层给的是中文常量（core 层不碰 Qt），
+        // 这里按模式映射一次，翻译走本类的上下文。
+        QString modeText(const playback::contracts::PlaybackMode mode)
+        {
+            switch (mode)
+            {
+            case playback::contracts::PlaybackMode::Sequential:
+                return QCoreApplication::translate("PlayerViewModel", "顺序");
+            case playback::contracts::PlaybackMode::RepeatAll:
+                return QCoreApplication::translate("PlayerViewModel", "循环");
+            case playback::contracts::PlaybackMode::RepeatOne:
+                return QCoreApplication::translate("PlayerViewModel", "单曲");
+            case playback::contracts::PlaybackMode::Shuffle:
+                return QCoreApplication::translate("PlayerViewModel", "随机");
+            }
+            return QCoreApplication::translate("PlayerViewModel", "顺序");
+        }
+
 
     } // namespace
 
@@ -177,11 +198,12 @@ namespace sonora::presentation
             emit volumeChanged();
         }
 
-        if (value.mode != mode_)
+        // 每次 tick 都重算标签：语言切换后不必等用户点一下按钮才更新。
+        const auto newModeLabel = modeText(value.mode);
+        if (value.mode != mode_ || newModeLabel != modeLabel_)
         {
             mode_ = value.mode;
-            modeLabel_ = QString::fromUtf8(playback::contracts::modeLabel(mode_).data(),
-                                           static_cast<int>(playback::contracts::modeLabel(mode_).size()));
+            modeLabel_ = newModeLabel;
             emit modeChanged();
         }
 
@@ -297,7 +319,7 @@ namespace sonora::presentation
         if (!result)
         {
             // 命令失败不该让界面卡住：显示出错原因，继续用上一次的快照。
-            stateText_ = QStringLiteral("%1 失败：%2")
+            stateText_ = tr("%1 失败：%2")
                              .arg(QString::fromUtf8(what), fromUtf8(result.error().message()));
             emit stateChanged();
         }

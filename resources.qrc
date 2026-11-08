@@ -32,6 +32,7 @@
         <file alias="qml/pages/NowPlaying.qml">presentation/qml/pages/NowPlaying.qml</file>
         <file alias="qml/pages/OnlinePage.qml">presentation/qml/pages/OnlinePage.qml</file>
         <file alias="qml/pages/CollectionPage.qml">presentation/qml/pages/CollectionPage.qml</file>
+        <file alias="qml/pages/SettingsPage.qml">presentation/qml/pages/SettingsPage.qml</file>
 
         <!-- 布局部件 -->
         <file alias="qml/layout/PlayerBar.qml">presentation/qml/layout/PlayerBar.qml</file>
@@ -43,5 +44,8 @@
         <!-- 字体与 shader -->
         <file alias="fonts/ZCOOLKuaiLe-Subset.ttf">assets/fonts/ZCOOLKuaiLe-Subset.ttf</file>
         <file alias="shaders/dot.frag.qsb">assets/shaders/dot.frag.qsb</file>
+
+        <!-- 翻译：lrelease translations/sonora_en.ts -qm translations/sonora_en.qm -->
+        <file alias="i18n/sonora_en.qm">translations/sonora_en.qm</file>
     </qresource>
 </RCC>

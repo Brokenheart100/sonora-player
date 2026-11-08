@@ -116,7 +116,7 @@ namespace sonora::presentation
         endResetModel();
         emit countChanged();
 
-        setStatus(QStringLiteral("正在读取…"));
+        setStatus(tr("正在读取…"));
         fetchMoreRows();
     }
 
@@ -174,8 +174,8 @@ namespace sonora::presentation
 
         const auto loaded = static_cast<qlonglong>(rows_.size());
         setStatus(loaded < static_cast<qlonglong>(total_count_)
-                      ? QStringLiteral("共 %1 首（已加载 %2）").arg(static_cast<qlonglong>(total_count_)).arg(loaded)
-                      : QStringLiteral("共 %1 首").arg(static_cast<qlonglong>(total_count_)));
+                      ? tr("共 %1 首（已加载 %2）").arg(static_cast<qlonglong>(total_count_)).arg(loaded)
+                      : tr("共 %1 首").arg(static_cast<qlonglong>(total_count_)));
     }
 
     void TrackListModel::setSearchText(const QString &text)
@@ -192,7 +192,7 @@ namespace sonora::presentation
     {
         if (path.trimmed().isEmpty())
         {
-            setStatus(QStringLiteral("没有选择文件夹"));
+            setStatus(tr("没有选择文件夹"));
             return;
         }
         startImport(QStringList{path}, QString{});
@@ -232,11 +232,11 @@ namespace sonora::presentation
         // 比静默积压好。
         if (busy_.exchange(true))
         {
-            setStatus(QStringLiteral("上一批还在导入，等它跑完"));
+            setStatus(tr("上一批还在导入，等它跑完"));
             return;
         }
 
-        setStatus(QStringLiteral("正在导入…（%1 个文件夹）").arg(folders.size()));
+        setStatus(tr("正在导入…（%1 个文件夹）").arg(folders.size()));
 
         // 命令离线执行：扫描一万个文件、读一万次标签是几十秒的活，
         // 放在 GUI 线程上就是"界面白屏"。这条线是本项目"命令同步 < 5ms"
@@ -318,7 +318,7 @@ namespace sonora::presentation
             setStatus(fromUtf8(result.error().message()));
             return;
         }
-        setStatus(QStringLiteral("正在播放：%1")
+        setStatus(tr("正在播放：%1")
                       .arg(QString::fromStdString(rows_[static_cast<std::size_t>(row)].title)));
         emit playbackStarted();
     }
@@ -353,7 +353,7 @@ namespace sonora::presentation
 
         if (folders.isEmpty())
         {
-            setStatus(QStringLiteral("拖进来的东西没有文件，也没有文件夹"));
+            setStatus(tr("拖进来的东西没有文件，也没有文件夹"));
             return;
         }
 

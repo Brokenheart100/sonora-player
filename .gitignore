@@ -95,3 +95,7 @@ compile_commands.json
 
 # 发布产物（tools/package.ps1 生成，不入库）
 dist/
+
+# 编译好的译文要跟源码一起进仓库（与 assets/fonts/*-Subset.ttf 同理）：
+# 构建机不一定装 lrelease，缺了它 resources.qrc 会直接编不过。
+!translations/*.qm

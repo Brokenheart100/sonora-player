@@ -73,8 +73,27 @@ def collect_source_chars() -> set[str]:
     return chars
 
 
+TRANSLATIONS_DIR = ROOT / "translations"
+
+# <source>/<translation> 里的文本（.ts 是 XML，两种标签都要）
+TS_TEXT = re.compile(r"<(?:source|translation)>(.*?)</(?:source|translation)>", re.S)
+
+
+def collect_translation_chars() -> set[str]:
+    """扫 translations/*.ts 的源文案与译文。
+
+    英文文案只存在于 .ts 里，不扫就会出现"切到英文后标题缺字形"——
+    表现是几个字母掉回系统字体，比整句掉回去更难发现。
+    """
+    chars: set[str] = set()
+    for path in sorted(TRANSLATIONS_DIR.glob("*.ts")):
+        for match in TS_TEXT.finditer(path.read_text(encoding="utf-8")):
+            chars.update(match.group(1))
+    return chars
+
+
 def collect_chars() -> str:
-    """扫所有 QML 与 C++ 字面量，收集用到的字符。"""
+    """扫所有 QML、C++ 字面量与翻译，收集用到的字符。"""
     chars: set[str] = set(EXTRA_CHARS)
     chars.update(chr(c) for c in range(0x20, 0x7F))  # ASCII 可打印
 
@@ -84,6 +103,7 @@ def collect_chars() -> str:
         chars.update(path.read_text(encoding="utf-8"))
 
     chars |= collect_source_chars()
+    chars |= collect_translation_chars()
 
     # 控制字符和空白不用进字体
     chars = {c for c in chars if c.isprintable() or c == "\u3000"}

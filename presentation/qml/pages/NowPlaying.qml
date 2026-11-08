@@ -193,7 +193,7 @@ Item {
                     radius: width / 2
                     color: "transparent"
                     border.width: 1
-                    border.color: index % 2 === 0 ? "#4A453D" : "#2B2822"
+                    border.color: index % 2 === 0 ? Theme.grooveA : Theme.grooveB
                 }
             }
 
@@ -280,7 +280,7 @@ Item {
                             Text {
                                 width: parent.width
                                 text: Player.hasTrack ? Player.artist : ""
-                                color: "#FFE3DC"
+                                color: Theme.onAccent
                                 font.family: Theme.fontText
                                 font.pixelSize: 11
                                 horizontalAlignment: Text.AlignHCenter

@@ -68,6 +68,7 @@
 #include "sonora/platform/net/QtHttpTransport.h"
 #include "sonora/platform/net/SerialExecutor.h"
 #include "sonora/platform/net/SerialWorker.h"
+#include "sonora/presentation/Appearance.h"
 #include "sonora/presentation/LyricsModel.h"
 #include "sonora/presentation/OnlineViewModel.h"
 #include "sonora/presentation/PlayerViewModel.h"
@@ -522,6 +523,10 @@ int main(int argc, char *argv[])
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Player", &player);
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Lyrics", &lyricsModel);
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Online", &online);
+    // 外观（主题三态 + 语言）。它要在 engine 建好之前就装好翻译，
+    // 否则第一帧是中文、下一帧才变英文，观感像闪一下。
+    sonora::presentation::Appearance appearance{settingsPath()};
+    qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Appearance", &appearance);
 
     const auto arguments = QCoreApplication::arguments();
     // 只认第一个**不以 - 开头**的参数当文件夹。
@@ -590,6 +595,9 @@ int main(int argc, char *argv[])
                 std::fprintf(stderr, "[qml] %s\n", warning.toString().toUtf8().constData());
             }
         });
+
+    // 切语言时让引擎重跑所有 qsTr 绑定（Qt 6.5+ 的 retranslate，不用重启）。
+    appearance.setEngine(&engine);
 
     QObject::connect(
         &engine,

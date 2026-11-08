@@ -258,7 +258,7 @@ lib({
     name = "Sonora.Presentation",
     dir = "presentation",
     deps = presentation_deps,
-    qt = {"QtCore", "QtGui", "QtQuick"},
+    qt = {"QtCore", "QtGui", "QtQml", "QtQuick"},
 })
 
 -- ── 组合根：唯一同时看得见 Adapters 与 Presentation 的地方 ───────────────────

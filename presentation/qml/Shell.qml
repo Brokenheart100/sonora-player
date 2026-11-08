@@ -11,7 +11,7 @@ import Sonora.Presentation 1.0
 Item {
     id: shell
 
-    property int currentPage: 0        // 0 = 曲库，1 = 正在播放，2 = 在线
+    property int currentPage: 2 // TEMP N5B        // 0 = 曲库，1 = 正在播放，2 = 在线
     property bool queueOpen: false     // 右下角抽屉：当前播放队列
 
     // 焦点落在文本输入框里时（曲库页的搜索框），空格和方向键属于输入法，
@@ -31,7 +31,7 @@ Item {
         anchors.fill: parent
         density: 0.42
         dotSize: 7
-        ink: "#B9B1A2"
+        ink: Theme.halftoneInk
         paper: Theme.paper
     }
 
@@ -114,8 +114,9 @@ Item {
             NavItem {
                 width: sidebar.width
                 label: qsTr("设置")
-                hint: qsTr("M9")
-                enabled: false
+                hint: qsTr("外观")
+                active: shell.currentPage === 3
+                onClicked: shell.currentPage = 3
             }
 
             Item { width: 1; height: 8 }
@@ -123,6 +124,8 @@ Item {
             // 一张贴在侧栏的"便签"，漫画里常见的旁白框
             ComicBubble {
                 x: 2
+                // 英文比中文长得多，不给宽度就会顶出侧栏。
+                wrapWidth: 198
                 text: qsTr("先把视觉钉死，再写业务。")
                 tailSide: "left"
             }
@@ -145,7 +148,7 @@ Item {
         anchors.bottom: playerBar.top
         anchors.bottomMargin: 14
 
-        pages: [libraryPage, nowPlayingPage, onlinePage]
+        pages: [libraryPage, nowPlayingPage, onlinePage, settingsPage]
         index: shell.currentPage
     }
 
@@ -154,6 +157,7 @@ Item {
     Component { id: libraryPage; LibraryPage { } }
     Component { id: nowPlayingPage; NowPlaying { } }
     Component { id: onlinePage; OnlinePage { } }
+    Component { id: settingsPage; SettingsPage { } }
 
 
     // ── 拟声字层 ────────────────────────────────────────────────────────
