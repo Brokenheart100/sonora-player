@@ -917,51 +917,50 @@ task("qsb")
 
 ### 10.2 Design Tokens（`theme/Theme.qml` 单例）
 
+暗/亮两套配色，靠 `Appearance.dark` 切换；组件只认令牌名，不认具体色值。
+
+| 令牌 | 浅色（暖纸） | 深色（暗纸） | 用途 |
+| --- | --- | --- | --- |
+| `ink` | `#12100E` | `#EDE6D6` | 线稿 / 正文 |
+| `inkSoft` | `#3A3630` | `#A9A08D` | 次要文字 |
+| `paper` | `#F4EFE4` | `#141210` | 纸底 |
+| `paperAlt` | `#E7DFCE` | `#1D1A16` | 次级纸底 |
+| `paperHigh` | `#FFFCF4` | `#24201A` | 面板底 |
+| `screentone` | `#C9C2B4` | `#3B372F` | 网点 / 分隔线 |
+| `accent` | `#D93A3A` | `#E75B52` | 朱红：只用于"当前播放 / 当前选中" |
+| `accentAlt` | `#2E5F8A` | `#7FA8CC` | 靛蓝：只用于"可交互焦点" |
+| `shadow` | `#12100E` | `#000000` | 硬阴影 |
+| `halftoneInk` | `#B9B1A2` | `#2A2721` | 网点图案的墨色 |
+| `grooveA` / `grooveB` | `#4A453D` / `#2B2822` | `#6A6152` / `#464034` | 唱片纹路 |
+| `scrim` | `#33000000` | `#33000000` | 遮罩 |
+| `onAccent` | `#FFE3DC` | `#FFF3EE` | 压在 accent 上的字 |
+
+派生色（`shadow` / `halftoneInk` / `grooveA` / `grooveB` / `onAccent`）不是"多几个色"，
+而是把原本写死在组件里的十六进制收进唯一真源：深色下用线稿色当阴影会变成"发光块"，
+唱片纹路和遮罩同理。**除了二维码画布**（必须白底黑块，扫得出来才有意义），
+QML 里不许再出现裸十六进制颜色。
+
+线宽、阴影偏移、字号、网点参数、动画时长这些与主题无关的令牌保持单值：
+
 ```qml
-pragma Singleton
-import QtQuick
-
-QtObject {
-    // 颜色：黑白 + 两个强调色
-    readonly property color ink:        "#12100E"   // 线稿 / 文字
-    readonly property color inkSoft:    "#3A3630"   // 次要文字
-    readonly property color paper:      "#F4EFE4"   // 纸底
-    readonly property color paperAlt:   "#E7DFCE"   // 次级纸底
-    readonly property color paperHigh:  "#FFFCF4"   // 面板底（比纸再亮一点）
-    readonly property color screentone: "#C9C2B4"   // 网点灰
-    readonly property color accent:     "#D93A3A"   // 朱红：只用于"当前播放"
-    readonly property color accentAlt:  "#2E5F8A"   // 靛蓝：只用于"可交互焦点"
-
-    // 线宽：全局只允许两档
-    readonly property real stroke:      2.5
-    readonly property real strokeBold:  4.0
-
-    // 硬阴影：一个偏移贯穿全局；hover 收窄产生"按下"感
-    readonly property real shadowX:      4
-    readonly property real shadowY:      4
-    readonly property real shadowXPress: 2
-    readonly property real shadowYPress: 2
-
-    // 排版：Windows 自带 微软雅黑 作正文，标题用打包字体
-    readonly property string fontDisplay: "ZCOOL KuaiLe"
-    readonly property string fontText:    "Microsoft YaHei UI"
-    readonly property int    textBody:    14
-    readonly property int    textSmall:   12
-    readonly property int    textTitle:   22
-    readonly property int    textSfx:     40
-
-    // 网点默认参数（dot.frag 的 uniform，**名字必须与 shader 成员同名**）
-    readonly property real dotSize:    3.0
-    readonly property real dotAngle:   45
-    readonly property real dotDensity: 0.55
-
-    readonly property int animFast:   120
-    readonly property int animBase:   220
-    readonly property int animSpring: 380
-}
+readonly property real stroke: 2.5        // 线宽只有两档
+readonly property real strokeBold: 4.0
+readonly property real shadowX: 4         // 硬阴影只有一个偏移
+readonly property real shadowY: 4
+readonly property int  textBody: 14       // 字号：正文 / 小字 / 标题 / 拟声词
+readonly property int  textSmall: 12
+readonly property int  textTitle: 22
+readonly property int  textSfx: 40
+readonly property real dotSize: 3.0       // dot.frag 的 uniform，名字必须同名
 ```
 
-**实现注记（M2 实测）**：`Theme.qml` 由 `theme/qmldir` 声明为 `singleton Theme 1.0 Theme.qml`，QML 里 `import "theme"` 后直接用。两条踩过的红线：① `Fonts.qml` 的 `FontLoader` 在 `pragma Singleton` 的 `QtObject` 里作为 `readonly property` 持有是可行的，但字体文件必须是子集版（`tools/subset_fonts.py`），且 `name_IDs=["*"]` 要保留，否则 `FontLoader.name` 为空、静默回落系统字体；② shader 的 uniform 与 QML 属性**必须同名**（见 §10.4 第一行）。
+**实现注记（M2 实测）**：`Theme.qml` 由 `theme/qmldir` 声明为 `singleton Theme 1.0 Theme.qml`，
+QML 里 `import "theme"` 后直接用。三条踩过的红线：① `Fonts.qml` 的 `FontLoader` 在
+`pragma Singleton` 的 `QtObject` 里作为 `readonly property` 持有是可行的，但字体文件必须是
+子集版（`tools/subset_fonts.py`），且 `name_IDs=["*"]` 要保留，否则 `FontLoader.name` 为空、
+静默回落系统字体；② shader 的 uniform 与 QML 属性**必须同名**（见 §10.4 第一行）；
+③ 文件级单例（`Theme`/`Fonts`）只对**自己文件里的 import** 生效——靠调用方的作用域动态解析
+能跑起来，但 `QQmlEngine::retranslate()` 一重算绑定就报 `Theme is not defined`。
 
 ### 10.3 组件契约（`presentation/qml/comic/`）
 
@@ -1014,6 +1013,31 @@ QtObject {
 5. 硬阴影偏移全局只有一个值；hover/press 靠收窄，不靠变模糊。
 
 ---
+
+### 10.7 主题与语言的运行时切换
+
+`presentation/Appearance.{h,cpp}` 是唯一的"界面偏好"入口，注册成 `Sonora.Presentation`
+的第五个单例（`Library` / `Player` / `Lyrics` / `Online` / `Appearance`）。
+
+| Q_PROPERTY | 说明 |
+| --- | --- |
+| `themeMode` | 0 跟随系统 / 1 浅色 / 2 深色 |
+| `dark` | 实际生效的明暗（`themeMode==2`，或 `==0` 且系统是深色） |
+| `systemDark` | 系统的明暗，来自 `QGuiApplication::styleHints()->colorScheme()` |
+| `language` | `zh_CN` / `en` |
+
+- 持久化在数据目录的 `settings.ini`（`QSettings::IniFormat`，键 `ui/theme`、`ui/language`），
+  与曲库 `sonora.sqlite` 同目录。
+- 跟随系统时接 `QStyleHints::colorSchemeChanged`，系统换主题界面立刻跟着换。
+- 切语言：装 `QTranslator`（`:/i18n/*.qm`）后调 `QQmlEngine::retranslate()`，**不重启**；
+  C++ 侧的状态文案（`stateText_` / `modeLabel_` / `statusText_`）在轮询里每个 tick 重算，
+  所以切完语言最多一个 tick 就跟上。
+- 翻译流水线：源码中文为基准 → `lupdate presentation/qml presentation/src presentation/include
+  -ts translations/sonora_en.ts` → 填译文 → `lrelease … -qm translations/sonora_en.qm`。
+  **`.qm` 入库**（构建机不一定装 lrelease，缺了 `resources.qrc` 直接编不过）；
+  `tools/subset_fonts.py` 也扫 `translations/*.ts`，否则英文标题会缺字形。
+- 契约层（`*.contracts`）里的中文常量（如播放模式 `顺序/循环/单曲/随机`）不进翻译文件：
+  core 层零 Qt，表现层按枚举重新映射一次再 `tr()`。
 
 ## 11. C++ 接口草案
 
