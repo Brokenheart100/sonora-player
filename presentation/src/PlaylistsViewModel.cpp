@@ -321,4 +321,10 @@ namespace sonora::presentation
         refresh();
     }
 
+    void PlaylistsViewModel::retranslate()
+    {
+        // 歌单列表的"N 首"、状态行都是重新查库时生成的，重查一次最省事。
+        refresh();
+    }
+
 } // namespace sonora::presentation

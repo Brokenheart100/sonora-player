@@ -98,6 +98,8 @@ namespace sonora::presentation
         // 规则：文件 → 导入它所在目录 → 找到它 → 从它开始播；文件夹 → 只导入。
         Q_INVOKABLE void dropUrls(const QVariantList &urls);
 
+        // 界面语言变了：重查一次曲库，让列表与状态行换语言。
+        void retranslate();
     signals:
         void countChanged();
         void statusChanged();

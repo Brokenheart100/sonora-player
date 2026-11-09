@@ -425,4 +425,20 @@ namespace sonora::presentation
     }
 
 
+    void OnlineViewModel::retranslate()
+    {
+        // 账号区（未登录 / 昵称）与空闲态状态行是缓存的文案；其它状态会在下一次
+        // 轮询里用新语言重算，所以这里只补这两处，再让 QML 重读一遍。
+        refreshStatus();
+        if (token_ == 0)
+        {
+            if (statusText_ != tr("输入关键词，回车搜索"))
+            {
+                statusText_ = tr("输入关键词，回车搜索");
+                emit statusChanged();
+            }
+        }
+        emit collectionChanged();
+    }
+
 } // namespace sonora::presentation

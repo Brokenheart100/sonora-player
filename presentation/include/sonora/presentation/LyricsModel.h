@@ -75,6 +75,8 @@ namespace sonora::presentation
         [[nodiscard]] QVariant data(const QModelIndex &index, int role) const override;
         [[nodiscard]] QHash<int, QByteArray> roleNames() const override;
 
+        // 界面语言变了：重查一次歌词来源与状态文案。
+        void retranslate();
     signals:
         void linesChanged();
         void currentIndexChanged();

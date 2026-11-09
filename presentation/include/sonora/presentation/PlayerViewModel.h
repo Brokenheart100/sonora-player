@@ -96,6 +96,8 @@ namespace sonora::presentation
         // 播放器不认识歌词模型，只负责"换歌了"和"现在到第几毫秒"两件事。
         void attachLyrics(LyricsModel *model) { lyrics_ = model; }
 
+        // 界面语言变了：重算状态/模式这类缓存文案。
+        void retranslate();
     signals:
         void trackChanged();
         void stateChanged();

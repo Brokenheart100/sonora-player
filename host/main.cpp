@@ -605,6 +605,18 @@ int main(int argc, char *argv[])
     sonora::presentation::Appearance appearance{settingsPath()};
     qmlRegisterSingletonInstance("Sonora.Presentation", 1, 0, "Appearance", &appearance);
 
+    // 切语言时引擎会把 QML 里的 qsTr 绑定重跑一遍；C++ 这边"算好存起来"的
+    // 文案（播放状态、模式名、列表状态行、账号区）得自己重算，否则要重启才换语言。
+    QObject::connect(&appearance, &sonora::presentation::Appearance::languageChanged, &player,
+                     [&player, &library, &lyricsModel, &online, &playlistsModel]
+                     {
+                         player.retranslate();
+                         library.retranslate();
+                         lyricsModel.retranslate();
+                         online.retranslate();
+                         playlistsModel.retranslate();
+                     });
+
     const auto arguments = QCoreApplication::arguments();
     // 只认第一个**不以 - 开头**的参数当文件夹。
     // Qt 自己会往 argv 里塞东西（-qmljsdebugger=... 是 QML 预览/调试器用的），

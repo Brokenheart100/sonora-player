@@ -169,6 +169,12 @@ xmake r sonora             # xmake 会补 Qt 的 runenv
 - 截图/取窗口：窗口逻辑尺寸 × dpr 1.5 才是物理像素，`CopyFromScreen` 在窗口超出屏幕时抓不全，用 `PrintWindow(..., PW_RENDERFULLCONTENT)`，且先 `SetProcessDPIAware()`。
 - **合成鼠标输入进不了窗口**（`mouse_event` 无反应、滚轮不滚）→ 改用 `PostMessage(hwnd, 0x0200/0x0201/0x0202, ...)` 发 `WM_MOUSEMOVE` / `WM_LBUTTONDOWN` / `WM_LBUTTONUP`，`lParam = (y<<16)|x` 用**客户区像素**（客户区比截图小：截图含窗框与标题栏）。
 
+**本地化（中英切换）**
+
+- **moc 给命名空间里的类算的翻译上下文是带命名空间的全名**（`sonora::presentation::OnlineViewModel`），而 `lupdate` 会同时写短名与全名两套 `<context>`。只给短名填翻译时：QML 的 `qsTr` 正常，**C++ 的 `tr()` 一律回落中文**——看起来就像"改语言没生效"。
+- C++ 里**算好存起来**的文案（播放状态、模式名、列表状态行、账号区、歌词来源）不会因为 `engine_->retranslate()` 自动变 → 每个这样的 ViewModel 都要实现 `retranslate()`，由 `Appearance::languageChanged` 驱动重算（`host/main.cpp` 里一次性连五个）。
+- 新增或改动界面文案后要 `lupdate` → 补翻译 → `lrelease` → **重建**（`.qm` 走 qrc）：漏一步，那个文件整片回落中文。复数条目用 `<numerusform>`，别手工嵌套，`lrelease` 会报 `Unexpected tag <numerusform>`。
+
 **路径 / 文件**
 
 - `fs::path` 从 `std::string` 构造时按**当前 ANSI 代码页**解释，不是 UTF-8。中文文件名必须经 `u8Path()` / `u8String()`。

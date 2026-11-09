@@ -397,4 +397,11 @@ QVariant TrackListModel::data(const QModelIndex &index, int role) const
         return -1;
     }
 
+    void TrackListModel::retranslate()
+    {
+        // 列表里的"未知艺术家/未知专辑"是 data() 现翻的，但视图不会主动重问；
+        // 状态行也是攒出来的文案。refresh() 两件事一起解决（本地 SQLite，代价可忽略）。
+        refresh();
+    }
+
 } // namespace sonora::presentation

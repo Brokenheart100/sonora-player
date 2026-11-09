@@ -312,4 +312,14 @@ namespace sonora::presentation
         }
     }
 
+    void PlayerViewModel::retranslate()
+    {
+        // 状态与模式是"算好后存起来"的文案（stateLabel/modeText 在本文件顶部），
+        // 切语言后要重新算一遍；refresh() 会拿新语言重跑那两张小表。
+        refresh();
+        emit stateChanged();
+        emit modeChanged();
+        emit trackChanged();
+    }
+
 } // namespace sonora::presentation

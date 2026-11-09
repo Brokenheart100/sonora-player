@@ -57,6 +57,8 @@ namespace sonora::presentation
         // 所以按要哪一行直接问一页（limit=1），省一次整表投影。
         Q_INVOKABLE void addFromLibrary(int row);
 
+        // 界面语言变了：重查一次列表。
+        void retranslate();
     signals:
         void playlistsChanged();
         void statusChanged();

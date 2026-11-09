@@ -214,6 +214,8 @@ namespace sonora::presentation
         Q_INVOKABLE void likeFmSong(const QString &songId);
         Q_INVOKABLE void dislikeFmSong(const QString &songId);
 
+        // 界面语言变了：重算账号区与空闲态状态行。
+        void retranslate();
     signals:
         void fmChanged();
         void statusChanged();
@@ -305,6 +307,7 @@ namespace sonora::presentation
 
         OnlineListModel model_;
         OnlineCollectionModel collections_;
+
     };
 
 } // namespace sonora::presentation

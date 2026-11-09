@@ -218,4 +218,14 @@ namespace sonora::presentation
         };
     }
 
+    void LyricsModel::retranslate()
+    {
+        // 歌词来源与"纯音乐"这类文案由查询结果带回来，重查一次即可。
+        if (loadedPath_.isEmpty() && onlineSongId_.isEmpty())
+        {
+            return;
+        }
+        requery();
+    }
+
 } // namespace sonora::presentation
