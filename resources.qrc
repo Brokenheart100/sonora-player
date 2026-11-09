@@ -30,7 +30,12 @@
         <!-- 页面 -->
         <file alias="qml/pages/LibraryPage.qml">presentation/qml/pages/LibraryPage.qml</file>
         <file alias="qml/pages/NowPlaying.qml">presentation/qml/pages/NowPlaying.qml</file>
+        <file alias="qml/comic/VinylDisc.qml">presentation/qml/comic/VinylDisc.qml</file>
+        <file alias="qml/comic/LyricsColumn.qml">presentation/qml/comic/LyricsColumn.qml</file>
         <file alias="qml/pages/OnlinePage.qml">presentation/qml/pages/OnlinePage.qml</file>
+        <file alias="qml/pages/OnlineBrowseLayer.qml">presentation/qml/pages/OnlineBrowseLayer.qml</file>
+        <file alias="qml/comic/OnlineDiagPanel.qml">presentation/qml/comic/OnlineDiagPanel.qml</file>
+        <file alias="qml/comic/FavoriteConfirm.qml">presentation/qml/comic/FavoriteConfirm.qml</file>
         <file alias="qml/pages/CollectionPage.qml">presentation/qml/pages/CollectionPage.qml</file>
         <file alias="qml/pages/SettingsPage.qml">presentation/qml/pages/SettingsPage.qml</file>
         <file alias="qml/pages/PlaylistsPage.qml">presentation/qml/pages/PlaylistsPage.qml</file>
