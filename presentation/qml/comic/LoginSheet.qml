@@ -16,16 +16,16 @@ Item {
 
     // 打开即默认落在扫码上：少一步点击，也少一次"cookie 从哪来"的解释。
     function open() {
-        qrMode = true
-        visible = true
+        qrMode = true;
+        visible = true;
         if (!Online.signedIn)
-            Online.startQrLogin()
+            Online.startQrLogin();
     }
 
     function close() {
-        visible = false
+        visible = false;
         if (!Online.signedIn)
-            Online.cancelQrLogin()
+            Online.cancelQrLogin();
     }
 
     MouseArea {
@@ -83,8 +83,8 @@ Item {
                     text: qsTr("扫码")
                     tone: root.qrMode ? "accent" : "paper"
                     onClicked: {
-                        root.qrMode = true
-                        Online.startQrLogin()
+                        root.qrMode = true;
+                        Online.startQrLogin();
                     }
                 }
 
@@ -92,8 +92,8 @@ Item {
                     text: qsTr("粘贴 Cookie")
                     tone: root.qrMode ? "paper" : "accent"
                     onClicked: {
-                        root.qrMode = false
-                        Online.cancelQrLogin()
+                        root.qrMode = false;
+                        Online.cancelQrLogin();
                     }
                 }
             }
@@ -108,19 +108,19 @@ Item {
                     id: qrCanvas
                     anchors.fill: parent
                     onPaint: {
-                        var ctx = getContext("2d")
-                        var size = Online.qrSize
-                        ctx.reset()
-                        ctx.fillStyle = "white"
-                        ctx.fillRect(0, 0, width, height)
+                        var ctx = getContext("2d");
+                        var size = Online.qrSize;
+                        ctx.reset();
+                        ctx.fillStyle = "white";
+                        ctx.fillRect(0, 0, width, height);
                         if (size <= 0)
-                            return
-                        var cell = width / size
-                        ctx.fillStyle = "#111111"
+                            return;
+                        var cell = width / size;
+                        ctx.fillStyle = "#111111";
                         for (var row = 0; row < size; ++row) {
                             for (var col = 0; col < size; ++col) {
                                 if (Online.qrCell(row, col))
-                                    ctx.fillRect(col * cell, row * cell, Math.ceil(cell), Math.ceil(cell))
+                                    ctx.fillRect(col * cell, row * cell, Math.ceil(cell), Math.ceil(cell));
                             }
                         }
                     }
@@ -128,7 +128,9 @@ Item {
 
                 Connections {
                     target: Online
-                    function onQrChanged() { qrCanvas.requestPaint() }
+                    function onQrChanged() {
+                        qrCanvas.requestPaint();
+                    }
                 }
             }
 
@@ -205,8 +207,8 @@ Item {
                     text: qsTr("退出登录")
                     tone: "ink"
                     onClicked: {
-                        Online.signOut()
-                        root.visible = false
+                        Online.signOut();
+                        root.visible = false;
                     }
                 }
 
@@ -224,8 +226,8 @@ Item {
         target: Online
         function onStatusChanged() {
             if (Online.signedIn && root.visible) {
-                root.visible = false
-                Online.cancelQrLogin()
+                root.visible = false;
+                Online.cancelQrLogin();
             }
         }
     }

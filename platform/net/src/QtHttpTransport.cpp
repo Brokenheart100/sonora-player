@@ -103,7 +103,7 @@ namespace sonora::platform::net
         QNetworkRequest netRequest{QUrl(QString::fromStdString(request.url))};
         netRequest.setTransferTimeout(request.transferTimeout);
         netRequest.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                               QNetworkRequest::NoLessSafeRedirectPolicy);
+                                QNetworkRequest::NoLessSafeRedirectPolicy);
         for (const auto &header : request.headers)
         {
             netRequest.setRawHeader(QByteArray::fromStdString(header.first),
@@ -135,7 +135,8 @@ namespace sonora::platform::net
         timer->start();
 
         QObject::connect(reply, &QNetworkReply::finished, reply,
-                         [this, requestId, reply, callback = std::move(callback), timer, maxBodyBytes]() mutable {
+                         [this, requestId, reply, callback = std::move(callback), timer, maxBodyBytes]() mutable
+                         {
                              impl_->inflight.remove(requestId);
                              reply->deleteLater();
 

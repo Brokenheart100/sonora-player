@@ -9,49 +9,53 @@
 
 #include "sonora/kernel/Result.h"
 
-namespace sonora::kernel {
+namespace sonora::kernel
+{
 
-class IUnitOfWork {
-public:
-    virtual ~IUnitOfWork() = default;
-
-    [[nodiscard]] virtual Result<void> begin() = 0;
-    [[nodiscard]] virtual Result<void> commit() = 0;
-
-    // 回滚不能失败到需要上报：真回滚不了，连接已经废了。所以它返回 void。
-    virtual void rollback() noexcept = 0;
-
-    [[nodiscard]] virtual bool active() const noexcept = 0;
-};
-
-// RAII 保护：没 commit 就析构 → 自动回滚。
-// 用它之后，「异常/提前 return 导致事务悬挂」这件事不可能发生。
-class UnitOfWorkScope {
-public:
-    explicit UnitOfWorkScope(IUnitOfWork &unit) : unit_(unit) {}
-
-    UnitOfWorkScope(const UnitOfWorkScope &) = delete;
-    UnitOfWorkScope &operator=(const UnitOfWorkScope &) = delete;
-
-    ~UnitOfWorkScope()
+    class IUnitOfWork
     {
-        if (!settled_) {
-            unit_.rollback();
+    public:
+        virtual ~IUnitOfWork() = default;
+
+        [[nodiscard]] virtual Result<void> begin() = 0;
+        [[nodiscard]] virtual Result<void> commit() = 0;
+
+        // 回滚不能失败到需要上报：真回滚不了，连接已经废了。所以它返回 void。
+        virtual void rollback() noexcept = 0;
+
+        [[nodiscard]] virtual bool active() const noexcept = 0;
+    };
+
+    // RAII 保护：没 commit 就析构 → 自动回滚。
+    // 用它之后，「异常/提前 return 导致事务悬挂」这件事不可能发生。
+    class UnitOfWorkScope
+    {
+    public:
+        explicit UnitOfWorkScope(IUnitOfWork &unit) : unit_(unit) {}
+
+        UnitOfWorkScope(const UnitOfWorkScope &) = delete;
+        UnitOfWorkScope &operator=(const UnitOfWorkScope &) = delete;
+
+        ~UnitOfWorkScope()
+        {
+            if (!settled_)
+            {
+                unit_.rollback();
+            }
         }
-    }
 
-    [[nodiscard]] Result<void> begin() { return unit_.begin(); }
+        [[nodiscard]] Result<void> begin() { return unit_.begin(); }
 
-    [[nodiscard]] Result<void> commit()
-    {
-        auto result = unit_.commit();
-        settled_ = true;
-        return result;
-    }
+        [[nodiscard]] Result<void> commit()
+        {
+            auto result = unit_.commit();
+            settled_ = true;
+            return result;
+        }
 
-private:
-    IUnitOfWork &unit_;
-    bool settled_ = false;
-};
+    private:
+        IUnitOfWork &unit_;
+        bool settled_ = false;
+    };
 
-}  // namespace sonora::kernel
+} // namespace sonora::kernel
